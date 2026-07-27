@@ -1,0 +1,67 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "必需资产缺失测试"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "required_asset_error_fixture",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "children": [
+      {
+        "type": "text",
+        "text": {
+          "text": "如果看到这段业务页面正文，说明必需资产预检没有正确阻止渲染。"
+        },
+        "wrap": true,
+        "max_lines": 3,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "image",
+        "id": "required_missing_art",
+        "asset": "pixel_tzz_fixture:textures/gui/required_missing_art.png",
+        "fit": "contain",
+        "required": true,
+        "alt": {
+          "text": "故意缺失的必需测试图片"
+        },
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 96
+          }
+        }
+      },
+      {
+        "type": "button",
+        "id": "back",
+        "label": {
+          "text": "返回"
+        },
+        "action": {
+          "type": "local",
+          "name": "back"
+        }
+      }
+    ]
+  }
+}

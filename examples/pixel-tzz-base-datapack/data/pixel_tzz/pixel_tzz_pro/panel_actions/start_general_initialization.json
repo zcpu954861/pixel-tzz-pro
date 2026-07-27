@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "primary",
+  "order": 10,
+  "label": {
+    "text": "发起通用初始化"
+  },
+  "description": {
+    "text": "锁定当前符合条件的在线参与者并发起通用教程。"
+  },
+  "color": "#D7B45A",
+  "phases": [
+    "pixel_tzz:setup"
+  ],
+  "target": {
+    "mode": "none"
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认发起通用初始化"
+    },
+    "consequences": [
+      {
+        "text": "符合流程受众规则的当前在线玩家将进入不可关闭的教程。"
+      },
+      {
+        "text": "发起时锁定名单；后来上线者不会自动改变分母。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "start_flow",
+    "flow": "pixel_tzz:general_tutorial"
+  }
+}

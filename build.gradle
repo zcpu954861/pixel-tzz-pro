@@ -1,0 +1,127 @@
+plugins {
+	id "net.fabricmc.fabric-loom" version "${loom_version}"
+	id "maven-publish"
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	maven {
+		name = "Aliyun Public"
+		url = uri("https://maven.aliyun.com/repository/public")
+	}
+	maven {
+		name = "Aliyun Central"
+		url = uri("https://maven.aliyun.com/repository/central")
+	}
+	maven {
+		name = "Fabric"
+		url = uri("https://maven.fabricmc.net/")
+	}
+	maven {
+		name = "Mojang"
+		url = uri("https://libraries.minecraft.net/")
+	}
+	mavenCentral()
+}
+
+loom {
+	splitEnvironmentSourceSets()
+
+	runs {
+		client {
+			runDir "run/client"
+		}
+		server {
+			runDir "run/server"
+		}
+	}
+
+	mods {
+		"pixel-tzz-pro" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+def expandedProperties = [
+		"version": project.version,
+		"minecraft_version": project.minecraft_version,
+		"loader_version": project.loader_version
+]
+
+processResources {
+	inputs.properties expandedProperties
+	filteringCharset = "UTF-8"
+
+	filesMatching("fabric.mod.json") {
+		expand expandedProperties
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = "UTF-8"
+	options.release = 25
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(25)
+	}
+	withSourcesJar()
+}
+
+def archiveBaseName = base.archivesName.get()
+
+jar {
+	from("LICENSE") {
+		rename { "${it}_${archiveBaseName}" }
+	}
+}
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			artifactId = project.archives_base_name
+			from components.java
+		}
+	}
+}
+
+tasks.register("foundationSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the foundation and data-pack definition contract checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.FoundationSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("pageFrameworkSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the client-neutral data-driven page framework checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.PageFrameworkSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.named("test") {
+	failOnNoDiscoveredTests = false
+}
+
+check.dependsOn foundationSelfCheck, pageFrameworkSelfCheck

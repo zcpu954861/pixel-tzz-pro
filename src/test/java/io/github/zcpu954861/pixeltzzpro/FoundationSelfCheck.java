@@ -1,0 +1,2059 @@
+package io.github.zcpu954861.pixeltzzpro;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
+import io.github.zcpu954861.pixeltzzpro.animation.TypewriterTimeline;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Compilation;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignLifeStateOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarColor;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarStyle;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationStrategy;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionKeyframe;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionProperty;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionTrack;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.NodeDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ReducedMotion;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.RepeatContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ResponsiveTier;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SizeMode;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.StyleValue;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiEvent;
+import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
+import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
+import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
+import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime.Transform;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization.Window;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.OptionalDouble;
+import java.util.OptionalInt;
+import java.util.Set;
+import net.minecraft.SharedConstants;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.Bootstrap;
+
+/**
+ * Small runnable contract check with no test framework or fixtures.
+ */
+public final class FoundationSelfCheck {
+	private FoundationSelfCheck() {
+	}
+
+	public static void main(final String[] args) {
+		Set<String> phaseIds = new HashSet<>();
+		for (GamePhase phase : GamePhase.values()) {
+			check(phaseIds.add(phase.getSerializedName()), "duplicate phase id: " + phase.getSerializedName());
+			check(GamePhase.bySerializedName(phase.getSerializedName()).orElseThrow() == phase, "phase round-trip failed: " + phase);
+		}
+
+		check(NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION), "current protocol must be compatible");
+		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION + 1), "future protocol must fail closed");
+		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION - 1), "older protocol must fail closed");
+
+		PixelTzzWorldState state = PixelTzzWorldState.initial();
+		check(state.isSchemaCompatible(), "fresh state must be compatible");
+		check(state.phase() == GamePhase.IDLE, "fresh state must start in IDLE");
+		check(state.hostId().isEmpty(), "reload must not invent a host");
+		check(state.stateRevision() == 0L, "resource loading must not advance core state revision");
+
+		JsonElement encodedState = PixelTzzWorldState.CODEC.encodeStart(JsonOps.INSTANCE, state).getOrThrow();
+		PixelTzzWorldState decodedState = PixelTzzWorldState.CODEC.parse(JsonOps.INSTANCE, encodedState).getOrThrow();
+		check(decodedState.isSchemaCompatible(), "current state codec round-trip must remain compatible");
+		check(decodedState.phase() == GamePhase.IDLE, "state codec round-trip must retain phase");
+
+		JsonElement futureData = JsonParser.parseString(
+			"""
+			{"schema_version":2,"phase":"future_phase","state_revision":9,"future_field":{"keep":true}}
+			"""
+		);
+		PixelTzzWorldState futureState = PixelTzzWorldState.CODEC.parse(JsonOps.INSTANCE, futureData).getOrThrow();
+		check(!futureState.isSchemaCompatible(), "future state must fail closed");
+		check(!futureState.isDirty(), "read-only future state must not be marked dirty");
+		JsonElement preservedFutureData = PixelTzzWorldState.CODEC.encodeStart(JsonOps.INSTANCE, futureState).getOrThrow();
+		check(preservedFutureData.equals(futureData), "future state must preserve unknown data exactly");
+
+		String unicodeText = "加载🚨";
+		int unicodeLength = unicodeText.codePointCount(0, unicodeText.length());
+		check(unicodeLength == 3, "self-check text must contain three Unicode code points");
+		long step = 65_000_000L;
+		check(TypewriterTimeline.visibleCodePoints(0L, unicodeLength, step) == 1, "typewriter must reveal immediately");
+		check(
+			TypewriterTimeline.visibleCodePoints(step - 1L, unicodeLength, step) == 1,
+			"typewriter must wait for the next interval"
+		);
+		check(TypewriterTimeline.visibleCodePoints(step, unicodeLength, step) == 2, "typewriter interval boundary failed");
+		check(
+			TypewriterTimeline.visibleCodePoints(Long.MAX_VALUE, unicodeLength, step) == unicodeLength,
+			"typewriter must clamp at the final code point"
+		);
+		int[] codePoints = unicodeText.codePoints().toArray();
+		check(
+			new String(codePoints, 0, codePoints.length).equals(unicodeText),
+			"typewriter code-point storage must preserve supplementary characters"
+		);
+
+		checkMotionRuntime();
+		checkDefinitionRegistry(state);
+		System.out.println("FOUNDATION_SELF_CHECK=PASS");
+	}
+
+	private static void checkMotionRuntime() {
+		List<MotionTrack> tracks = List.of(
+			track(MotionProperty.OPACITY, "0.0", "1.0"),
+			track(MotionProperty.TRANSLATE_X, "0.0", "20.0"),
+			track(MotionProperty.TRANSLATE_Y, "0.0", "-6.0"),
+			track(MotionProperty.SCALE, "1.0", "2.0"),
+			track(MotionProperty.COLOR, "\"#FF0000\"", "\"@colors.end\""),
+			track(MotionProperty.CLIP_PROGRESS, "0.0", "1.0"),
+			track(MotionProperty.PROGRESS_VALUE, "0.0", "10.0")
+		);
+		MotionDefinition keep = new MotionDefinition(
+			100,
+			0,
+			Easing.LINEAR,
+			tracks,
+			ReducedMotion.KEEP
+		);
+		UiMotionRuntime.Sample middle = UiMotionRuntime.sample(
+			keep,
+			50L,
+			false,
+			Map.of("end", "#0000FF")
+		);
+		checkClose(middle.opacity(), 0.5, "motion opacity interpolation failed");
+		checkClose(middle.translateX(), 10.0, "motion X interpolation failed");
+		checkClose(middle.translateY(), -3.0, "motion Y interpolation failed");
+		checkClose(middle.scale(), 1.5, "motion scale interpolation failed");
+		check(middle.color().orElseThrow() == 0xFF800080, "motion color interpolation failed");
+		check(
+			UiMotionRuntime.interpolateColor(0xFF102030, 0xFF90A0B0, -1.0) == 0xFF102030
+				&& UiMotionRuntime.interpolateColor(0xFF102030, 0xFF90A0B0, 2.0) == 0xFF90A0B0,
+			"shared UI color interpolation must clamp animation progress"
+		);
+		Window repeatGridWindow = RepeatVirtualization.verticalWindow(
+			64,
+			2,
+			48,
+			6,
+			480,
+			240,
+			2
+		);
+		check(
+			repeatGridWindow.startItem() == 16
+				&& repeatGridWindow.endItem() == 34
+				&& repeatGridWindow.leadingExtent() == 378
+				&& repeatGridWindow.trailingExtent() == 714,
+			"responsive-grid Repeat virtualization window is incorrect"
+		);
+		check(
+			RepeatVirtualization.verticalWindow(0, 2, 48, 6, 0, 240, 2)
+				.equals(new Window(0, 0, 0, 0)),
+			"empty Repeat virtualization window must stay empty"
+		);
+		checkNavigationTransitions();
+		checkClose(middle.clipProgress(), 0.5, "motion clip interpolation failed");
+		checkClose(
+			middle.progressValue().orElseThrow(),
+			5.0,
+			"motion progress interpolation failed"
+		);
+		check(!middle.finished(), "mid-timeline motion must not report completion");
+
+		UiMotionRuntime.Sample reducedKeep = UiMotionRuntime.sample(
+			keep,
+			50L,
+			true,
+			Map.of("end", "#0000FF")
+		);
+		checkClose(reducedKeep.translateX(), 20.0, "reduced KEEP must remove translation");
+		checkClose(reducedKeep.translateY(), -6.0, "reduced KEEP must finish translation");
+		checkClose(reducedKeep.scale(), 2.0, "reduced KEEP must finish scale");
+		checkClose(reducedKeep.opacity(), 0.5, "reduced KEEP may preserve opacity feedback");
+
+		MotionDefinition finalMotion = new MotionDefinition(
+			100,
+			80,
+			Easing.EASE_OUT_CUBIC,
+			tracks,
+			ReducedMotion.FINAL
+		);
+		UiMotionRuntime.Sample finalSample = UiMotionRuntime.sample(
+			finalMotion,
+			0L,
+			true,
+			Map.of("end", "#0000FF")
+		);
+		check(finalSample.finished(), "reduced FINAL must complete immediately");
+		checkClose(finalSample.progressValue().orElseThrow(), 10.0, "reduced FINAL must use final value");
+
+		MotionDefinition fadeMotion = new MotionDefinition(
+			200,
+			80,
+			Easing.LINEAR,
+			tracks,
+			ReducedMotion.FADE
+		);
+		UiMotionRuntime.Sample reducedFade = UiMotionRuntime.sample(
+			fadeMotion,
+			50L,
+			true,
+			Map.of("end", "#0000FF")
+		);
+		checkClose(reducedFade.opacity(), 0.5, "reduced FADE must use a short fade");
+		checkClose(reducedFade.translateX(), 20.0, "reduced FADE must finish movement");
+		check(!reducedFade.finished(), "reduced FADE must retain its short feedback window");
+		check(
+			UiMotionRuntime.sample(fadeMotion, 100L, true, Map.of("end", "#0000FF")).finished(),
+			"reduced FADE must finish after 100 ms"
+		);
+		MotionDefinition movementOnlyFade = new MotionDefinition(
+			200,
+			0,
+			Easing.LINEAR,
+			List.of(track(MotionProperty.TRANSLATE_X, "0.0", "12.0")),
+			ReducedMotion.FADE
+		);
+		checkClose(
+			UiMotionRuntime.sample(movementOnlyFade, 50L, true, Map.of()).opacity(),
+			0.5,
+			"reduced FADE must add a fade when the source motion has no opacity track"
+		);
+		MotionDefinition instant = new MotionDefinition(
+			0,
+			40,
+			Easing.LINEAR,
+			List.of(track(MotionProperty.TRANSLATE_X, "0.0", "12.0")),
+			ReducedMotion.FINAL
+		);
+		UiMotionRuntime.Sample instantAtDelay = UiMotionRuntime.sample(
+			instant,
+			40L,
+			false,
+			Map.of()
+		);
+		checkClose(
+			instantAtDelay.translateX(),
+			12.0,
+			"zero-duration motion must reach its final value at the delay boundary"
+		);
+		check(instantAtDelay.finished(), "zero-duration motion must finish at its delay boundary");
+
+		UiMotionRuntime.Sample composed = UiMotionRuntime.compose(
+			List.of(
+				new UiMotionRuntime.Sample(
+					0.5F,
+					4.0,
+					-2.0,
+					0.8,
+					OptionalInt.of(0xFFFF0000),
+					0.75,
+					OptionalDouble.empty(),
+					true
+				),
+				new UiMotionRuntime.Sample(
+					0.8F,
+					3.0,
+					5.0,
+					1.25,
+					OptionalInt.of(0xFF00FF00),
+					0.5,
+					OptionalDouble.of(7.0),
+					false
+				)
+			)
+		);
+		checkClose(composed.opacity(), 0.4, "composed motion opacity must multiply");
+		checkClose(composed.translateX(), 7.0, "composed motion X must add");
+		checkClose(composed.translateY(), 3.0, "composed motion Y must add");
+		checkClose(composed.scale(), 1.0, "composed motion scale must multiply");
+		checkClose(composed.clipProgress(), 0.375, "composed motion clipping must multiply");
+		check(composed.color().orElseThrow() == 0xFF00FF00, "latest motion color must win");
+		checkClose(composed.progressValue().orElseThrow(), 7.0, "latest progress motion must win");
+		check(!composed.finished(), "composed motion must wait for every layer");
+
+		int baseColor = 0xFF202830;
+		OptionalInt colorOrigin = UiMotionRuntime.continuityColorOrigin(
+			OptionalInt.of(0xFFFF0000),
+			OptionalInt.empty(),
+			baseColor
+		);
+		check(
+			UiMotionRuntime.applyColorContinuity(
+				OptionalInt.empty(),
+				baseColor,
+				colorOrigin,
+				1.0
+			).orElseThrow() == 0xFFFF0000,
+			"color continuity must preserve the replaced slot at the trigger frame"
+		);
+		check(
+			UiMotionRuntime.applyColorContinuity(
+				OptionalInt.empty(),
+				baseColor,
+				colorOrigin,
+				0.0
+			).isEmpty(),
+			"color continuity must release to the node base color after the transition"
+		);
+		OptionalDouble progressDelta = UiMotionRuntime.continuityNumberDelta(
+			OptionalDouble.of(8.0),
+			OptionalDouble.empty(),
+			3.0
+		);
+		checkClose(
+			UiMotionRuntime.applyNumberContinuity(
+				OptionalDouble.empty(),
+				3.0,
+				progressDelta,
+				1.0
+			).orElseThrow(),
+			8.0,
+			"progress continuity must preserve the replaced display value"
+		);
+		check(
+			UiMotionRuntime.applyNumberContinuity(
+				OptionalDouble.empty(),
+				3.0,
+				progressDelta,
+				0.0
+			).isEmpty(),
+			"progress continuity must release to the current bound value"
+		);
+
+		Rect pivot = new Rect(0, 0, 100, 100);
+		Transform parent = Transform.root(0, 0).around(pivot, 0.5, 0.0, 0.0);
+		Transform child = parent.around(new Rect(10, 10, 20, 20), 1.0, 10.0, 0.0);
+		checkClose(
+			child.apply(new Rect(0, 0, 0, 0)).x()
+				- parent.apply(new Rect(0, 0, 0, 0)).x(),
+			5.0,
+			"child translation must inherit the parent scale"
+		);
+
+		Rect hitBounds = new Rect(10, 20, 200, 40);
+		Rect sourceBounds = UiMotionRuntime.presentationSource(hitBounds, 2.0);
+		check(
+			sourceBounds.equals(new Rect(60, 30, 100, 20)),
+			"scaled widgets must render logical source bounds around the transformed hit center"
+		);
+		check(
+			hitBounds.equals(new Rect(10, 20, 200, 40)),
+			"presentation scaling must not mutate the transformed hit rectangle"
+		);
+	}
+
+	private static void checkNavigationTransitions() {
+		NavigationTransitionTimeline.Sample rootStart =
+			NavigationTransitionTimeline.sample(Motion.ROOT_ENTER, 0L, 500, 1.0);
+		check(rootStart.translateY() > 0.0F, "root entry must rise into place");
+		check(rootStart.scale() < 1.0F, "root entry must settle from a smaller scale");
+
+		NavigationTransitionTimeline.Sample pushStart =
+			NavigationTransitionTimeline.sample(Motion.PUSH_ENTER, 0L, 500, 1.0);
+		NavigationTransitionTimeline.Sample pushEnd =
+			NavigationTransitionTimeline.sample(Motion.PUSH_ENTER, 170L, 500, 1.0);
+		check(pushStart.translateX() > 0.0F, "push entry must arrive from the right");
+		checkClose(pushEnd.translateX(), 0.0, "push entry must finish at its logical bounds");
+		check(pushEnd.veilAlpha() == 0 && pushEnd.finished(), "push entry end state must be clear and finished");
+
+		NavigationTransitionTimeline.Sample pushExit =
+			NavigationTransitionTimeline.sample(Motion.PUSH_EXIT, 110L, 500, 1.0);
+		NavigationTransitionTimeline.Sample popExit =
+			NavigationTransitionTimeline.sample(Motion.POP_EXIT, 110L, 500, 1.0);
+		check(pushExit.translateX() < 0.0F, "push exit must move toward the left");
+		check(popExit.translateX() > 0.0F, "pop exit must reverse toward the right");
+
+		NavigationTransitionTimeline.Sample reduced =
+			NavigationTransitionTimeline.sample(Motion.POP_ENTER, 0L, 500, 0.0);
+		checkClose(reduced.translateX(), 0.0, "zero screen-effect scale must remove navigation translation");
+		checkClose(reduced.scale(), 1.0, "zero screen-effect scale must remove navigation scaling");
+		check(
+			NavigationTransitionTimeline.durationMilliseconds(Motion.POP_ENTER, 0.0) == 80,
+			"reduced navigation must use the short fade duration"
+		);
+	}
+
+	private static MotionTrack track(
+		final MotionProperty property,
+		final String start,
+		final String end
+	) {
+		return new MotionTrack(
+			property,
+			List.of(
+				new MotionKeyframe(0.0, new StyleValue(start)),
+				new MotionKeyframe(1.0, new StyleValue(end))
+			)
+		);
+	}
+
+	private static void checkClose(
+		final double actual,
+		final double expected,
+		final String message
+	) {
+		check(Math.abs(actual - expected) < 0.0001, message + ": " + actual + " != " + expected);
+	}
+
+	private static void checkDefinitionRegistry(final PixelTzzWorldState worldState) {
+		SharedConstants.tryDetectVersion();
+		Bootstrap.bootStrap();
+		Set<Identifier> functions = Set.of(
+			Identifier.parse("test:flow/start"),
+			Identifier.parse("test:flow/player_complete"),
+			Identifier.parse("test:flow/all_complete")
+		);
+		Set<Identifier> predicates = Set.of(
+			Identifier.parse("test:field/visible"),
+			Identifier.parse("test:panel/visible"),
+			Identifier.parse("test:panel/enabled")
+		);
+		List<Source> validSources = validDefinitionSources();
+		Compilation valid = DefinitionCompiler.compile(validSources, functions, predicates);
+		check(valid.valid(), "valid definition bundle must compile: " + valid.problems());
+		DefinitionSnapshot compiled = valid.snapshot().orElseThrow();
+		check(compiled.games().size() == 1, "valid bundle game count failed");
+		check(compiled.roles().size() == 2, "valid bundle role count failed");
+		check(compiled.teams().size() == 1, "valid bundle team count failed");
+		check(compiled.lifeStates().size() == 2, "valid bundle life-state count failed");
+		check(compiled.phases().size() == 2, "valid bundle phase count failed");
+		check(compiled.fields().size() == 1, "valid bundle field count failed");
+		check(compiled.flows().size() == 1, "valid bundle flow count failed");
+		check(compiled.panelActions().size() == 2, "valid bundle panel action count failed");
+		check(compiled.pages().size() == 2, "valid bundle page count failed");
+		check(compiled.themes().size() == 1, "valid bundle theme count failed");
+		check(compiled.definitionCount() == 15, "valid bundle total definition count failed");
+		check(
+			compiled.games().get(Identifier.parse("test:main")).defaultLifeState().equals(
+				Identifier.parse("test:alive")
+			),
+			"default life state must survive compilation"
+		);
+		var laneField = compiled.fields().get(Identifier.parse("test:lane"));
+		check(laneField.version() == 1, "field version must survive compilation");
+		check(laneField.roles().contains(Identifier.parse("test:runner")), "field role applicability was lost");
+		check(laneField.phases().contains(Identifier.parse("test:setup")), "field phase applicability was lost");
+		check(
+			laneField.visibleWhen().orElseThrow().equals(Identifier.parse("test:field/visible")),
+			"field visibility predicate was lost"
+		);
+		check(
+			laneField.migration() == FieldMigrationStrategy.PRESERVE,
+			"field migration strategy was mapped incorrectly"
+		);
+		check(
+			compiled.flows().get(Identifier.parse("test:tutorial")).hostBossBar().isPresent(),
+			"required flow must retain its host BossBar definition"
+		);
+		var hostBossBar = compiled.flows()
+			.get(Identifier.parse("test:tutorial"))
+			.hostBossBar()
+			.orElseThrow();
+		check(hostBossBar.color() == BossBarColor.YELLOW, "BossBar color was mapped incorrectly");
+		check(hostBossBar.style() == BossBarStyle.NOTCHED_10, "BossBar style was mapped incorrectly");
+		check(hostBossBar.priority() == 10, "BossBar priority was mapped incorrectly");
+		check(hostBossBar.completionFeedback().isPresent(), "BossBar completion feedback was lost");
+		var assignHunter = compiled.panelActions().get(Identifier.parse("test:assign_hunter"));
+		check(assignHunter.icon().orElseThrow().equals(Identifier.parse("test:textures/gui/hunter")), "panel icon was lost");
+		check(assignHunter.color().orElseThrow().equals("#E94F64"), "panel color was lost");
+		check(assignHunter.enabledWhen().isPresent(), "panel enabled predicate was lost");
+		check(
+			assignHunter.target().filter().incompleteFlows().contains(Identifier.parse("test:tutorial")),
+			"panel completion filter was lost"
+		);
+		check(
+			compiled.panelActions().get(Identifier.parse("test:revive")).operation()
+				instanceof AssignLifeStateOperation,
+			"assign_life_state operation was mapped incorrectly"
+		);
+		expectUnsupported(() -> compiled.games().clear(), "definition maps must be immutable");
+		expectUnsupported(() -> compiled.lifeStates().clear(), "life-state maps must be immutable");
+		expectUnsupported(() -> compiled.pages().clear(), "page maps must be immutable");
+		expectUnsupported(() -> compiled.themes().clear(), "theme maps must be immutable");
+		expectUnsupported(
+			() -> compiled.pages().get(Identifier.parse("test:page/intro")).root().responsive().clear(),
+			"page node maps must be immutable"
+		);
+		expectUnsupported(
+			() -> compiled.flows().get(Identifier.parse("test:tutorial")).nodes().clear(),
+			"flow node maps must be immutable"
+		);
+		checkUiDefinitionCompiler(validSources, functions, predicates, compiled);
+
+		Compilation validLifeStateChange = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FLOW,
+				"tutorial",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Life-state change"},
+				  "entry": "capture",
+				  "nodes": [
+				    {
+				      "id": "capture",
+				      "type": "change_state",
+				      "axis": "life_state",
+				      "value": "test:captured",
+				      "next": "done"
+				    },
+				    {"id": "done", "type": "complete"}
+				  ]
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		check(
+			validLifeStateChange.valid(),
+			"life_state change nodes must compile against the life-state registry: "
+				+ validLifeStateChange.problems()
+		);
+
+		Compilation duplicateKey = DefinitionCompiler.compile(
+			List.of(
+				source(
+					DefinitionType.GAME,
+					"main",
+					"""
+					{
+					  "format_version": 1,
+					  "format_version": 1,
+					  "api_version": 1,
+					  "content_version": 1,
+					  "name": {"text": "Test"},
+					  "initial_phase": "test:setup",
+					  "default_role": "test:runner"
+					}
+					"""
+				)
+			),
+			Set.of(),
+			predicates
+		);
+		checkProblem(duplicateKey, "JSON_SYNTAX", "duplicate JSON keys must fail");
+
+		Compilation unknownKey = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.ROLE,
+				"runner",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Runner"},
+				  "tags": [],
+				  "unknown": true
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(unknownKey, "UNKNOWN_KEY", "unknown definition keys must fail");
+
+		Compilation bareIdentifier = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.GAME,
+				"main",
+				"""
+				{
+				  "format_version": 1,
+				  "api_version": 1,
+				  "content_version": 1,
+				  "name": {"text": "Test"},
+				  "initial_phase": "setup",
+				  "default_role": "test:runner",
+				  "default_life_state": "test:alive"
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(bareIdentifier, "INVALID_IDENTIFIER", "references must have explicit namespaces");
+
+		Compilation missingRole = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.GAME,
+				"main",
+				"""
+				{
+				  "format_version": 1,
+				  "api_version": 1,
+				  "content_version": 1,
+				  "name": {"text": "Test"},
+				  "initial_phase": "test:setup",
+				  "default_role": "test:missing",
+				  "default_life_state": "test:alive"
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(missingRole, "MISSING_REFERENCE", "missing cross references must fail");
+
+		Compilation missingLifeState = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.GAME,
+				"main",
+				"""
+				{
+				  "format_version": 1,
+				  "api_version": 1,
+				  "content_version": 1,
+				  "name": {"text": "Test"},
+				  "initial_phase": "test:setup",
+				  "default_role": "test:runner",
+				  "default_life_state": "test:missing"
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(missingLifeState, "MISSING_REFERENCE", "missing default life states must fail");
+
+		String assignHunterJson = validSources.stream()
+			.filter(source -> source.type() == DefinitionType.PANEL_ACTION)
+			.filter(source -> source.id().equals(Identifier.parse("test:assign_hunter")))
+			.findFirst()
+			.orElseThrow()
+			.json();
+		Compilation missingPanelPredicate = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PANEL_ACTION,
+				"assign_hunter",
+				assignHunterJson.replace("test:panel/enabled", "test:panel/missing")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			missingPanelPredicate,
+			"MISSING_EXTERNAL_RESOURCE",
+			"dynamic panel predicates must exist"
+		);
+
+		String reviveJson = validSources.stream()
+			.filter(source -> source.type() == DefinitionType.PANEL_ACTION)
+			.filter(source -> source.id().equals(Identifier.parse("test:revive")))
+			.findFirst()
+			.orElseThrow()
+			.json();
+		Compilation missingAssignedLifeState = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PANEL_ACTION,
+				"revive",
+				reviveJson.replace("test:alive", "test:missing")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			missingAssignedLifeState,
+			"MISSING_REFERENCE",
+			"assign_life_state must reference a registered life state"
+		);
+
+		Compilation cycle = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FLOW,
+				"tutorial",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Tutorial"},
+				  "entry": "a",
+				  "nodes": [
+				    {"id": "a", "type": "page", "page": "test:page/a", "next": "b"},
+				    {"id": "b", "type": "confirm", "page": "test:page/b", "next": "a"},
+				    {"id": "done", "type": "complete"}
+				  ]
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(cycle, "INVALID_GRAPH", "flow cycles and unreachable nodes must fail");
+
+		Compilation emptyNodes = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FLOW,
+				"tutorial",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Tutorial"},
+				  "entry": "start",
+				  "nodes": []
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(emptyNodes, "INVALID_GRAPH", "empty flow graphs must fail explicitly");
+
+		Compilation invalidBossBarTemplate = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FLOW,
+				"tutorial",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Tutorial"},
+				  "entry": "done",
+				  "required": true,
+				  "host_bossbar": {
+				    "name": {"text": "{completed}/{total}"},
+				    "color": "purple",
+				    "style": "progress"
+				  },
+				  "nodes": [
+				    {"id": "done", "type": "complete"}
+				  ]
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			invalidBossBarTemplate,
+			"INVALID_TEMPLATE",
+			"host BossBar templates must identify the event and progress"
+		);
+
+		Compilation negativeStringLength = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FIELD,
+				"lane",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Lane"},
+				  "type": "string",
+				  "max_length": -1
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			negativeStringLength,
+			"OUT_OF_RANGE",
+			"negative string length constraints must fail"
+		);
+
+		Compilation resetWithoutDefault = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.FIELD,
+				"lane",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 2,
+				  "name": {"text": "Lane"},
+				  "type": "single_choice",
+				  "migration": "reset_to_default",
+				  "options": ["alpha", "beta"]
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			resetWithoutDefault,
+			"MISSING_KEY",
+			"reset_to_default migrations must declare a valid default"
+		);
+
+		Compilation contradictoryTargetFilter = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PANEL_ACTION,
+				"assign_hunter",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "surface": "host",
+				  "section": "primary",
+				  "label": {"text": "Contradictory target"},
+				  "description": {"text": "Must fail."},
+				  "phases": ["test:setup"],
+				  "target": {
+				    "mode": "multiple",
+				    "filter": {
+				      "completed_flows": ["test:tutorial"],
+				      "incomplete_flows": ["test:tutorial"]
+				    }
+				  },
+				  "confirmation": {
+				    "title": {"text": "Confirm"},
+				    "consequences": [{"text": "This action is intentionally invalid."}]
+				  },
+				  "operation": {
+				    "type": "start_flow",
+				    "flow": "test:tutorial"
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			contradictoryTargetFilter,
+			"INVALID_CONSTRAINT",
+			"target filters must reject contradictory flow-completion requirements"
+		);
+
+		List<Source> multiChoiceSources = replaceSource(
+			validSources,
+			DefinitionType.FIELD,
+			"lane",
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "version": 1,
+			  "name": {"text": "Lane"},
+			  "type": "multi_choice",
+			  "options": ["alpha", "beta"]
+			}
+			"""
+		);
+		Compilation ambiguousMultiChoice = DefinitionCompiler.compile(
+			multiChoiceSources,
+			functions,
+			predicates
+		);
+		checkProblem(
+			ambiguousMultiChoice,
+			"TYPE_MISMATCH",
+			"single-route choice nodes must reject multi_choice fields"
+		);
+
+		String nestedJson = "{\"format_version\":1,\"value\":"
+			+ "[".repeat(DefinitionCompiler.MAX_JSON_DEPTH + 1)
+			+ "0"
+			+ "]".repeat(DefinitionCompiler.MAX_JSON_DEPTH + 1)
+			+ "}";
+		Compilation excessiveDepth = DefinitionCompiler.compile(
+			List.of(source(DefinitionType.GAME, "deep", nestedJson)),
+			Set.of(),
+			Set.of()
+		);
+		checkProblem(excessiveDepth, "JSON_SYNTAX", "excessive JSON nesting must fail without recursion overflow");
+
+		StringBuilder noisyDefinition = new StringBuilder(
+			"""
+			{
+			  "format_version": 1,
+			  "api_version": 1,
+			  "content_version": 1,
+			  "name": {"text": "Noisy"},
+			  "initial_phase": "test:setup",
+			  "default_role": "test:runner",
+			  "default_life_state": "test:alive"
+			"""
+		);
+		int noisyProblemCount = DefinitionCompiler.MAX_DIAGNOSTIC_DETAILS + 50;
+		for (int index = 0; index < noisyProblemCount; index++) {
+			noisyDefinition.append(",\"unknown_").append(index).append("\":true");
+		}
+		noisyDefinition.append('}');
+		Compilation noisyCompilation = DefinitionCompiler.compile(
+			List.of(source(DefinitionType.GAME, "noisy", noisyDefinition.toString())),
+			Set.of(),
+			Set.of()
+		);
+		check(noisyCompilation.totalProblemCount() == noisyProblemCount, "diagnostic total must remain exact");
+		check(
+			noisyCompilation.problems().size() == DefinitionCompiler.MAX_DIAGNOSTIC_DETAILS,
+			"diagnostic details must be bounded"
+		);
+		check(noisyCompilation.problemsTruncated(), "bounded diagnostic reports must expose truncation");
+		DefinitionRegistry noisyRegistry = new DefinitionRegistry();
+		check(!noisyRegistry.apply(noisyCompilation).applied(), "noisy invalid candidate must not apply");
+		check(
+			noisyRegistry.view().totalProblemCount() == noisyProblemCount,
+			"registry must retain the exact diagnostic total"
+		);
+		check(
+			noisyRegistry.view().diagnosticSummary().endsWith("(+" + (noisyProblemCount - 1) + ")"),
+			"diagnostic summary must report the true remaining count"
+		);
+
+		String sharedLargeJson = " ".repeat(DefinitionCompiler.MAX_DEFINITION_CHARACTERS);
+		List<Source> oversizedBundleSources = new ArrayList<>();
+		int oversizedSourceCount = DefinitionCompiler.MAX_TOTAL_DEFINITION_CHARACTERS
+			/ DefinitionCompiler.MAX_DEFINITION_CHARACTERS
+			+ 1;
+		for (int index = 0; index < oversizedSourceCount; index++) {
+			oversizedBundleSources.add(source(DefinitionType.ROLE, "bulk_" + index, sharedLargeJson));
+		}
+		Compilation oversizedBundle = DefinitionCompiler.compile(
+			oversizedBundleSources,
+			Set.of(),
+			Set.of()
+		);
+		checkProblem(oversizedBundle, "RESOURCE_LIMIT", "aggregate definition size must be bounded before parsing");
+
+		DefinitionRegistry registry = new DefinitionRegistry();
+		check(registry.apply(valid).applied(), "valid candidate must apply");
+		DefinitionSnapshot generationOne = registry.view().active();
+		check(generationOne.generation() == 1L, "first definition generation must be one");
+		check(registry.view().canStartNewFlows(), "valid non-empty definitions must be healthy");
+
+		check(!registry.apply(missingRole).applied(), "invalid candidate must not apply");
+		check(registry.view().active() == generationOne, "invalid reload must retain the exact previous snapshot");
+		check(registry.view().active().generation() == 1L, "invalid reload must not advance generation");
+		check(!registry.view().canStartNewFlows(), "invalid latest resources must block new flows");
+
+		check(registry.apply(valid).applied(), "corrected candidate must apply");
+		check(registry.view().active() != generationOne, "corrected reload must publish a new snapshot");
+		check(registry.view().active().generation() == 2L, "corrected reload must advance generation once");
+		check(generationOne.games().size() == 1, "old snapshots must remain readable for pinned flows");
+
+		Compilation empty = DefinitionCompiler.compile(List.of(), Set.of(), Set.of());
+		DefinitionRegistry emptyRegistry = new DefinitionRegistry();
+		check(empty.valid(), "an empty data-pack set is a valid compilation");
+		check(emptyRegistry.apply(empty).applied(), "empty definitions must apply as an explicit state");
+		check(!emptyRegistry.view().active().usable(), "empty definitions must not masquerade as a game");
+		check(!emptyRegistry.view().canStartNewFlows(), "empty definitions must block new flows");
+
+		check(worldState.phase() == GamePhase.IDLE, "definition reload must not mutate the persisted phase bridge");
+		check(worldState.hostId().isEmpty(), "definition reload must not invent a host");
+		check(worldState.stateRevision() == 0L, "definition reload must not mutate core state revision");
+		checkExampleDatapack();
+		System.out.println("DEFINITION_REGISTRY_SELF_CHECK=PASS");
+	}
+
+	private static void checkUiDefinitionCompiler(
+		final List<Source> validSources,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates,
+		final DefinitionSnapshot compiled
+	) {
+		var intro = compiled.pages().get(Identifier.parse("test:page/intro"));
+		check(intro != null, "compiled intro page is missing");
+		check(intro.sha256().length() == 64, "page SHA-256 must be a 64-character hex digest");
+		check(
+			intro.canonicalDocument().startsWith("{\"format_version\":"),
+			"canonical page document must sort object keys"
+		);
+		if (intro.root().content() instanceof io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent children) {
+			expectUnsupported(children.children()::clear, "page child lists must be immutable");
+		} else {
+			throw new AssertionError("intro root must compile as a multi-child container");
+		}
+		expectUnsupported(intro.assets()::clear, "page asset lists must be immutable");
+
+		Compilation reorderedPage = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "root": {
+				    "children": [
+				      {
+				        "text": {
+				          "concat": [
+				            {"text": "Player: "},
+				            {"bind": "viewer.name"}
+				          ]
+				        },
+				        "type": "text"
+				      },
+				      {
+				        "action": {"name": "continue", "type": "flow"},
+				        "label": {"text": "Continue"},
+				        "id": "continue",
+				        "type": "button"
+				      }
+				    ],
+				    "layout": {
+				      "gap": 8,
+				      "height": {"mode": "fill"},
+				      "width": {"mode": "fill"}
+				    },
+				    "id": "intro_root",
+				    "type": "column"
+				  },
+				  "theme": "test:control_console",
+				  "title": {"text": "Intro"},
+				  "game": "test:main",
+				  "format_version": 1
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		check(reorderedPage.valid(), "reordered page must compile: " + reorderedPage.problems());
+		var reorderedIntro = reorderedPage.snapshot().orElseThrow().pages().get(Identifier.parse("test:page/intro"));
+		check(
+			reorderedIntro.canonicalDocument().equals(intro.canonicalDocument()),
+			"canonical page document must ignore JSON object key order"
+		);
+		check(reorderedIntro.sha256().equals(intro.sha256()), "canonical page hash must be stable");
+
+		Compilation unknownNodeKey = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Unknown key"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "text",
+				    "text": {"text": "Hello"},
+				    "unexpected": true
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(unknownNodeKey, "UNKNOWN_KEY", "unknown page node keys must fail closed");
+
+		Compilation duplicateNodeId = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Duplicate IDs"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "column",
+				    "id": "duplicate",
+				    "children": [
+				      {"type": "spacer", "id": "duplicate"}
+				    ]
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(duplicateNodeId, "DUPLICATE_NODE_ID", "duplicate page node IDs must be rejected");
+
+		Compilation actionWithoutNodeId = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Missing action source"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "button",
+				    "label": {"text": "Continue"},
+				    "action": {"type": "flow", "name": "continue"}
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			actionWithoutNodeId,
+			"MISSING_KEY",
+			"action buttons must have a stable node id"
+		);
+
+		Compilation missingTheme = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Missing theme"},
+				  "theme": "test:missing_theme",
+				  "root": {"type": "text", "text": {"text": "Hello"}}
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(missingTheme, "MISSING_REFERENCE", "missing page themes must be rejected");
+
+		String progressMotionTheme = """
+			{
+			  "format_version": 1,
+			  "tokens": {
+			    "colors": {"brand": "#F4C95D"},
+			    "spacing": {},
+			    "fonts": {}
+			  },
+			  "styles": {},
+			  "motions": {
+			    "progress_reveal": {
+			      "duration_ms": 100,
+			      "delay_ms": 0,
+			      "easing": "linear",
+			      "tracks": [{
+			        "property": "progress_value",
+			        "keyframes": [
+			          {"at": 0.0, "value": 0.0},
+			          {"at": 1.0, "value": 1.0}
+			        ]
+			      }],
+			      "reduced_motion": "final"
+			    }
+			  },
+			  "sound_cues": {}
+			}
+			""";
+		List<Source> withProgressMotion = replaceSource(
+			validSources,
+			DefinitionType.THEME,
+			"control_console",
+			progressMotionTheme
+		);
+		Compilation progressMotionOnText = DefinitionCompiler.compile(
+			replaceSource(
+				withProgressMotion,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Invalid progress motion"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "text",
+				    "text": {"text": "Not a progress bar"},
+				    "events": {
+				      "show": {"motion": "progress_reveal"}
+				    }
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			progressMotionOnText,
+			"TYPE_MISMATCH",
+			"progress_value motion tracks must only target progress nodes"
+		);
+
+		Compilation wrongMotionTokenGroup = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.THEME,
+				"control_console",
+				motionColorTheme("@spacing.small")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			wrongMotionTokenGroup,
+			"TYPE_MISMATCH",
+			"motion colors must only accept color tokens"
+		);
+
+		Compilation missingMotionColor = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.THEME,
+				"control_console",
+				motionColorTheme("@colors.missing")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			missingMotionColor,
+			"MISSING_REFERENCE",
+			"motion color token references must exist"
+		);
+
+		List<Source> withoutIntroPage = validSources.stream()
+			.filter(
+				source -> source.type() != DefinitionType.PAGE
+					|| !source.id().equals(Identifier.parse("test:page/intro"))
+			)
+			.toList();
+		Compilation missingFlowPage = DefinitionCompiler.compile(withoutIntroPage, functions, predicates);
+		checkProblem(missingFlowPage, "MISSING_REFERENCE", "flow nodes must reference an existing page");
+
+		Compilation incompatibleFieldInput = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/pick",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Wrong field input"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "field_input",
+				    "id": "lane",
+				    "field": "test:lane",
+				    "presentation": "slider",
+				    "show_label": true,
+				    "show_description": true
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			incompatibleFieldInput,
+			"TYPE_MISMATCH",
+			"FieldInput presentation must match the registered field type"
+		);
+
+		Compilation repeatedFieldInput = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/pick",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Repeated input"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "repeat",
+				    "items": {"bind": "session.players"},
+				    "item_key": {"bind": "item.uuid"},
+				    "template": {
+				      "type": "field_input",
+				      "id": "lane",
+				      "field": "test:lane",
+				      "presentation": "choice_cards"
+				    }
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			repeatedFieldInput,
+			"UNSUPPORTED_COMBINATION",
+			"FieldInput inside Repeat must fail until item-scoped UI state exists"
+		);
+
+		StringBuilder excessiveNodesPage = new StringBuilder(
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "title": {"text": "Too many nodes"},
+			  "theme": "test:control_console",
+			  "root": {"type": "column", "children": [
+			"""
+		);
+		for (int group = 0; group < 4; group++) {
+			if (group > 0) {
+				excessiveNodesPage.append(',');
+			}
+			excessiveNodesPage.append("{\"type\":\"column\",\"children\":[");
+			for (int index = 0; index < 128; index++) {
+				if (index > 0) {
+					excessiveNodesPage.append(',');
+				}
+				excessiveNodesPage.append("{\"type\":\"spacer\"}");
+			}
+			excessiveNodesPage.append("]}");
+		}
+		excessiveNodesPage.append("]}}");
+		Compilation excessiveNodes = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				excessiveNodesPage.toString()
+			),
+			functions,
+			predicates
+		);
+		checkProblem(excessiveNodes, "RESOURCE_LIMIT", "page node count must be bounded");
+
+		StringBuilder excessiveUtf8Page = new StringBuilder(
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "title": {"text": "UTF-8 limit"},
+			  "theme": "test:control_console",
+			  "root": {"type": "column", "children": [
+			"""
+		);
+		for (int group = 0; group < 2; group++) {
+			if (group > 0) {
+				excessiveUtf8Page.append(',');
+			}
+			excessiveUtf8Page.append("{\"type\":\"column\",\"children\":[");
+			for (int index = 0; index < 128; index++) {
+				if (index > 0) {
+					excessiveUtf8Page.append(',');
+				}
+				excessiveUtf8Page.append("{\"type\":\"text\",\"text\":{\"text\":\"")
+					.append("中".repeat(400))
+					.append("\"}}");
+			}
+			excessiveUtf8Page.append("]}");
+		}
+		excessiveUtf8Page.append("]}}");
+		Compilation excessiveUtf8 = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				excessiveUtf8Page.toString()
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			excessiveUtf8,
+			"RESOURCE_LIMIT",
+			"canonical UTF-8 bytes must fit the page payload limit"
+		);
+
+		StringBuilder excessiveExpressionPage = new StringBuilder(
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "title": {"text": "Too many expressions"},
+			  "theme": "test:control_console",
+			  "root": {
+			    "type": "button",
+			    "id": "continue",
+			    "label": {"text": "Continue"},
+			    "enabled_when": {"any": [
+			"""
+		);
+		for (int index = 0; index < 40; index++) {
+			if (index > 0) {
+				excessiveExpressionPage.append(',');
+			}
+			excessiveExpressionPage.append("{\"exists\":{\"bind\":\"viewer.name\"}}");
+		}
+		excessiveExpressionPage.append(
+			"""
+			    ]},
+			    "disabled_reason": {"text": "Unavailable"},
+			    "action": {"type": "flow", "name": "continue"}
+			  }
+			}
+			"""
+		);
+		Compilation excessiveExpression = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				excessiveExpressionPage.toString()
+			),
+			functions,
+			predicates
+		);
+		checkProblem(excessiveExpression, "RESOURCE_LIMIT", "condition expression size must be bounded");
+	}
+
+	private static void checkExampleDatapack() {
+		Path root = Path.of("examples", "pixel-tzz-base-datapack", "data");
+		check(Files.isDirectory(root), "2A example data pack is missing");
+		List<Source> sources = new ArrayList<>();
+		Set<Identifier> functions = new HashSet<>();
+		Set<Identifier> predicates = new HashSet<>();
+		try (var paths = Files.walk(root)) {
+			for (Path file : paths.filter(Files::isRegularFile).toList()) {
+				Path relative = root.relativize(file);
+				check(relative.getNameCount() >= 3, "invalid example data path: " + relative);
+				String namespace = relative.getName(0).toString();
+				String rootDirectory = relative.getName(1).toString();
+				String relativeFile = relative.subpath(2, relative.getNameCount()).toString().replace('\\', '/');
+				if (rootDirectory.equals("function") && relativeFile.endsWith(".mcfunction")) {
+					functions.add(
+						Identifier.fromNamespaceAndPath(
+							namespace,
+							relativeFile.substring(0, relativeFile.length() - ".mcfunction".length())
+						)
+					);
+					continue;
+				}
+				if (rootDirectory.equals("predicate") && relativeFile.endsWith(".json")) {
+					predicates.add(
+						Identifier.fromNamespaceAndPath(
+							namespace,
+							relativeFile.substring(0, relativeFile.length() - ".json".length())
+						)
+					);
+					continue;
+				}
+				check(rootDirectory.equals("pixel_tzz_pro"), "unexpected example data root: " + relative);
+				check(relative.getNameCount() >= 4, "definition path has no type: " + relative);
+				String typeDirectory = relative.getName(2).toString();
+				DefinitionType type = DefinitionType.byDirectory(typeDirectory)
+					.orElseThrow(() -> new AssertionError("unknown example definition type: " + typeDirectory));
+				String definitionFile = relative.subpath(3, relative.getNameCount()).toString().replace('\\', '/');
+				check(definitionFile.endsWith(".json"), "definition is not JSON: " + relative);
+				String definitionPath = definitionFile.substring(0, definitionFile.length() - ".json".length());
+				sources.add(
+					new Source(
+						type,
+						Identifier.fromNamespaceAndPath(namespace, definitionPath),
+						Identifier.fromNamespaceAndPath(
+							namespace,
+							"pixel_tzz_pro/" + typeDirectory + "/" + definitionFile
+						),
+						"example",
+						Files.readString(file, StandardCharsets.UTF_8)
+					)
+				);
+			}
+		} catch (IOException error) {
+			throw new AssertionError("failed to read the 2A example data pack", error);
+		}
+
+		Compilation example = DefinitionCompiler.compile(sources, functions, predicates);
+		check(example.valid(), "2A example data pack must compile: " + example.problems());
+		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
+		check(snapshot.games().size() == 1, "example must register one game");
+		check(snapshot.fields().size() == 1, "example must register one field");
+		check(snapshot.pages().size() == 6, "example must register six pages");
+		check(snapshot.themes().size() == 1, "example must register one theme");
+		check(snapshot.definitionCount() == 23, "example definition count changed unexpectedly");
+		check(
+			snapshot.pages().containsKey(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/buttons")),
+			"example must expose the button component showcase"
+		);
+		check(
+			snapshot.themes()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "control_console"))
+				.styles()
+				.keySet()
+				.containsAll(
+					Set.of(
+						"primary_button",
+						"secondary_button",
+						"navigation_button",
+						"danger_button"
+					)
+				),
+			"example theme must expose every supported button style"
+		);
+		List<NodeDefinition> exampleNodes = new ArrayList<>();
+		snapshot.pages().values().forEach(page -> collectNodes(page.root(), exampleNodes));
+		List<NodeDefinition> exampleButtons = exampleNodes.stream()
+			.filter(node -> node.content() instanceof ButtonContent)
+			.toList();
+		check(
+			exampleButtons.stream()
+				.noneMatch(
+					node -> node.events().containsKey(UiEvent.HOVER_ENTER)
+						&& node.events().get(UiEvent.HOVER_ENTER).sound().isPresent()
+				),
+			"example buttons must keep hover feedback silent"
+		);
+		List<NodeDefinition> showcaseNodes = new ArrayList<>();
+		collectNodes(
+			snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/buttons"))
+				.root(),
+			showcaseNodes
+		);
+		check(
+			showcaseNodes.stream()
+				.filter(node -> node.content() instanceof ButtonContent)
+				.map(node -> node.style().orElse(""))
+				.collect(java.util.stream.Collectors.toSet())
+				.containsAll(
+					Set.of(
+						"primary_button",
+						"secondary_button",
+						"navigation_button",
+						"danger_button"
+					)
+				),
+			"button showcase must render every semantic button style"
+		);
+		check(
+			showcaseNodes.stream()
+				.filter(node -> node.style().orElse("").startsWith("button_specimen_"))
+				.allMatch(
+					node -> node.content() instanceof SingleChildContent single
+						&& single.child().layout().height().isEmpty()
+				),
+			"button specimen content must leave an inset below its button"
+		);
+
+		NodeDefinition rulesRoot = snapshot.pages()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/rules"))
+			.root();
+		NodeDefinition rulesColumns = ((ChildrenContent)rulesRoot.content()).children()
+			.stream()
+			.filter(node -> node.id().filter("responsive_columns"::equals).isPresent())
+			.findFirst()
+			.orElseThrow();
+		check(
+			rulesColumns.layout().height().orElseThrow().mode() == SizeMode.CONTENT,
+			"rule cards must use content-driven row height"
+		);
+		for (NodeDefinition card : ((ChildrenContent)rulesColumns.content()).children()) {
+			check(
+				card.layout().width().orElseThrow().mode() == SizeMode.WEIGHT
+					&& card.layout().height().orElseThrow().mode() == SizeMode.CONTENT,
+				"standard rule cards must share row width without consuming spare page height"
+			);
+			var compact = card.responsive().get(ResponsiveTier.COMPACT);
+			check(
+				compact != null
+					&& compact.layout().orElseThrow().width().orElseThrow().mode() == SizeMode.FILL
+					&& compact.layout().orElseThrow().height().orElseThrow().mode() == SizeMode.CONTENT,
+				"compact rule cards must fill the column width and keep content-driven height"
+			);
+		}
+	}
+
+	private static List<Source> validDefinitionSources() {
+		return List.of(
+			source(
+				DefinitionType.GAME,
+				"main",
+				"""
+				{
+				  "format_version": 1,
+				  "api_version": 1,
+				  "content_version": 1,
+				  "name": {"text": "Test Game"},
+				  "initial_phase": "test:setup",
+				  "default_role": "test:runner",
+				  "default_life_state": "test:alive"
+				}
+				"""
+			),
+			source(
+				DefinitionType.ROLE,
+				"runner",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Runner"},
+				  "tags": ["test:general_initialization", "test:ready_participant"],
+				  "tab": {"prefix": {"text": "[Runner]"}, "color": "#65D68A"}
+				}
+				"""
+			),
+			source(
+				DefinitionType.ROLE,
+				"hunter",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Hunter"},
+				  "tags": ["test:backstage"],
+				  "tab": {"prefix": {"text": "[Hunter]"}, "color": "#E94F64"}
+				}
+				"""
+			),
+			source(
+				DefinitionType.TEAM,
+				"red",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Red Team"},
+				  "allowed_roles": ["test:runner"],
+				  "tags": []
+				}
+				"""
+			),
+			source(
+				DefinitionType.LIFE_STATE,
+				"alive",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Alive"},
+				  "tags": ["test:active"]
+				}
+				"""
+			),
+			source(
+				DefinitionType.LIFE_STATE,
+				"captured",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Captured"},
+				  "tags": ["test:inactive"]
+				}
+				"""
+			),
+			source(
+				DefinitionType.PHASE,
+				"setup",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Setup"},
+				  "transitions": ["test:ready"]
+				}
+				"""
+			),
+			source(
+				DefinitionType.PHASE,
+				"ready",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "name": {"text": "Ready"},
+				  "transitions": []
+				}
+				"""
+			),
+			source(
+				DefinitionType.FIELD,
+				"lane",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Lane"},
+				  "scope": "player",
+				  "type": "single_choice",
+				  "required": true,
+				  "default": "alpha",
+				  "editable_by": "player",
+				  "invalidates_ready": true,
+				  "roles": ["test:runner"],
+				  "phases": ["test:setup"],
+				  "visible_when": "test:field/visible",
+				  "migration": "preserve",
+				  "options": ["alpha", "beta"]
+				}
+				"""
+			),
+			source(
+				DefinitionType.FLOW,
+				"tutorial",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Tutorial"},
+				  "entry": "intro",
+				  "audience": {
+				    "role_tags": ["test:general_initialization"],
+				    "exclude_host": true,
+				    "online_only": true
+				  },
+				  "required": true,
+				  "host_bossbar": {
+				    "name": [
+				      {"text": "{event}", "color": "gold"},
+				      {"text": ": ", "color": "gray"},
+				      {"text": "{completed}", "color": "green"},
+				      {"text": "/{total}", "color": "white"}
+				    ],
+				    "color": "yellow",
+				    "style": "notched_10",
+				    "priority": 10,
+				    "completion_feedback": {
+				      "name": {"text": "All players complete", "color": "green"},
+				      "color": "green",
+				      "hold_ticks": 40,
+				      "sound": "minecraft:entity.player.levelup"
+				    }
+				  },
+				  "on_start": "test:flow/start",
+				  "on_player_complete": "test:flow/player_complete",
+				  "on_all_complete": "test:flow/all_complete",
+				  "nodes": [
+				    {"id": "intro", "type": "page", "page": "test:page/intro", "next": "pick"},
+				    {
+				      "id": "pick",
+				      "type": "choice",
+				      "page": "test:page/pick",
+				      "field": "test:lane",
+				      "choices": [
+				        {"value": "alpha", "next": "done"},
+				        {"value": "beta", "next": "done"}
+				      ]
+				    },
+				    {"id": "done", "type": "complete"}
+				  ]
+				}
+				"""
+			),
+			source(
+				DefinitionType.PANEL_ACTION,
+				"assign_hunter",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "surface": "host",
+				  "section": "primary",
+				  "order": 10,
+				  "label": {"text": "Assign hunter"},
+				  "description": {"text": "Assign one or more hunters."},
+				  "icon": "test:textures/gui/hunter",
+				  "color": "#E94F64",
+				  "visible_when": "test:panel/visible",
+				  "enabled_when": "test:panel/enabled",
+				  "disabled_reason": {"text": "Hunter assignment is currently unavailable."},
+				  "phases": ["test:setup"],
+				  "target": {
+				    "mode": "multiple",
+				    "min": 1,
+				    "max": 64,
+				    "filter": {
+				      "roles": ["test:runner", "test:hunter"],
+				      "life_states": ["test:alive"],
+				      "incomplete_flows": ["test:tutorial"]
+				    }
+				  },
+				  "confirmation": {
+				    "title": {"text": "Confirm hunter assignment"},
+				    "consequences": [
+				      {"text": "Targets enter the hunter initialization flow before the role changes."}
+				    ]
+				  },
+				  "operation": {
+				    "type": "assign_role",
+				    "role": "test:hunter",
+				    "flow": "test:tutorial",
+				    "apply": "after_flow"
+				  }
+				}
+				"""
+			),
+			source(
+				DefinitionType.PANEL_ACTION,
+				"revive",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "surface": "host",
+				  "section": "primary",
+				  "order": 20,
+				  "label": {"text": "Revive"},
+				  "description": {"text": "Restore selected players to the alive state."},
+				  "disabled_reason": {"text": "Select a captured player."},
+				  "phases": ["test:ready"],
+				  "target": {
+				    "mode": "multiple",
+				    "min": 1,
+				    "max": 64,
+				    "filter": {
+				      "life_states": ["test:captured"],
+				      "completed_flows": ["test:tutorial"]
+				    }
+				  },
+				  "confirmation": {
+				    "title": {"text": "Confirm revival"},
+				    "consequences": [
+				      {"text": "Targets return to the alive state immediately."}
+				    ]
+				  },
+				  "operation": {
+				    "type": "assign_life_state",
+				    "life_state": "test:alive",
+				    "apply": "immediate"
+				  }
+				}
+				"""
+			),
+			source(
+				DefinitionType.THEME,
+				"control_console",
+				"""
+				{
+				  "format_version": 1,
+				  "tokens": {
+				    "colors": {"brand": "#F4C95D", "text": "#F2F2F2"},
+				    "spacing": {"small": 4, "medium": 8},
+				    "fonts": {
+				      "body": {
+				        "asset": "minecraft:default",
+				        "required": false,
+				        "fallback": "minecraft:default"
+				      }
+				    }
+				  },
+				  "styles": {},
+				  "motions": {},
+				  "sound_cues": {}
+				}
+				"""
+			),
+			source(
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Intro"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "column",
+				    "id": "intro_root",
+				    "layout": {
+				      "width": {"mode": "fill"},
+				      "height": {"mode": "fill"},
+				      "gap": 8
+				    },
+				    "children": [
+				      {
+				        "type": "text",
+				        "text": {
+				          "concat": [
+				            {"text": "Player: "},
+				            {"bind": "viewer.name"}
+				          ]
+				        }
+				      },
+				      {
+				        "type": "button",
+				        "id": "continue",
+				        "label": {"text": "Continue"},
+				        "action": {"type": "flow", "name": "continue"}
+				      }
+				    ]
+				  }
+				}
+				"""
+			),
+			source(
+				DefinitionType.PAGE,
+				"page/pick",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Pick a lane"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "column",
+				    "children": [
+				      {
+				        "type": "field_input",
+				        "id": "lane",
+				        "field": "test:lane",
+				        "presentation": "choice_cards",
+				        "show_label": true,
+				        "show_description": true
+				      },
+				      {
+				        "type": "button",
+				        "id": "submit",
+				        "label": {"text": "Submit"},
+				        "enabled_when": {
+				          "exists": {"bind": "ui/lane/value"}
+				        },
+				        "disabled_reason": {"text": "Choose a lane first"},
+				        "action": {"type": "flow", "name": "submit"}
+				      }
+				    ]
+				  }
+				}
+				"""
+			)
+		);
+	}
+
+	private static Source source(
+		final DefinitionType type,
+		final String path,
+		final String json
+	) {
+		return new Source(
+			type,
+			Identifier.fromNamespaceAndPath("test", path),
+			Identifier.fromNamespaceAndPath(
+				"test",
+				"pixel_tzz_pro/" + type.directory() + "/" + path + ".json"
+			),
+			"self-check",
+			json
+		);
+	}
+
+	private static String motionColorTheme(final String endingColor) {
+		return """
+			{
+			  "format_version": 1,
+			  "tokens": {
+			    "colors": {"brand": "#F4C95D"},
+			    "spacing": {"small": 4},
+			    "fonts": {}
+			  },
+			  "styles": {},
+			  "motions": {
+			    "color_fill": {
+			      "duration_ms": 100,
+			      "delay_ms": 0,
+			      "easing": "linear",
+			      "tracks": [{
+			        "property": "color",
+			        "keyframes": [
+			          {"at": 0.0, "value": "#FFFFFF"},
+			          {"at": 1.0, "value": "%s"}
+			        ]
+			      }],
+			      "reduced_motion": "final"
+			    }
+			  },
+			  "sound_cues": {}
+			}
+			""".formatted(endingColor);
+	}
+
+	private static List<Source> replaceSource(
+		final List<Source> sources,
+		final DefinitionType type,
+		final String path,
+		final String json
+	) {
+		List<Source> result = new ArrayList<>(sources);
+		Identifier id = Identifier.fromNamespaceAndPath("test", path);
+		result.removeIf(source -> source.type() == type && source.id().equals(id));
+		result.add(source(type, path, json));
+		return List.copyOf(result);
+	}
+
+	private static void collectNodes(
+		final NodeDefinition node,
+		final List<NodeDefinition> output
+	) {
+		output.add(node);
+		if (node.content() instanceof ChildrenContent children) {
+			children.children().forEach(child -> collectNodes(child, output));
+		} else if (node.content() instanceof SingleChildContent single) {
+			collectNodes(single.child(), output);
+		} else if (node.content() instanceof RepeatContent repeat) {
+			collectNodes(repeat.template(), output);
+		}
+	}
+
+	private static void checkProblem(
+		final Compilation compilation,
+		final String code,
+		final String message
+	) {
+		check(!compilation.valid(), message + " (candidate unexpectedly valid)");
+		check(
+			compilation.problems().stream().anyMatch(problem -> problem.code().equals(code)),
+			message + ": missing diagnostic " + code + " in " + compilation.problems()
+		);
+	}
+
+	private static void expectUnsupported(final Runnable operation, final String message) {
+		try {
+			operation.run();
+			throw new AssertionError(message);
+		} catch (UnsupportedOperationException expected) {
+			// Expected immutable collection.
+		}
+	}
+
+	private static void check(final boolean condition, final String message) {
+		if (!condition) {
+			throw new AssertionError(message);
+		}
+	}
+}

@@ -1,0 +1,115 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "路线偏好"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "route_form",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "children": [
+      {
+        "type": "text",
+        "text": {
+          "concat": [
+            {
+              "text": "当前玩家："
+            },
+            {
+              "bind": "viewer.name"
+            }
+          ]
+        },
+        "wrap": false,
+        "max_lines": 1,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "card",
+        "style": "broadcast_panel",
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 8
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "ROUTE SELECTION"
+              }
+            },
+            {
+              "type": "text",
+              "text": {
+                "text": "请选择教程中用于演示的路线偏好。此页面在 2B 只修改本地预览值。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            },
+            {
+              "type": "field_input",
+              "id": "route",
+              "field": "pixel_tzz:route_preference",
+              "presentation": "choice_cards",
+              "show_label": true,
+              "show_description": true
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "button",
+        "id": "submit_route",
+        "label": {
+          "text": "确认选择"
+        },
+        "enabled_when": {
+          "exists": {
+            "bind": "ui/route/value"
+          }
+        },
+        "disabled_reason": {
+          "text": "请先选择一项路线偏好"
+        },
+        "action": {
+          "type": "flow",
+          "name": "submit"
+        },
+        "events": {
+          "press": {
+            "motion": "button_press",
+            "sound": "button_press"
+          }
+        }
+      }
+    ]
+  }
+}

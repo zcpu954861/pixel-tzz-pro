@@ -1,0 +1,67 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "猎人初始化"
+  },
+  "entry": "briefing",
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "required": true,
+  "host_bossbar": {
+    "name": [
+      {
+        "text": "{event}",
+        "color": "red"
+      },
+      {
+        "text": ": ",
+        "color": "gray"
+      },
+      {
+        "text": "{completed}",
+        "color": "green"
+      },
+      {
+        "text": "/{total}",
+        "color": "white"
+      }
+    ],
+    "color": "red",
+    "style": "progress",
+    "priority": 200,
+    "completion_feedback": {
+      "name": {
+        "text": "{event}: 已完成",
+        "color": "green"
+      },
+      "color": "green",
+      "hold_ticks": 40,
+      "sound": "minecraft:entity.player.levelup"
+    }
+  },
+  "on_start": "pixel_tzz:hunter/start",
+  "on_player_complete": "pixel_tzz:hunter/player_complete",
+  "on_all_complete": "pixel_tzz:hunter/all_complete",
+  "nodes": [
+    {
+      "id": "briefing",
+      "type": "page",
+      "page": "pixel_tzz:hunter/briefing",
+      "next": "acknowledge"
+    },
+    {
+      "id": "acknowledge",
+      "type": "confirm",
+      "page": "pixel_tzz:hunter/acknowledge",
+      "next": "done"
+    },
+    {
+      "id": "done",
+      "type": "complete"
+    }
+  ]
+}

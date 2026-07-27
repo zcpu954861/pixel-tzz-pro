@@ -1,0 +1,731 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "玩家名册预览"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_roster_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 8,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter",
+        "sound": "panel_open"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "id": "roster_header",
+        "style": "roster_header",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          },
+          "padding": {
+            "vertical": 7,
+            "horizontal": 9
+          }
+        },
+        "child": {
+          "type": "row",
+          "id": "roster_header_content",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 10,
+            "cross_align": "center"
+          },
+          "responsive": {
+            "compact": {
+              "type": "column",
+              "layout": {
+                "gap": 6,
+                "cross_align": "start"
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "roster_kicker",
+                  "text": {
+                    "text": "PARTICIPANT ROSTER / LIVE INDEX"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "roster_title",
+                  "text": {
+                    "text": "参与者名册"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "row",
+              "layout": {
+                "gap": 14,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "column",
+                  "layout": {
+                    "gap": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "roster_stat_label",
+                      "text": {
+                        "text": "总人数"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "roster_stat_total",
+                      "text": {
+                        "bind": "flow.total"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "gap": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "roster_stat_label",
+                      "text": {
+                        "text": "已完成"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "roster_stat_ready",
+                      "text": {
+                        "bind": "flow.completed"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "gap": 1
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "roster_stat_label",
+                      "text": {
+                        "text": "未完成"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "roster_stat_pending",
+                      "text": {
+                        "bind": "flow.remaining"
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "scroll",
+        "id": "participant_scroll",
+        "direction": "vertical",
+        "show_scrollbar": true,
+        "visible_when": {
+          "greater": [
+            {
+              "bind": "flow.total"
+            },
+            {
+              "literal": 0
+            }
+          ]
+        },
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        },
+        "child": {
+          "type": "repeat",
+          "id": "participants",
+          "items": {
+            "bind": "session.players"
+          },
+          "item_key": {
+            "bind": "item.uuid"
+          },
+          "max_items": 64,
+          "estimated_item_height": 48,
+          "responsive": {
+            "standard": {
+              "type": "grid",
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  },
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ],
+                "column_gap": 6,
+                "row_gap": 0
+              }
+            },
+            "wide": {
+              "type": "grid",
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  },
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ],
+                "column_gap": 6,
+                "row_gap": 0
+              }
+            }
+          },
+          "template": {
+            "type": "card",
+            "style": "roster_player_card",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 42
+              },
+              "margin": {
+                "bottom": 6
+              },
+              "padding": {
+                "vertical": 4,
+                "horizontal": 5
+              }
+            },
+            "child": {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "divider",
+                  "style": "roster_runner_rail",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "item.role"
+                      },
+                      {
+                        "literal": "pixel_tzz:runner"
+                      }
+                    ]
+                  },
+                  "direction": "vertical",
+                  "thickness": 3,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 3
+                    },
+                    "height": {
+                      "mode": "fill"
+                    }
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "roster_hunter_rail",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "item.role"
+                      },
+                      {
+                        "literal": "pixel_tzz:hunter"
+                      }
+                    ]
+                  },
+                  "direction": "vertical",
+                  "thickness": 3,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 3
+                    },
+                    "height": {
+                      "mode": "fill"
+                    }
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "roster_spectator_rail",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "item.role"
+                      },
+                      {
+                        "literal": "pixel_tzz:spectator"
+                      }
+                    ]
+                  },
+                  "direction": "vertical",
+                  "thickness": 3,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 3
+                    },
+                    "height": {
+                      "mode": "fill"
+                    }
+                  }
+                },
+                {
+                  "type": "player_head",
+                  "uuid": {
+                    "bind": "item.uuid"
+                  },
+                  "name": {
+                    "bind": "item.name"
+                  },
+                  "online": {
+                    "bind": "item.online"
+                  },
+                  "show_status": false,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 28
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 28
+                    }
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 3
+                  },
+                  "children": [
+                    {
+                      "type": "row",
+                      "layout": {
+                        "width": {
+                          "mode": "fill"
+                        },
+                        "gap": 6,
+                        "cross_align": "center"
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "roster_player_name",
+                          "layout": {
+                            "width": {
+                              "mode": "weight",
+                              "value": 1
+                            }
+                          },
+                          "text": {
+                            "bind": "item.name"
+                          },
+                          "wrap": false,
+                          "max_lines": 1,
+                          "overflow": "ellipsis"
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_role_runner",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.role"
+                              },
+                              {
+                                "literal": "pixel_tzz:runner"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "逃走者"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_role_hunter",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.role"
+                              },
+                              {
+                                "literal": "pixel_tzz:hunter"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "猎人"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_role_spectator",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.role"
+                              },
+                              {
+                                "literal": "pixel_tzz:spectator"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "旁观者"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "row",
+                      "layout": {
+                        "width": {
+                          "mode": "fill"
+                        },
+                        "gap": 7,
+                        "cross_align": "center"
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "roster_meta",
+                          "text": {
+                            "bind": "item.team_name",
+                            "fallback": {
+                              "text": "未分队"
+                            }
+                          },
+                          "wrap": false,
+                          "max_lines": 1,
+                          "overflow": "ellipsis"
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_state_alive",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.life_state"
+                              },
+                              {
+                                "literal": "pixel_tzz:alive"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "存活"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_state_captured",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.life_state"
+                              },
+                              {
+                                "literal": "pixel_tzz:captured"
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "已捕获"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_state_ready",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.ready"
+                              },
+                              {
+                                "literal": true
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "已准备"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "roster_state_pending",
+                          "visible_when": {
+                            "eq": [
+                              {
+                                "bind": "item.ready"
+                              },
+                              {
+                                "literal": false
+                              }
+                            ]
+                          },
+                          "text": {
+                            "text": "未准备"
+                          }
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "style": "roster_online",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "item.online"
+                      },
+                      {
+                        "literal": true
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "● 在线"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "roster_offline",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "item.online"
+                      },
+                      {
+                        "literal": false
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "○ 离线"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      {
+        "type": "card",
+        "style": "broadcast_panel",
+        "visible_when": {
+          "eq": [
+            {
+              "bind": "flow.total"
+            },
+            {
+              "literal": 0
+            }
+          ]
+        },
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "main_align": "center",
+            "cross_align": "center",
+            "gap": 4
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "roster_kicker",
+              "text": {
+                "text": "ROSTER EMPTY"
+              }
+            },
+            {
+              "type": "text",
+              "style": "roster_title",
+              "text": {
+                "text": "当前没有参与者"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "roster_footer",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          },
+          "padding": {
+            "vertical": 6,
+            "horizontal": 8
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 8,
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "roster_footer_note",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                }
+              },
+              "text": {
+                "concat": [
+                  {
+                    "text": "名单容量 "
+                  },
+                  {
+                    "bind": "flow.total"
+                  },
+                  {
+                    "text": " 人  ·  仅渲染当前可见档案"
+                  }
+                ]
+              },
+              "wrap": false,
+              "max_lines": 1,
+              "overflow": "ellipsis"
+            },
+            {
+              "type": "button",
+              "id": "continue",
+              "style": "primary_button",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 132
+                }
+              },
+              "label": {
+                "text": "确认简报"
+              },
+              "action": {
+                "type": "flow",
+                "name": "continue"
+              },
+              "events": {
+                "press": {
+                  "motion": "button_press",
+                  "sound": "button_press"
+                }
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

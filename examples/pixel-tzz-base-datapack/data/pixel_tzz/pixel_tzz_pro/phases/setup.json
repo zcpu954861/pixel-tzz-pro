@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "开局设置"
+  },
+  "transitions": [
+    "pixel_tzz:initializing"
+  ]
+}

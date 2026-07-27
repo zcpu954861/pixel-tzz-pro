@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "api_version": 1,
+  "content_version": 1,
+  "name": {
+    "text": "全员逃走中"
+  },
+  "initial_phase": "pixel_tzz:setup",
+  "default_role": "pixel_tzz:runner",
+  "default_life_state": "pixel_tzz:alive"
+}

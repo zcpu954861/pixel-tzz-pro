@@ -1,0 +1,35 @@
+# Gradle
+.gradle/
+build/
+out/
+classes/
+
+# Fabric/Loom runtime
+run/
+logs/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Eclipse
+.settings/
+bin/
+.classpath
+.project
+*.launch
+
+# Visual Studio Code
+.vscode/
+
+# Java diagnostics
+hs_err_*.log
+replay_*.log
+*.hprof
+*.jfr
+
+# Operating system
+*.DS_Store
+Thumbs.db

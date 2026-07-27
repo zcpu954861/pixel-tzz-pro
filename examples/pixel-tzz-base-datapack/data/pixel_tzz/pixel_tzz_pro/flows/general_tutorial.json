@@ -1,0 +1,82 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "通用教程"
+  },
+  "entry": "welcome",
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:general_initialization"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "required": true,
+  "host_bossbar": {
+    "name": [
+      {
+        "text": "{event}",
+        "color": "gold"
+      },
+      {
+        "text": ": ",
+        "color": "gray"
+      },
+      {
+        "text": "{completed}",
+        "color": "green"
+      },
+      {
+        "text": "/{total}",
+        "color": "white"
+      }
+    ],
+    "color": "purple",
+    "style": "progress",
+    "priority": 100,
+    "completion_feedback": {
+      "name": {
+        "text": "{event}: 全员已完成",
+        "color": "green"
+      },
+      "color": "green",
+      "hold_ticks": 40,
+      "sound": "minecraft:entity.player.levelup"
+    }
+  },
+  "on_start": "pixel_tzz:tutorial/start",
+  "on_player_complete": "pixel_tzz:tutorial/player_complete",
+  "on_all_complete": "pixel_tzz:tutorial/all_complete",
+  "nodes": [
+    {
+      "id": "welcome",
+      "type": "page",
+      "page": "pixel_tzz:tutorial/welcome",
+      "next": "buttons"
+    },
+    {
+      "id": "buttons",
+      "type": "page",
+      "page": "pixel_tzz:tutorial/buttons",
+      "next": "rules"
+    },
+    {
+      "id": "rules",
+      "type": "page",
+      "page": "pixel_tzz:tutorial/rules",
+      "next": "acknowledge"
+    },
+    {
+      "id": "acknowledge",
+      "type": "confirm",
+      "page": "pixel_tzz:tutorial/acknowledge",
+      "next": "done"
+    },
+    {
+      "id": "done",
+      "type": "complete"
+    }
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "roles",
+  "order": 20,
+  "label": {
+    "text": "指定或重新初始化猎人"
+  },
+  "description": {
+    "text": "选择一名或多名玩家执行猎人初始化。"
+  },
+  "color": "#E94F64",
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "multiple",
+    "min": 1,
+    "max": 64,
+    "filter": {
+      "roles": [
+        "pixel_tzz:runner",
+        "pixel_tzz:hunter"
+      ],
+      "life_states": [
+        "pixel_tzz:alive"
+      ]
+    }
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认猎人身份调整"
+    },
+    "consequences": [
+      {
+        "text": "目标玩家将进入猎人初始化流程。"
+      },
+      {
+        "text": "完成流程后才正式变为猎人；已有猎人将重新初始化。"
+      },
+      {
+        "text": "目标玩家已有的准备状态将失效。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "assign_role",
+    "role": "pixel_tzz:hunter",
+    "flow": "pixel_tzz:hunter_initialization",
+    "apply": "after_flow"
+  }
+}

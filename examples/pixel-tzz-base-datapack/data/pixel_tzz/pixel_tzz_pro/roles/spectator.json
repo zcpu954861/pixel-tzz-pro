@@ -1,0 +1,19 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "旁观者"
+  },
+  "description": {
+    "text": "不参与初始化、准备与掉线提醒。"
+  },
+  "tags": [
+    "pixel_tzz:spectator"
+  ],
+  "tab": {
+    "prefix": {
+      "text": "[旁观]"
+    },
+    "color": "#A7ADB7"
+  }
+}

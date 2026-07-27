@@ -1,0 +1,20 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "猎人"
+  },
+  "description": {
+    "text": "由主持人指定并完成独立初始化的后台身份。"
+  },
+  "tags": [
+    "pixel_tzz:backstage",
+    "pixel_tzz:disconnect_notice"
+  ],
+  "tab": {
+    "prefix": {
+      "text": "[猎人]"
+    },
+    "color": "#E94F64"
+  }
+}

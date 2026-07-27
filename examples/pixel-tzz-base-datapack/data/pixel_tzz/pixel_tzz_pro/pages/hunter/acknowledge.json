@@ -1,0 +1,103 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "可选资产回退"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "optional_asset_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "children": [
+      {
+        "type": "image",
+        "id": "optional_art",
+        "asset": "pixel_tzz:textures/gui/optional_preview_art.png",
+        "fit": "contain",
+        "required": false,
+        "fallback": "minecraft:textures/gui/sprites/dialog/warning_button.png",
+        "alt": {
+          "text": "可选图片缺失，正在显示原版警告图标"
+        },
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 72
+          }
+        }
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 5
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "warning_eyebrow",
+              "text": {
+                "text": "ASSET FALLBACK / WARNING"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "pixel_tzz:optional_preview_art 是故意缺少的可选图片。页面应使用已确认存在于 Minecraft 26.2 的原版警告图标，并保持全部操作可用。"
+              },
+              "wrap": true,
+              "max_lines": 4,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "button",
+        "id": "finish",
+        "label": {
+          "text": "完成预览"
+        },
+        "action": {
+          "type": "flow",
+          "name": "continue"
+        },
+        "events": {
+          "press": {
+            "motion": "button_press",
+            "sound": "button_press"
+          }
+        }
+      }
+    ]
+  }
+}

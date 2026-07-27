@@ -1,0 +1,567 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "组件展示"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "showcase",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter",
+        "sound": "panel_open"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "text",
+        "id": "heading",
+        "text": {
+          "text": "PIXELMC // 全员逃走中"
+        },
+        "wrap": false,
+        "max_lines": 1,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "divider",
+        "direction": "horizontal",
+        "thickness": 1
+      },
+      {
+        "type": "card",
+        "id": "status_rail",
+        "style": "status_rail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "grid",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "columns": [
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              }
+            ],
+            "column_gap": 12,
+            "row_gap": 8
+          },
+          "responsive": {
+            "compact": {
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ],
+                "row_gap": 7
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "连接状态"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "●  在线"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "内容定义"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "◆  已同步"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "当前身份"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "concat": [
+                      {
+                        "text": "玩家 / "
+                      },
+                      {
+                        "bind": "viewer.role_name"
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "id": "stage_heading",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "cross_align": "center"
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "status_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "阶段 02 / 03"
+            }
+          },
+          {
+            "type": "text",
+            "style": "status_identity",
+            "text": {
+              "text": "初始化进行中"
+            },
+            "text_align": "right"
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "stage_tracker",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 6,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 5,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "stage_complete",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "✓  01  待机"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "已完成"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "divider",
+            "style": "stage_connector_complete",
+            "direction": "horizontal",
+            "thickness": 2,
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 18
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 2
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "fixed",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "card",
+            "style": "stage_current",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "text": "◆  02  初始化"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "当前阶段"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "divider",
+            "style": "stage_connector_pending",
+            "direction": "horizontal",
+            "thickness": 2,
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 18
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 2
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "fixed",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "card",
+            "style": "stage_pending",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "○  03  准备"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "text": {
+                    "text": "尚未开始"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "id": "progress_panel",
+        "style": "progress_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 6
+          },
+          "children": [
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "text": {
+                    "text": "全员初始化"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "concat": [
+                      {
+                        "bind": "flow.completed"
+                      },
+                      {
+                        "text": " / "
+                      },
+                      {
+                        "bind": "flow.total"
+                      },
+                      {
+                        "text": "  ·  "
+                      },
+                      {
+                        "bind": "flow.percent"
+                      },
+                      {
+                        "text": "%"
+                      }
+                    ]
+                  },
+                  "text_align": "right"
+                }
+              ]
+            },
+            {
+              "type": "progress",
+              "id": "flow_progress",
+              "style": "segmented_progress",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fixed",
+                  "value": 14
+                }
+              },
+              "value": {
+                "bind": "flow.completed"
+              },
+              "min": {
+                "literal": 0
+              },
+              "max": {
+                "bind": "flow.total"
+              }
+            },
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "progress_complete",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "text": {
+                    "concat": [
+                      {
+                        "text": "已完成 "
+                      },
+                      {
+                        "bind": "flow.completed"
+                      },
+                      {
+                        "text": " 人"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_remaining",
+                  "text": {
+                    "concat": [
+                      {
+                        "text": "还差 "
+                      },
+                      {
+                        "bind": "flow.remaining"
+                      },
+                      {
+                        "text": " 人"
+                      }
+                    ]
+                  },
+                  "text_align": "right"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "button",
+        "id": "continue",
+        "label": {
+          "text": "继续"
+        },
+        "action": {
+          "type": "flow",
+          "name": "continue"
+        },
+        "events": {
+          "press": {
+            "motion": "button_press",
+            "sound": "button_press"
+          }
+        }
+      }
+    ]
+  }
+}
