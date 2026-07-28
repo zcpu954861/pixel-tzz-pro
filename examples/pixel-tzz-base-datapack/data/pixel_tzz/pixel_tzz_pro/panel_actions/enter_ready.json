@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "primary",
+  "order": 40,
+  "label": {
+    "text": "结束初始化并进入准备"
+  },
+  "description": {
+    "text": "在所有必需流程完成后进入准备阶段。"
+  },
+  "color": "#65D68A",
+  "phases": [
+    "pixel_tzz:initializing"
+  ],
+  "target": {
+    "mode": "none"
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认进入准备阶段"
+    },
+    "consequences": [
+      {
+        "text": "初始化不会自动结束；确认后才进入准备阶段。"
+      },
+      {
+        "text": "之后调整身份或队伍会使目标玩家的准备状态失效。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "transition_phase",
+    "phase": "pixel_tzz:ready"
+  }
+}

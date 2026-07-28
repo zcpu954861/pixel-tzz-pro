@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "路线偏好"
+  },
+  "description": {
+    "text": "用于验证数据包字段驱动的页面输入控件。"
+  },
+  "scope": "player",
+  "type": "single_choice",
+  "required": true,
+  "default": "balanced",
+  "editable_by": "player",
+  "invalidates_ready": true,
+  "roles": [
+    "pixel_tzz:runner"
+  ],
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing"
+  ],
+  "migration": "preserve",
+  "options": [
+    "safe",
+    "balanced",
+    "risky"
+  ]
+}

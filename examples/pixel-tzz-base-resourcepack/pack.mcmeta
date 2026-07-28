@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": {
+      "text": "Pixel TZZ Pro 2B 页面样例资源",
+      "color": "aqua"
+    },
+    "min_format": [88, 0],
+    "max_format": [88, 0]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 2,
+  "name": {
+    "text": "猎人身份初始化"
+  },
+  "entry": "briefing",
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "required": true,
+  "host_bossbar": {
+    "name": [
+      {
+        "text": "{event}",
+        "color": "red"
+      },
+      {
+        "text": ": ",
+        "color": "gray"
+      },
+      {
+        "text": "{completed}",
+        "color": "green"
+      },
+      {
+        "text": "/{total}",
+        "color": "white"
+      }
+    ],
+    "color": "red",
+    "style": "progress",
+    "priority": 200,
+    "completion_feedback": {
+      "name": {
+        "text": "{event}: 已完成",
+        "color": "green"
+      },
+      "color": "green",
+      "hold_ticks": 40,
+      "fade_ticks": 12,
+      "sound": "minecraft:entity.player.levelup"
+    }
+  },
+  "on_start": "pixel_tzz:hunter/start",
+  "on_player_complete": "pixel_tzz:hunter/player_complete",
+  "on_all_complete": "pixel_tzz:hunter/all_complete",
+  "nodes": [
+    {
+      "id": "briefing",
+      "type": "page",
+      "page": "pixel_tzz:fixture/hunter/briefing",
+      "next": "confirm"
+    },
+    {
+      "id": "confirm",
+      "type": "confirm",
+      "page": "pixel_tzz:fixture/hunter/confirm",
+      "next": "done"
+    },
+    {
+      "id": "done",
+      "type": "complete"
+    }
+  ]
+}

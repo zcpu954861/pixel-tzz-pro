@@ -1,0 +1,448 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "按钮控件"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "button_showcase",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 8,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter",
+        "sound": "panel_open"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "text",
+        "id": "heading",
+        "text": {
+          "text": "BUTTON CONTROL // 按钮控件"
+        },
+        "wrap": false,
+        "max_lines": 1,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "divider",
+        "direction": "horizontal",
+        "thickness": 1
+      },
+      {
+        "type": "card",
+        "style": "broadcast_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 3,
+            "padding": {
+              "vertical": 6,
+              "horizontal": 8
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "ACTION SEMANTICS / INTERACTION STATES"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "颜色表达操作风险，动效表达可交互性；悬停、键盘焦点、按下和禁用状态均由同一控件处理。"
+              },
+              "wrap": true,
+              "max_lines": 2,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "grid",
+        "id": "button_grid",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          },
+          "columns": [
+            {
+              "mode": "weight",
+              "value": 1
+            },
+            {
+              "mode": "weight",
+              "value": 1
+            }
+          ],
+          "column_gap": 6,
+          "row_gap": 6
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "button_specimen_primary",
+            "layout": {
+              "height": {
+                "mode": "fixed",
+                "value": 68
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 7
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "button_meta_primary",
+                  "text": {
+                    "text": "01 / PRIMARY"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "主线确认与流程推进"
+                  },
+                  "wrap": false,
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "button",
+                  "id": "primary_action",
+                  "style": "primary_button",
+                  "label": {
+                    "text": "确认并继续"
+                  },
+                  "action": {
+                    "type": "flow",
+                    "name": "continue"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "button_specimen_secondary",
+            "layout": {
+              "height": {
+                "mode": "fixed",
+                "value": 68
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 7
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "button_meta_secondary",
+                  "text": {
+                    "text": "02 / SECONDARY"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "非关键操作与辅助选择"
+                  },
+                  "wrap": false,
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "button",
+                  "id": "secondary_action",
+                  "style": "secondary_button",
+                  "label": {
+                    "text": "稍后处理"
+                  },
+                  "action": {
+                    "type": "local",
+                    "name": "preview"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "button_specimen_navigation",
+            "layout": {
+              "height": {
+                "mode": "fixed",
+                "value": 68
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 7
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "button_meta_navigation",
+                  "text": {
+                    "text": "03 / NAVIGATION"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "页面跳转与层级切换"
+                  },
+                  "wrap": false,
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "button",
+                  "id": "navigation_action",
+                  "style": "navigation_button",
+                  "label": {
+                    "text": "打开详情"
+                  },
+                  "action": {
+                    "type": "local",
+                    "name": "preview"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "button_specimen_danger",
+            "layout": {
+              "height": {
+                "mode": "fixed",
+                "value": 68
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 7
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "button_meta_danger",
+                  "text": {
+                    "text": "04 / DANGER"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "清除、移除与高风险请求"
+                  },
+                  "wrap": false,
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "button",
+                  "id": "danger_action",
+                  "style": "danger_button",
+                  "label": {
+                    "text": "清除本次选择"
+                  },
+                  "action": {
+                    "type": "local",
+                    "name": "preview"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "style": "status_rail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 8,
+            "padding": {
+              "vertical": 6,
+              "horizontal": 8
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "LOCKED STATE"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "禁用状态保留原因提示与键盘朗读"
+                  },
+                  "wrap": false,
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                }
+              ]
+            },
+            {
+              "type": "button",
+              "id": "disabled_action",
+              "style": "secondary_button",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 148
+                }
+              },
+              "label": {
+                "text": "等待主持人授权"
+              },
+              "enabled_when": {
+                "eq": [
+                  {
+                    "bind": "session.connected"
+                  },
+                  {
+                    "literal": false
+                  }
+                ]
+              },
+              "disabled_reason": {
+                "text": "主持人尚未授予本项操作权限"
+              },
+              "action": {
+                "type": "local",
+                "name": "preview"
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

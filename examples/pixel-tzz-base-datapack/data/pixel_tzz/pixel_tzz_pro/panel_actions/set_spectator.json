@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "roles",
+  "order": 30,
+  "label": {
+    "text": "设为旁观者"
+  },
+  "description": {
+    "text": "将在线参与者移出参赛、准备和掉线提醒名单，无需提前初始化。"
+  },
+  "color": "#8C94A3",
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "multiple",
+    "min": 1,
+    "max": 64,
+    "filter": {
+      "roles": [
+        "pixel_tzz:runner",
+        "pixel_tzz:hunter"
+      ],
+      "status_flows": [
+        "pixel_tzz:general_tutorial"
+      ]
+    }
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认设为旁观者"
+    },
+    "consequences": [
+      {
+        "text": "目标玩家将立即变为旁观者，不再参与准备和掉线提醒。"
+      },
+      {
+        "text": "其历史完成记录不会被删除。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "assign_role",
+    "role": "pixel_tzz:spectator",
+    "apply": "immediate"
+  }
+}

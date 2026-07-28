@@ -1,0 +1,56 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "roles",
+  "order": 41,
+  "label": {
+    "text": "初始化并恢复为逃走者"
+  },
+  "description": {
+    "text": "让尚未完成通用初始化的猎人或旁观者先完成说明，再恢复参与身份。"
+  },
+  "color": "#D7B45A",
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "multiple",
+    "min": 1,
+    "max": 64,
+    "filter": {
+      "roles": [
+        "pixel_tzz:hunter",
+        "pixel_tzz:spectator"
+      ],
+      "incomplete_flows": [
+        "pixel_tzz:general_tutorial"
+      ]
+    }
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认初始化并恢复参与"
+    },
+    "consequences": [
+      {
+        "text": "目标玩家将先进入不可关闭的通用初始化流程。"
+      },
+      {
+        "text": "只有完成流程后，服务端才会原子提交逃走者身份。"
+      },
+      {
+        "text": "取消流程会保留玩家当前身份，不会短暂加入参与者名单。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "assign_role",
+    "role": "pixel_tzz:runner",
+    "flow": "pixel_tzz:general_tutorial",
+    "apply": "after_flow",
+    "completion_policy": "if_incomplete"
+  }
+}

@@ -1,0 +1,771 @@
+{
+  "format_version": 1,
+  "tokens": {
+    "colors": {
+      "brand": "#F4C95D",
+      "info": "#64D8E8",
+      "text": "#F2F2F2",
+      "secondary_text": "#A7ADB7",
+      "success": "#65D68A",
+      "warning": "#F6B94A",
+      "danger": "#E94F64"
+    },
+    "spacing": {
+      "small": 4,
+      "medium": 8,
+      "large": 16
+    },
+    "fonts": {
+      "body": {
+        "asset": "minecraft:uniform",
+        "required": false,
+        "fallback": "minecraft:default"
+      },
+      "utility": {
+        "asset": "minecraft:default",
+        "required": false,
+        "fallback": "minecraft:uniform"
+      }
+    }
+  },
+  "styles": {
+    "status_rail": {
+      "normal": {
+        "background_color": "#202B36",
+        "border_color": "#40505F",
+        "accent_color": "@colors.info",
+        "frame_style": "rail",
+        "accent_edge": "left",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "status_label": {
+      "normal": {
+        "text_color": "@colors.secondary_text",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "utility_label": {
+      "normal": {
+        "text_color": "#697580",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "runner_dossier": {
+      "normal": {
+        "background_color": "#22332F",
+        "border_color": "#426A59",
+        "accent_color": "@colors.success",
+        "frame_style": "dossier",
+        "accent_edge": "left",
+        "corner_radius": 6,
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "hunter_target": {
+      "normal": {
+        "background_color": "#30272D",
+        "border_color": "#74505A",
+        "accent_color": "@colors.danger",
+        "frame_style": "target",
+        "accent_edge": "none",
+        "corner_radius": 6,
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "runner_eyebrow": {
+      "normal": {
+        "text_color": "#47715D",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "hunter_eyebrow": {
+      "normal": {
+        "text_color": "#81515C",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "runner_title": {
+      "normal": {
+        "text_color": "@colors.success",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "hunter_title": {
+      "normal": {
+        "text_color": "@colors.danger",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "runner_rule": {
+      "normal": {
+        "text_color": "#7FB79A",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "hunter_rule": {
+      "normal": {
+        "text_color": "#BF7A88",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "rule_body": {
+      "normal": {
+        "text_color": "@colors.text",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "runner_divider": {
+      "normal": {
+        "border_color": "#426A59",
+        "opacity": 0.72
+      }
+    },
+    "hunter_divider": {
+      "normal": {
+        "border_color": "#74505A",
+        "opacity": 0.72
+      }
+    },
+    "broadcast_panel": {
+      "normal": {
+        "background_color": "#1E2B36",
+        "border_color": "#40505F",
+        "accent_color": "@colors.info",
+        "frame_style": "broadcast",
+        "accent_edge": "top",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "warning_panel": {
+      "normal": {
+        "background_color": "#30292A",
+        "border_color": "#765A45",
+        "accent_color": "@colors.warning",
+        "frame_style": "warning",
+        "accent_edge": "top",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "warning_eyebrow": {
+      "normal": {
+        "text_color": "#9B7137",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "status_success": {
+      "normal": {
+        "text_color": "@colors.success",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "status_identity": {
+      "normal": {
+        "text_color": "@colors.info",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "stage_complete": {
+      "normal": {
+        "background_color": "#1D302A",
+        "border_color": "#3F7555",
+        "text_color": "@colors.success",
+        "accent_color": "@colors.success",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "stage_current": {
+      "normal": {
+        "background_color": "#22343E",
+        "border_color": "@colors.info",
+        "text_color": "@colors.text",
+        "accent_color": "@colors.brand",
+        "border_width": 1,
+        "shadow_color": "@colors.info",
+        "opacity": 1.0
+      }
+    },
+    "stage_pending": {
+      "normal": {
+        "background_color": "#1A242E",
+        "border_color": "#2B3945",
+        "text_color": "@colors.secondary_text",
+        "accent_color": "#54606A",
+        "border_width": 1,
+        "opacity": 0.88
+      }
+    },
+    "stage_connector_complete": {
+      "normal": {
+        "border_color": "@colors.success",
+        "opacity": 0.78
+      }
+    },
+    "stage_connector_pending": {
+      "normal": {
+        "border_color": "#3B4A57",
+        "opacity": 0.72
+      }
+    },
+    "progress_panel": {
+      "normal": {
+        "background_color": "#202B36",
+        "border_color": "#40505F",
+        "accent_color": "@colors.brand",
+        "frame_style": "broadcast",
+        "accent_edge": "top",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "progress_value": {
+      "normal": {
+        "text_color": "@colors.text",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "progress_complete": {
+      "normal": {
+        "text_color": "@colors.success",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "progress_remaining": {
+      "normal": {
+        "text_color": "@colors.brand",
+        "font": "@fonts.body",
+        "shadow": false
+      }
+    },
+    "segmented_progress": {
+      "normal": {
+        "track_color": "#141E27",
+        "fill_color": "@colors.info",
+        "border_color": "#40505F",
+        "accent_color": "@colors.brand",
+        "segment_count": 8,
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "roster_header": {
+      "normal": {
+        "background_color": "#1B2832",
+        "border_color": "#405361",
+        "accent_color": "@colors.info",
+        "frame_style": "broadcast",
+        "accent_edge": "top",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "roster_kicker": {
+      "normal": {
+        "text_color": "#60717C",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_title": {
+      "normal": {
+        "text_color": "@colors.text",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "roster_stat_label": {
+      "normal": {
+        "text_color": "#697580",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_stat_total": {
+      "normal": {
+        "text_color": "@colors.info",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "roster_stat_ready": {
+      "normal": {
+        "text_color": "@colors.success",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "roster_stat_pending": {
+      "normal": {
+        "text_color": "@colors.warning",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "roster_player_card": {
+      "normal": {
+        "background_color": "#18232D",
+        "border_color": "#344652",
+        "accent_color": "#405563",
+        "frame_style": "dossier",
+        "accent_edge": "none",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "roster_runner_rail": {
+      "normal": {
+        "border_color": "@colors.success",
+        "opacity": 0.9
+      }
+    },
+    "roster_hunter_rail": {
+      "normal": {
+        "border_color": "@colors.danger",
+        "opacity": 0.94
+      }
+    },
+    "roster_spectator_rail": {
+      "normal": {
+        "border_color": "#718697",
+        "opacity": 0.82
+      }
+    },
+    "roster_player_name": {
+      "normal": {
+        "text_color": "@colors.text",
+        "font": "@fonts.body",
+        "shadow": true
+      }
+    },
+    "roster_role_runner": {
+      "normal": {
+        "text_color": "#6EB98A",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_role_hunter": {
+      "normal": {
+        "text_color": "#D86B79",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_role_spectator": {
+      "normal": {
+        "text_color": "#8297A8",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_meta": {
+      "normal": {
+        "text_color": "#7D8993",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_state_alive": {
+      "normal": {
+        "text_color": "#5A9E72",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_state_captured": {
+      "normal": {
+        "text_color": "#B35A68",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_state_ready": {
+      "normal": {
+        "text_color": "#6EB98A",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_state_pending": {
+      "normal": {
+        "text_color": "#C39545",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_online": {
+      "normal": {
+        "text_color": "@colors.success",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "roster_offline": {
+      "normal": {
+        "text_color": "#65717B",
+        "font": "@fonts.utility",
+        "shadow": false,
+        "opacity": 0.78
+      }
+    },
+    "roster_footer": {
+      "normal": {
+        "background_color": "#1A252F",
+        "border_color": "#344652",
+        "accent_color": "@colors.brand",
+        "frame_style": "rail",
+        "accent_edge": "left",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "roster_footer_note": {
+      "normal": {
+        "text_color": "#7A8791",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "button_specimen_primary": {
+      "normal": {
+        "background_color": "#27271F",
+        "border_color": "#655A34",
+        "accent_color": "@colors.brand",
+        "frame_style": "dossier",
+        "accent_edge": "left",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "button_specimen_secondary": {
+      "normal": {
+        "background_color": "#192832",
+        "border_color": "#355968",
+        "accent_color": "@colors.info",
+        "frame_style": "broadcast",
+        "accent_edge": "top",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "button_specimen_navigation": {
+      "normal": {
+        "background_color": "#1A2631",
+        "border_color": "#3B5264",
+        "accent_color": "#7EA8C1",
+        "frame_style": "rail",
+        "accent_edge": "left",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "button_specimen_danger": {
+      "normal": {
+        "background_color": "#2B2025",
+        "border_color": "#693843",
+        "accent_color": "@colors.danger",
+        "frame_style": "target",
+        "accent_edge": "left",
+        "border_width": 1,
+        "opacity": 1.0
+      }
+    },
+    "button_meta_primary": {
+      "normal": {
+        "text_color": "#9C874D",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "button_meta_secondary": {
+      "normal": {
+        "text_color": "#5D8993",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "button_meta_navigation": {
+      "normal": {
+        "text_color": "#647F92",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "button_meta_danger": {
+      "normal": {
+        "text_color": "#8E5662",
+        "font": "@fonts.utility",
+        "shadow": false
+      }
+    },
+    "primary_button": {
+      "normal": {
+        "background_color": "#2B2B24",
+        "border_color": "#8E793E",
+        "text_color": "@colors.text",
+        "accent_color": "@colors.brand",
+        "border_width": 1,
+        "font": "@fonts.body",
+        "opacity": 1.0,
+        "shadow": true,
+        "navigation_arrows": false
+      },
+      "hover": {
+        "background_color": "#3A3525",
+        "border_color": "@colors.brand",
+        "text_color": "#FFFFFF"
+      },
+      "focused": {
+        "background_color": "#20313A",
+        "border_color": "@colors.info",
+        "text_color": "#FFFFFF",
+        "accent_color": "@colors.info",
+        "border_width": 2
+      },
+      "pressed": {
+        "background_color": "#4A4027",
+        "border_color": "#FFF0AE",
+        "text_color": "#FFFFFF",
+        "accent_color": "#FFF0AE",
+        "border_width": 2
+      },
+      "disabled": {
+        "background_color": "#151E27",
+        "border_color": "#2B3945",
+        "text_color": "@colors.secondary_text",
+        "accent_color": "#54606A",
+        "opacity": 0.72,
+        "shadow": false
+      }
+    },
+    "secondary_button": {
+      "normal": {
+        "background_color": "#202B35",
+        "border_color": "#40505F",
+        "text_color": "@colors.text",
+        "accent_color": "@colors.info",
+        "border_width": 1,
+        "font": "@fonts.body",
+        "opacity": 1.0,
+        "shadow": true,
+        "navigation_arrows": false
+      },
+      "hover": {
+        "background_color": "#2B3A46",
+        "border_color": "@colors.info",
+        "text_color": "#FFFFFF"
+      },
+      "focused": {
+        "background_color": "#20313A",
+        "border_color": "#A4F5FF",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "pressed": {
+        "background_color": "#1B3540",
+        "border_color": "#D2FAFF",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "disabled": {
+        "background_color": "#151E27",
+        "border_color": "#2B3945",
+        "text_color": "@colors.secondary_text",
+        "accent_color": "#54606A",
+        "opacity": 0.72,
+        "shadow": false
+      }
+    },
+    "navigation_button": {
+      "normal": {
+        "background_color": "#1C2933",
+        "border_color": "#40505F",
+        "text_color": "@colors.text",
+        "accent_color": "@colors.info",
+        "border_width": 1,
+        "font": "@fonts.body",
+        "opacity": 1.0,
+        "shadow": true,
+        "navigation_arrows": true,
+        "arrow_travel": 7
+      },
+      "hover": {
+        "background_color": "#263943",
+        "border_color": "@colors.info",
+        "text_color": "#FFFFFF"
+      },
+      "focused": {
+        "background_color": "#20313A",
+        "border_color": "#A4F5FF",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "pressed": {
+        "background_color": "#19333D",
+        "border_color": "#D2FAFF",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "disabled": {
+        "background_color": "#151E27",
+        "border_color": "#2B3945",
+        "text_color": "@colors.secondary_text",
+        "accent_color": "#54606A",
+        "opacity": 0.72,
+        "shadow": false
+      }
+    },
+    "danger_button": {
+      "normal": {
+        "background_color": "#322329",
+        "border_color": "#82404A",
+        "text_color": "@colors.text",
+        "accent_color": "@colors.danger",
+        "border_width": 1,
+        "font": "@fonts.body",
+        "opacity": 1.0,
+        "shadow": true,
+        "navigation_arrows": false
+      },
+      "hover": {
+        "background_color": "#48252C",
+        "border_color": "@colors.danger",
+        "text_color": "#FFFFFF"
+      },
+      "focused": {
+        "background_color": "#3B252D",
+        "border_color": "#FF8E99",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "pressed": {
+        "background_color": "#57242E",
+        "border_color": "#FFC0C6",
+        "text_color": "#FFFFFF",
+        "border_width": 2
+      },
+      "disabled": {
+        "background_color": "#211B20",
+        "border_color": "#493039",
+        "text_color": "@colors.secondary_text",
+        "accent_color": "#65434B",
+        "opacity": 0.72,
+        "shadow": false
+      }
+    }
+  },
+  "motions": {
+    "panel_enter": {
+      "duration_ms": 180,
+      "delay_ms": 0,
+      "easing": "ease_out_cubic",
+      "tracks": [
+        {
+          "property": "opacity",
+          "keyframes": [
+            {
+              "at": 0.0,
+              "value": 0.0
+            },
+            {
+              "at": 1.0,
+              "value": 1.0
+            }
+          ]
+        },
+        {
+          "property": "translate_y",
+          "keyframes": [
+            {
+              "at": 0.0,
+              "value": 6.0
+            },
+            {
+              "at": 1.0,
+              "value": 0.0
+            }
+          ]
+        }
+      ],
+      "reduced_motion": "fade"
+    },
+    "navigation_hover_in": {
+      "duration_ms": 180,
+      "delay_ms": 0,
+      "easing": "ease_out_cubic",
+      "tracks": [
+        {
+          "property": "translate_x",
+          "keyframes": [
+            {
+              "at": 0.0,
+              "value": 0.0
+            },
+            {
+              "at": 1.0,
+              "value": 7.0
+            }
+          ]
+        }
+      ],
+      "reduced_motion": "final"
+    },
+    "navigation_hover_out": {
+      "duration_ms": 180,
+      "delay_ms": 0,
+      "easing": "ease_in_out_cubic",
+      "tracks": [
+        {
+          "property": "translate_x",
+          "keyframes": [
+            {
+              "at": 0.0,
+              "value": 7.0
+            },
+            {
+              "at": 1.0,
+              "value": 0.0
+            }
+          ]
+        }
+      ],
+      "reduced_motion": "final"
+    }
+  },
+  "sound_cues": {
+    "button_hover": {
+      "sound": "minecraft:ui.button.click",
+      "delay_ms": 0,
+      "volume": 0.25,
+      "pitch": 1.2,
+      "required": false
+    },
+    "button_press": {
+      "sound": "minecraft:ui.button.click",
+      "delay_ms": 0,
+      "volume": 0.65,
+      "pitch": 1.0,
+      "required": false
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "存活",
+    "color": "#65D68A"
+  },
+  "description": {
+    "text": "仍在本局游戏中的参与者。"
+  },
+  "tags": [
+    "pixel_tzz:active_participant"
+  ]
+}

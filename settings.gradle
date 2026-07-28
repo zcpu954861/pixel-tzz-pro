@@ -1,0 +1,43 @@
+pluginManagement {
+	repositories {
+		maven {
+			name = "Aliyun Gradle Plugin"
+			url = uri("https://maven.aliyun.com/repository/gradle-plugin")
+		}
+		maven {
+			name = "Aliyun Public"
+			url = uri("https://maven.aliyun.com/repository/public")
+		}
+		maven {
+			name = "Fabric"
+			url = uri("https://maven.fabricmc.net/")
+		}
+		gradlePluginPortal()
+		mavenCentral()
+	}
+}
+
+dependencyResolutionManagement {
+	repositories {
+		maven {
+			name = "Aliyun Public"
+			url = uri("https://maven.aliyun.com/repository/public")
+		}
+		maven {
+			name = "Aliyun Central"
+			url = uri("https://maven.aliyun.com/repository/central")
+		}
+		maven {
+			name = "Fabric"
+			url = uri("https://maven.fabricmc.net/")
+		}
+		maven {
+			name = "Mojang"
+			url = uri("https://libraries.minecraft.net/")
+		}
+		mavenCentral()
+	}
+}
+
+rootProject.name = "Pixel-Tzz-Pro"
+

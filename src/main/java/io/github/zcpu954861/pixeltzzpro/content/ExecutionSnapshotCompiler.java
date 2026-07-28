@@ -1,0 +1,683 @@
+package io.github.zcpu954861.pixeltzzpro.content;
+
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import com.mojang.serialization.JsonOps;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Compilation;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DocumentKey;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.SourceDocument;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BranchNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChangeStateNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompleteNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FlowDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FlowNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FunctionNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.NodeScope;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RunFunctionOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetType;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.NodeDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.RepeatContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiAction;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.CallbackReferences;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.ExecutionSnapshot;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDefinitionType;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDocument;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenSourceDocument;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.Set;
+import net.minecraft.resources.Identifier;
+
+/**
+ * Freezes and restores the executable 2C subset through the existing strict definition compiler.
+ */
+public final class ExecutionSnapshotCompiler {
+	private static final Identifier REFERENCE_CONDITION = Identifier.fromNamespaceAndPath(
+		"minecraft",
+		"reference"
+	);
+
+	private ExecutionSnapshotCompiler() {
+	}
+
+	public static FreezeResult freeze(
+		final DefinitionSnapshot definitions,
+		final FlowDefinition flow,
+		final PanelActionDefinition sourceAction
+	) {
+		Objects.requireNonNull(definitions, "definitions");
+		Objects.requireNonNull(flow, "flow");
+		Objects.requireNonNull(sourceAction, "sourceAction");
+		if (definitions.generation() < 0L) {
+			return FreezeResult.rejected("snapshot_invalid", "definition generation is negative", "");
+		}
+		if (!sourceAction.game().equals(flow.game())) {
+			return FreezeResult.rejected(
+				"snapshot_invalid",
+				"source action and flow belong to different games",
+				""
+			);
+		}
+
+		for (FlowNode node : flow.nodes().values()) {
+			String reason = unsupportedReason(node);
+			if (reason != null) {
+				return FreezeResult.rejected("unsupported_flow_node", reason, node.id());
+			}
+		}
+
+		Map<Identifier, PageDefinition> pages = new LinkedHashMap<>();
+		Set<Identifier> choiceFields = new LinkedHashSet<>();
+		Set<Identifier> predicates = new LinkedHashSet<>();
+		for (FlowNode node : flow.nodes().values()) {
+			Identifier pageId = switch (node) {
+				case PageNode page -> page.page();
+				case ConfirmNode confirm -> confirm.page();
+				case ChoiceNode choice -> choice.page();
+				default -> null;
+			};
+			if (pageId != null) {
+				PageDefinition page = definitions.pages().get(pageId);
+				if (page == null) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"flow node references missing page " + pageId,
+						node.id()
+					);
+				}
+				String pageContractError = validatePageContract(node, page);
+				if (pageContractError != null) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						pageContractError,
+						node.id()
+					);
+				}
+				pages.put(pageId, page);
+			}
+			if (node instanceof ChoiceNode choice) {
+				choiceFields.add(choice.field());
+			}
+			if (node instanceof BranchNode branch) {
+				branch.cases().forEach(branchCase -> predicates.add(branchCase.predicate()));
+			}
+		}
+
+		Set<Identifier> fieldIds = new LinkedHashSet<>(choiceFields);
+		pages.values().forEach(page -> collectFieldIds(page.root(), fieldIds));
+		Map<Identifier, FieldDefinition> fields = new LinkedHashMap<>();
+		for (Identifier fieldId : fieldIds) {
+			FieldDefinition field = definitions.fields().get(fieldId);
+			if (field == null) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"flow page references missing field " + fieldId,
+					""
+				);
+			}
+			fields.put(fieldId, field);
+			field.visibleWhen().ifPresent(predicates::add);
+		}
+		sourceAction.visibleWhen().ifPresent(predicates::add);
+		sourceAction.enabledWhen().ifPresent(predicates::add);
+
+		Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
+		for (PageDefinition page : pages.values()) {
+			ThemeDefinition theme = page.theme().equals(BuiltInUiResources.defaultTheme().id())
+				? BuiltInUiResources.defaultTheme()
+				: definitions.themes().get(page.theme());
+			if (theme == null) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"flow page references missing theme " + page.theme(),
+					""
+				);
+			}
+			themes.put(theme.id(), theme);
+		}
+
+		SourceDocument flowDocument = definitions.sourceDocuments()
+			.get(new DocumentKey(DefinitionType.FLOW, flow.id()));
+		if (flowDocument == null) {
+			return FreezeResult.rejected(
+				"snapshot_invalid",
+				"flow has no retained canonical source document",
+				""
+			);
+		}
+
+		Map<Identifier, FrozenDocument> frozenPages = new LinkedHashMap<>();
+		pages.forEach(
+			(id, page) -> frozenPages.put(id, new FrozenDocument(page.canonicalDocument(), page.sha256()))
+		);
+		Map<Identifier, FrozenDocument> frozenThemes = new LinkedHashMap<>();
+		themes.forEach(
+			(id, theme) -> frozenThemes.put(id, new FrozenDocument(theme.canonicalDocument(), theme.sha256()))
+		);
+		Map<Identifier, FrozenDocument> frozenFields = new LinkedHashMap<>();
+		for (Identifier fieldId : fields.keySet()) {
+			SourceDocument document = definitions.sourceDocuments()
+				.get(new DocumentKey(DefinitionType.FIELD, fieldId));
+			if (document == null) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"field has no retained canonical source document: " + fieldId,
+					""
+				);
+			}
+			frozenFields.put(fieldId, frozen(document));
+		}
+
+		List<FrozenSourceDocument> support = freezeSupportingDefinitions(
+			definitions,
+			flow.game(),
+			sourceAction
+		);
+		if (support == null) {
+			return FreezeResult.rejected(
+				"snapshot_invalid",
+				"required game support definition has no canonical source document",
+				""
+			);
+		}
+
+		Set<String> textReferences = new LinkedHashSet<>();
+		textReferences.add(flow.name().json());
+		textReferences.add(sourceAction.label().json());
+		textReferences.add(sourceAction.description().json());
+		pages.values().forEach(page -> textReferences.add(page.title().json()));
+		sourceAction.confirmation().ifPresent(confirmation -> {
+			textReferences.add(confirmation.title().json());
+			confirmation.consequences().forEach(text -> textReferences.add(text.json()));
+		});
+
+		Set<Identifier> sounds = new LinkedHashSet<>();
+		themes.values().forEach(theme -> {
+			theme.soundCues().values().forEach(cue -> sounds.add(cue.sound()));
+			theme.assets()
+				.stream()
+				.filter(asset -> asset.type() == AssetType.SOUND)
+				.map(asset -> Identifier.tryParse(asset.id()))
+				.filter(Objects::nonNull)
+				.forEach(sounds::add);
+		});
+		pages.values().forEach(
+			page -> page.assets()
+				.stream()
+				.filter(asset -> asset.type() == AssetType.SOUND)
+				.map(asset -> Identifier.tryParse(asset.id()))
+				.filter(Objects::nonNull)
+				.forEach(sounds::add)
+		);
+
+		String consequences = sourceAction.confirmation()
+			.map(
+				confirmation -> String.join(
+					"\n",
+					confirmation.consequences()
+						.stream()
+						.map(GameDefinitions.RichText::plainText)
+						.toList()
+				)
+			)
+			.orElse("");
+		if (consequences.length() > 4_096) {
+			return FreezeResult.rejected(
+				"snapshot_too_large",
+				"confirmation consequence summary exceeds 4096 characters",
+				""
+			);
+		}
+
+		Set<Identifier> functions = new LinkedHashSet<>();
+		flow.onStart().ifPresent(functions::add);
+		flow.onPlayerComplete().ifPresent(functions::add);
+		flow.onAllComplete().ifPresent(functions::add);
+		flow.nodes().values().stream()
+			.filter(FunctionNode.class::isInstance)
+			.map(FunctionNode.class::cast)
+			.map(FunctionNode::function)
+			.forEach(functions::add);
+		definitions.phases().values().stream()
+			.filter(phase -> phase.game().equals(flow.game()))
+			.forEach(phase -> {
+				phase.onEnter().ifPresent(functions::add);
+				phase.onExit().ifPresent(functions::add);
+			});
+		if (sourceAction.operation() instanceof RunFunctionOperation runFunction) {
+			functions.add(runFunction.function());
+		}
+		Map<Identifier, FrozenDocument> frozenPredicates = new LinkedHashMap<>();
+		for (Identifier id : predicates) {
+			String json = definitions.predicateDocuments().get(id);
+			if (json == null) {
+				continue;
+			}
+			try {
+				if (containsReferenceCondition(JsonParser.parseString(json))) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"predicate " + id + " uses minecraft:reference and is not self-contained",
+						""
+					);
+				}
+			} catch (RuntimeException error) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"predicate " + id + " is not valid JSON: " + message(error),
+					""
+				);
+			}
+			frozenPredicates.put(id, FrozenDocument.of(json));
+		}
+
+		ExecutionSnapshot candidate;
+		try {
+			candidate = new ExecutionSnapshot(
+				definitions.generation(),
+				frozen(flowDocument),
+				frozenPages,
+				frozenThemes,
+				frozenFields,
+				support,
+				predicates,
+				frozenPredicates,
+				functions,
+				new CallbackReferences(
+					flow.onStart(),
+					flow.onPlayerComplete(),
+					flow.onAllComplete()
+				),
+				textReferences,
+				sounds,
+				consequences,
+				"0".repeat(64)
+			).withComputedContentSha256();
+		} catch (ArithmeticException | IllegalArgumentException error) {
+			return FreezeResult.rejected(
+				"snapshot_too_large",
+				message(error),
+				""
+			);
+		}
+		if (ExecutionSnapshot.CODEC.encodeStart(JsonOps.INSTANCE, candidate).result().isEmpty()) {
+			return FreezeResult.rejected(
+				"snapshot_invalid",
+				"frozen execution snapshot failed its persisted codec validation",
+				""
+			);
+		}
+		RestoreResult restored = restore(flow.id(), candidate);
+		if (!restored.success()) {
+			return FreezeResult.rejected(restored.code(), restored.message(), "");
+		}
+		return FreezeResult.success(candidate, restored.snapshot().orElseThrow());
+	}
+
+	private static boolean containsReferenceCondition(final JsonElement element) {
+		if (element.isJsonArray()) {
+			for (JsonElement child : element.getAsJsonArray()) {
+				if (containsReferenceCondition(child)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if (!element.isJsonObject()) {
+			return false;
+		}
+		JsonElement condition = element.getAsJsonObject().get("condition");
+		if (
+			condition != null
+				&& condition.isJsonPrimitive()
+				&& condition.getAsJsonPrimitive().isString()
+				&& REFERENCE_CONDITION.equals(Identifier.tryParse(condition.getAsString()))
+		) {
+			return true;
+		}
+		for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+			if (containsReferenceCondition(entry.getValue())) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	public static RestoreResult restore(
+		final Identifier flowId,
+		final ExecutionSnapshot frozen
+	) {
+		Objects.requireNonNull(flowId, "flowId");
+		Objects.requireNonNull(frozen, "frozen");
+		if (!frozen.contentSha256().equals(frozen.computeContentSha256())) {
+			return RestoreResult.rejected("snapshot_invalid", "execution snapshot hash mismatch");
+		}
+
+		List<Source> sources = new ArrayList<>();
+		sources.add(source(DefinitionType.FLOW, flowId, frozen.flow()));
+		frozen.pages().forEach(
+			(id, document) -> sources.add(source(DefinitionType.PAGE, id, document))
+		);
+		frozen.themes().forEach(
+			(id, document) -> sources.add(source(DefinitionType.THEME, id, document))
+		);
+		frozen.fields().forEach(
+			(id, document) -> sources.add(source(DefinitionType.FIELD, id, document))
+		);
+		frozen.supportingDefinitions().stream()
+			.forEach(
+				support -> sources.add(
+					source(definitionType(support.type()), support.id(), support.document())
+				)
+			);
+
+		Compilation compilation = DefinitionCompiler.compile(
+			sources,
+			frozen.functionReferences(),
+			frozen.predicateReferences()
+		);
+		if (!compilation.valid()) {
+			String diagnostic = compilation.problems().isEmpty()
+				? "frozen definitions did not compile"
+				: compilation.problems().getFirst().summary();
+			return RestoreResult.rejected("snapshot_invalid", diagnostic);
+		}
+		DefinitionSnapshot restored = compilation.snapshot()
+			.orElseThrow()
+			.withGeneration(frozen.definitionGeneration());
+		if (!restored.flows().containsKey(flowId)) {
+			return RestoreResult.rejected("snapshot_invalid", "restored snapshot lost its flow");
+		}
+		return RestoreResult.success(restored);
+	}
+
+	private static List<FrozenSourceDocument> freezeSupportingDefinitions(
+		final DefinitionSnapshot definitions,
+		final Identifier gameId,
+		final PanelActionDefinition sourceAction
+	) {
+		List<DocumentKey> keys = new ArrayList<>();
+		keys.add(new DocumentKey(DefinitionType.GAME, gameId));
+		definitions.roles().values().stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.ROLE, value.id())));
+		definitions.teams().values().stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.TEAM, value.id())));
+		definitions.lifeStates().values().stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.LIFE_STATE, value.id())));
+		definitions.phases().values().stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PHASE, value.id())));
+		keys.sort(
+			Comparator.comparing((DocumentKey key) -> key.type().ordinal())
+				.thenComparing(DocumentKey::id)
+		);
+
+		List<FrozenSourceDocument> result = new ArrayList<>();
+		for (DocumentKey key : keys) {
+			SourceDocument document = definitions.sourceDocuments().get(key);
+			if (document == null) {
+				return null;
+			}
+			result.add(
+				new FrozenSourceDocument(
+					frozenDefinitionType(key.type()),
+					key.id(),
+					frozen(document)
+				)
+			);
+		}
+		SourceDocument actionDocument = definitions.sourceDocuments()
+			.get(new DocumentKey(DefinitionType.PANEL_ACTION, sourceAction.id()));
+		if (actionDocument == null) {
+			return null;
+		}
+		result.add(
+			new FrozenSourceDocument(
+				FrozenDefinitionType.PANEL_ACTION,
+				sourceAction.id(),
+				frozenPanelAction(actionDocument)
+			)
+		);
+		return List.copyOf(result);
+	}
+
+	private static FrozenDocument frozenPanelAction(final SourceDocument document) {
+		JsonObject root = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
+		JsonElement target = root.get("target");
+		if (target != null && target.isJsonObject()) {
+			JsonElement filter = target.getAsJsonObject().get("filter");
+			if (filter != null && filter.isJsonObject()) {
+				// ponytail: status_flows is presentation-only. Freezing its complete flow graph
+				// would bloat every execution snapshot; active UI reads this hint from live definitions.
+				filter.getAsJsonObject().remove("status_flows");
+			}
+		}
+		return FrozenDocument.of(root.toString());
+	}
+
+	private static String validatePageContract(
+		final FlowNode node,
+		final PageDefinition page
+	) {
+		List<UiAction> actions = new ArrayList<>();
+		Set<Identifier> fields = new LinkedHashSet<>();
+		collectPageContract(page.root(), actions, fields);
+		if (node instanceof ConfirmNode) {
+			return actions.stream().anyMatch(
+				action -> action.type() == UiDefinitions.ActionType.FLOW
+					&& action.name().filter("confirm"::equals).isPresent()
+			)
+				? null
+				: "confirm node page requires a flow action named confirm";
+		}
+		if (node instanceof ChoiceNode choice) {
+			if (!fields.contains(choice.field())) {
+				return "choice node page does not expose its routed field " + choice.field();
+			}
+			return actions.stream().anyMatch(
+				action -> action.type() == UiDefinitions.ActionType.FLOW
+					&& action.name().filter("submit"::equals).isPresent()
+			)
+				? null
+				: "choice node page requires a flow action named submit";
+		}
+		return actions.stream().anyMatch(action -> action.type() == UiDefinitions.ActionType.FLOW)
+			? null
+			: "page node requires at least one flow action";
+	}
+
+	private static void collectPageContract(
+		final NodeDefinition node,
+		final List<UiAction> actions,
+		final Set<Identifier> fields
+	) {
+		switch (node.content()) {
+			case ButtonContent button -> actions.add(button.action());
+			case FieldInputContent field -> fields.add(field.field());
+			case ChildrenContent children -> children.children()
+				.forEach(child -> collectPageContract(child, actions, fields));
+			case SingleChildContent single -> collectPageContract(single.child(), actions, fields);
+			case RepeatContent repeat -> collectPageContract(repeat.template(), actions, fields);
+			default -> {
+			}
+		}
+	}
+
+	private static void collectFieldIds(
+		final NodeDefinition node,
+		final Set<Identifier> fields
+	) {
+		switch (node.content()) {
+			case FieldInputContent field -> fields.add(field.field());
+			case ChildrenContent children -> children.children()
+				.forEach(child -> collectFieldIds(child, fields));
+			case SingleChildContent single -> collectFieldIds(single.child(), fields);
+			case RepeatContent repeat -> collectFieldIds(repeat.template(), fields);
+			default -> {
+			}
+		}
+	}
+
+	private static String unsupportedReason(final FlowNode node) {
+		return switch (node) {
+			case PageNode ignored -> null;
+			case ConfirmNode ignored -> null;
+			case ChoiceNode ignored -> null;
+			case BranchNode branch -> branch.scope() == NodeScope.PLAYER
+				? null
+				: "event-scope branch is not executable in milestone 2C";
+			case CompleteNode complete -> complete.scope() == NodeScope.PLAYER
+				? null
+				: "event-scope complete is not executable in milestone 2C";
+			case FunctionNode ignored -> "function node is not executable in milestone 2C";
+			case WaitPlayersNode ignored -> "wait_players node is not executable in milestone 2C";
+			case ChangeStateNode ignored -> "change_state node is not executable in milestone 2C";
+		};
+	}
+
+	private static FrozenDocument frozen(final SourceDocument document) {
+		return new FrozenDocument(document.canonicalJson(), document.sha256());
+	}
+
+	private static Source source(
+		final DefinitionType type,
+		final Identifier id,
+		final FrozenDocument document
+	) {
+		return new Source(
+			type,
+			id,
+			Identifier.fromNamespaceAndPath(
+				id.getNamespace(),
+				"pixel_tzz_pro/frozen/" + type.directory() + "/" + id.getPath() + ".json"
+			),
+			"pixel-tzz-pro:frozen",
+			document.normalizedJson()
+		);
+	}
+
+	private static FrozenDefinitionType frozenDefinitionType(final DefinitionType type) {
+		return switch (type) {
+			case GAME -> FrozenDefinitionType.GAME;
+			case ROLE -> FrozenDefinitionType.ROLE;
+			case TEAM -> FrozenDefinitionType.TEAM;
+			case LIFE_STATE -> FrozenDefinitionType.LIFE_STATE;
+			case PHASE -> FrozenDefinitionType.PHASE;
+			case PANEL_ACTION -> FrozenDefinitionType.PANEL_ACTION;
+			case FIELD, FLOW, PAGE, THEME -> throw new IllegalArgumentException(
+				"type is not a supporting definition: " + type
+			);
+		};
+	}
+
+	private static DefinitionType definitionType(final FrozenDefinitionType type) {
+		return switch (type) {
+			case GAME -> DefinitionType.GAME;
+			case ROLE -> DefinitionType.ROLE;
+			case TEAM -> DefinitionType.TEAM;
+			case LIFE_STATE -> DefinitionType.LIFE_STATE;
+			case PHASE -> DefinitionType.PHASE;
+			case PANEL_ACTION -> DefinitionType.PANEL_ACTION;
+		};
+	}
+
+	private static String message(final RuntimeException error) {
+		return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+	}
+
+	public record FreezeResult(
+		Optional<ExecutionSnapshot> frozen,
+		Optional<DefinitionSnapshot> compiled,
+		String code,
+		String message,
+		String nodeId
+	) {
+		public FreezeResult {
+			frozen = Objects.requireNonNull(frozen, "frozen");
+			compiled = Objects.requireNonNull(compiled, "compiled");
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nodeId = Objects.requireNonNull(nodeId, "nodeId");
+		}
+
+		public boolean success() {
+			return frozen.isPresent() && compiled.isPresent();
+		}
+
+		private static FreezeResult success(
+			final ExecutionSnapshot frozen,
+			final DefinitionSnapshot compiled
+		) {
+			return new FreezeResult(
+				Optional.of(frozen),
+				Optional.of(compiled),
+				"success",
+				"",
+				""
+			);
+		}
+
+		private static FreezeResult rejected(
+			final String code,
+			final String message,
+			final String nodeId
+		) {
+			return new FreezeResult(
+				Optional.empty(),
+				Optional.empty(),
+				code,
+				message,
+				nodeId
+			);
+		}
+	}
+
+	public record RestoreResult(
+		Optional<DefinitionSnapshot> snapshot,
+		String code,
+		String message
+	) {
+		public RestoreResult {
+			snapshot = Objects.requireNonNull(snapshot, "snapshot");
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+		}
+
+		public boolean success() {
+			return snapshot.isPresent();
+		}
+
+		private static RestoreResult success(final DefinitionSnapshot snapshot) {
+			return new RestoreResult(Optional.of(snapshot), "success", "");
+		}
+
+		private static RestoreResult rejected(final String code, final String message) {
+			return new RestoreResult(Optional.empty(), code, message);
+		}
+	}
+}

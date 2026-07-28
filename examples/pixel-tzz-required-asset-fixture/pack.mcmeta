@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": {
+      "text": "Pixel TZZ Pro 必需资产缺失测试夹具",
+      "color": "red"
+    },
+    "min_format": [107, 1],
+    "max_format": [107, 1]
+  }
+}

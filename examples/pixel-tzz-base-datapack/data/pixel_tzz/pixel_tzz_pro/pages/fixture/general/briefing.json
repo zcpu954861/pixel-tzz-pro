@@ -1,0 +1,382 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "通用初始化说明"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "general_fixture_briefing",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "runner_dossier",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "runner_eyebrow",
+              "text": {
+                "text": "PLAYER SETUP / 玩家设置"
+              }
+            },
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 8,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "player_head",
+                  "uuid": {
+                    "bind": "viewer.uuid"
+                  },
+                  "name": {
+                    "bind": "viewer.name"
+                  },
+                  "online": {
+                    "bind": "viewer.online"
+                  },
+                  "show_status": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 28
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 28
+                    }
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "runner_title",
+                      "text": {
+                        "text": "开始前，请先阅读必要说明"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "bind": "viewer.name"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "divider",
+              "style": "runner_divider",
+              "direction": "horizontal",
+              "thickness": 1
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "这是一段简短的初始化说明。阅读后进入确认页；完成后页面会自动关闭，并等待主持人安排下一阶段。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "status_rail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "grid",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "columns": [
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              }
+            ],
+            "column_gap": 10,
+            "row_gap": 6,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "responsive": {
+            "compact": {
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "页面状态 · DISPLAY"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "text": "流程锁定"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "控制方式 · AUTHORITY"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "text": "服务端同步"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "结束条件 · RELEASE"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "完成后解除"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "warning_eyebrow",
+              "text": {
+                "text": "IMPORTANT / 重要说明"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "完成此页只代表你已阅读当前说明，不会自动准备、推进阶段或开始游戏。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 6,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "utility_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "第 1 步 / 共 2 步  ·  READ"
+            }
+          },
+          {
+            "type": "button",
+            "id": "continue_to_general_confirmation",
+            "style": "primary_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 184
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "我已阅读，继续确认"
+            },
+            "action": {
+              "type": "flow",
+              "name": "continue"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

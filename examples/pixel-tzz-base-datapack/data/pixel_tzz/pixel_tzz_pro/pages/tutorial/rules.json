@@ -1,0 +1,444 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "响应式规则页"
+  },
+  "theme": "pixel_tzz:control_console",
+  "breakpoints": {
+    "compact_max": 479,
+    "wide_min": 721
+  },
+  "root": {
+    "type": "column",
+    "id": "rules_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 8,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "children": [
+      {
+        "type": "text",
+        "style": "utility_label",
+        "text": {
+          "text": "OPERATION PROTOCOL"
+        },
+        "wrap": false,
+        "max_lines": 1,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "text",
+        "text": {
+          "text": "行动守则"
+        },
+        "wrap": false,
+        "max_lines": 1,
+        "overflow": "ellipsis",
+        "text_align": "left"
+      },
+      {
+        "type": "row",
+        "id": "responsive_columns",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          },
+          "gap": 10,
+          "main_align": "start",
+          "cross_align": "stretch"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 7
+            }
+          },
+          "standard": {
+            "type": "row",
+            "layout": {
+              "gap": 10
+            }
+          },
+          "wide": {
+            "type": "row",
+            "layout": {
+              "gap": 16
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "runner_dossier",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "content"
+                  }
+                }
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 5
+              },
+              "children": [
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "runner_eyebrow",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "RUNNER PROTOCOL"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "ROLE-01"
+                      },
+                      "text_align": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "style": "runner_title",
+                  "text": {
+                    "text": "逃走者守则"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider",
+                  "direction": "horizontal",
+                  "thickness": 1,
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  }
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "gap": 8,
+                    "cross_align": "start"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "runner_rule",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 32
+                        }
+                      },
+                      "text": {
+                        "text": "开局"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "完成初始化，等待主持人批准开局。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "left"
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "gap": 8,
+                    "cross_align": "start"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "runner_rule",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 32
+                        }
+                      },
+                      "text": {
+                        "text": "被捕"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "转入旁观状态，可通过复活任务恢复。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "left"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "hunter_target",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "content"
+                  }
+                }
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 5
+              },
+              "children": [
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "hunter_eyebrow",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "HUNTER AUTHORIZATION"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "ROLE-02"
+                      },
+                      "text_align": "right"
+                    }
+                  ]
+                },
+                {
+                  "type": "text",
+                  "style": "hunter_title",
+                  "text": {
+                    "text": "猎人权限"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "hunter_divider",
+                  "direction": "horizontal",
+                  "thickness": 1,
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  }
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "gap": 8,
+                    "cross_align": "start"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "hunter_rule",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 32
+                        }
+                      },
+                      "text": {
+                        "text": "指定"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "由主持人在控制台中选择猎人。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "left"
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "gap": 8,
+                    "cross_align": "start"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "hunter_rule",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 32
+                        }
+                      },
+                      "text": {
+                        "text": "调整"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "必须二次确认，可在正式初始化前完成。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "left"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "button",
+        "id": "continue",
+        "label": {
+          "text": "我已了解"
+        },
+        "action": {
+          "type": "flow",
+          "name": "continue"
+        },
+        "events": {
+          "press": {
+            "motion": "button_press",
+            "sound": "button_press"
+          }
+        }
+      }
+    ]
+  }
+}

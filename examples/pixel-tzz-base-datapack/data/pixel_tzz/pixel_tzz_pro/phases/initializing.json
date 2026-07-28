@@ -1,0 +1,10 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "玩家初始化"
+  },
+  "transitions": [
+    "pixel_tzz:ready"
+  ]
+}

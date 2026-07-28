@@ -1,0 +1,58 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "roles",
+  "order": 20,
+  "label": {
+    "text": "指定为猎人"
+  },
+  "description": {
+    "text": "选择尚未成为猎人的玩家，完成身份说明后再提交猎人身份。"
+  },
+  "color": "#E94F64",
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "multiple",
+    "min": 1,
+    "max": 64,
+    "filter": {
+      "roles": [
+        "pixel_tzz:runner"
+      ],
+      "life_states": [
+        "pixel_tzz:alive"
+      ],
+      "status_flows": [
+        "pixel_tzz:general_tutorial"
+      ]
+    }
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认猎人身份调整"
+    },
+    "consequences": [
+      {
+        "text": "目标玩家将进入不可关闭的极短猎人初始化流程。"
+      },
+      {
+        "text": "完成流程后，服务端才会原子提交猎人身份。"
+      },
+      {
+        "text": "操作期间取消流程不会改变玩家当前身份。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "assign_role",
+    "role": "pixel_tzz:hunter",
+    "flow": "pixel_tzz:hunter_initialization",
+    "apply": "after_flow",
+    "completion_policy": "always"
+  }
+}

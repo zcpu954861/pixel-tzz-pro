@@ -1,0 +1,14 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "已捕获",
+    "color": "#A92D3E"
+  },
+  "description": {
+    "text": "已被捕获、但仍保留原身份与队伍的参与者。"
+  },
+  "tags": [
+    "pixel_tzz:inactive_participant"
+  ]
+}

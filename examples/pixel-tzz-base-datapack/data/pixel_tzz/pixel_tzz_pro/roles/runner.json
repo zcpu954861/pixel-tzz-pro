@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "逃走者"
+  },
+  "description": {
+    "text": "本轮游戏的普通参与者。"
+  },
+  "tags": [
+    "pixel_tzz:general_initialization",
+    "pixel_tzz:ready_participant",
+    "pixel_tzz:disconnect_notice"
+  ],
+  "tab": {
+    "prefix": {
+      "text": "[逃走者]"
+    },
+    "color": "#65D68A"
+  }
+}

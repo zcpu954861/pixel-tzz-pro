@@ -1,0 +1,4 @@
+# Keep Gradle launchers portable across Windows and Unix.
+/gradlew text eol=lf
+*.bat text eol=crlf
+

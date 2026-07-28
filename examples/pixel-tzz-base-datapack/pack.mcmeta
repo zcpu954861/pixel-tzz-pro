@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": {
+      "text": "Pixel TZZ Pro 2A 示例游戏定义",
+      "color": "gold"
+    },
+    "min_format": [107, 1],
+    "max_format": [107, 1]
+  }
+}
