@@ -8,16 +8,26 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitionParser.ParseResult;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
+import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
+import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload.FieldValue;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.OperationResultS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FlowContext;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageCloseC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewPageRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewPageRequestC2SPayload.CachedDocuments;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.StatefulRequest;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.Key;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.ParsedDocuments;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -26,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.resources.Identifier;
 
@@ -39,6 +50,11 @@ public final class ClientPageState {
 	private static PageStatus pageStatus = PageStatus.IDLE;
 	private static String pageMessage = "";
 	private static ActivePage activePage;
+	private static PagePurpose pagePurpose = PagePurpose.PREVIEW;
+	private static long nextFlowRequestSequence;
+	private static PendingFlowAction pendingFlowAction;
+	private static OperationResultS2CPayload flowActionResult;
+	private static OperationCode fatalFlowBlock;
 	private static long revision;
 
 	private ClientPageState() {
@@ -92,6 +108,9 @@ public final class ClientPageState {
 
 	public static synchronized void requestPage(final Identifier pageId) {
 		Objects.requireNonNull(pageId, "pageId");
+		if (forcedPageActive()) {
+			return;
+		}
 		if (!ClientPlayNetworking.canSend(PreviewPageRequestC2SPayload.TYPE)) {
 			pageStatus = PageStatus.ERROR;
 			pageMessage = "页面同步协议当前不可用";
@@ -99,6 +118,7 @@ public final class ClientPageState {
 			return;
 		}
 		releaseActive(true);
+		pagePurpose = PagePurpose.PREVIEW;
 		pageStatus = PageStatus.LOADING;
 		pageMessage = "";
 		revision++;
@@ -115,7 +135,19 @@ public final class ClientPageState {
 	}
 
 	public static synchronized void acceptPageBundle(final PageBundleS2CPayload payload) {
+		if (!replacementAllowed(payload)) {
+			return;
+		}
+		boolean sameFlowPage = activePage != null
+			&& activePage.purpose == PagePurpose.FORCED_FLOW
+			&& payload.purpose() == PagePurpose.FORCED_FLOW
+			&& activePage.instanceId.equals(payload.instanceId())
+			&& activePage.flowContext.map(FlowContext::flowInstanceId)
+				.equals(payload.flowContext().map(FlowContext::flowInstanceId));
+		long localNextFlowSequence = nextFlowRequestSequence;
 		releaseActive(false);
+		pagePurpose = payload.purpose();
+		fatalFlowBlock = null;
 		Key pinnedKey = null;
 		try {
 			byte[] pageHash = payload.pageHash();
@@ -202,6 +234,9 @@ public final class ClientPageState {
 			}
 			pinnedKey = key;
 			Report resources = ClientResourcePreflight.check(page, theme);
+			BindingContext serverContext = payload.bindingJson().length == 0
+				? BindingContext.empty()
+				: BindingContextDocument.decode(payload.bindingJson());
 			activePage = new ActivePage(
 				payload.instanceId(),
 				payload.generation(),
@@ -217,8 +252,17 @@ public final class ClientPageState {
 						)
 					),
 				key,
-				resources
+				resources,
+				payload.purpose(),
+				payload.flowContext(),
+				serverContext
 			);
+			nextFlowRequestSequence = payload.flowContext()
+				.map(FlowContext::nextRequestSequence)
+				.map(serverNext ->
+					sameFlowPage ? Math.max(localNextFlowSequence, serverNext) : serverNext
+				)
+				.orElse(0L);
 			pageStatus = resources.requiredMissing() ? PageStatus.RESOURCE_ERROR : PageStatus.READY;
 			pageMessage = resources.requiredMissing()
 				? "缺少页面必需资源，已进入安全错误页"
@@ -235,12 +279,21 @@ public final class ClientPageState {
 				error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(),
 				512
 			);
+			if (payload.purpose() == PagePurpose.FORCED_FLOW) {
+				sendRenderReport(
+					payload.instanceId(),
+					payload.generation(),
+					payload.pageId(),
+					false,
+					Optional.of(pageMessage)
+				);
+			}
 		}
 		revision++;
 	}
 
 	public static synchronized void retryResourcePreflight() {
-		if (activePage == null) {
+		if (activePage == null || fatalFlowBlock != null) {
 			return;
 		}
 		Report report = ClientResourcePreflight.check(activePage.page, activePage.theme);
@@ -251,11 +304,192 @@ public final class ClientPageState {
 		revision++;
 	}
 
-	public static synchronized void closeActivePage() {
-		releaseActive(true);
+	public static synchronized void reportRenderReady(final UUID pageInstanceId) {
+		if (
+			activePage == null
+				|| !activePage.instanceId.equals(pageInstanceId)
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+				|| pageStatus != PageStatus.READY
+		) {
+			return;
+		}
+		sendRenderReport(
+			activePage.instanceId,
+			activePage.generation,
+			activePage.page.id(),
+			true,
+			Optional.empty()
+		);
+	}
+
+	public static synchronized void reportRenderFailure(
+		final UUID pageInstanceId,
+		final String message
+	) {
+		Objects.requireNonNull(pageInstanceId, "pageInstanceId");
+		Objects.requireNonNull(message, "message");
+		if (
+			activePage == null
+				|| !activePage.instanceId.equals(pageInstanceId)
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+		) {
+			return;
+		}
+		sendRenderReport(
+			activePage.instanceId,
+			activePage.generation,
+			activePage.page.id(),
+			false,
+			Optional.of(truncate(message.isBlank() ? "unknown render failure" : message, 512))
+		);
+	}
+
+	public static synchronized FlowSubmission submitFlowAction(
+		final String actionId,
+		final List<FieldValue> fieldValues
+	) {
+		Objects.requireNonNull(actionId, "actionId");
+		Objects.requireNonNull(fieldValues, "fieldValues");
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+				|| pageStatus != PageStatus.READY
+		) {
+			return FlowSubmission.rejected("当前页面不是可提交的强制流程页面");
+		}
+		if (pendingFlowAction != null) {
+			return FlowSubmission.rejected("上一项操作仍在等待服务端确认");
+		}
+		if (!ClientPlayNetworking.canSend(FlowActionC2SPayload.TYPE)) {
+			return FlowSubmission.rejected("流程动作协议当前不可用");
+		}
+		FlowContext flow = activePage.flowContext.orElseThrow();
+		long sequence = nextFlowRequestSequence;
+		try {
+			FlowActionC2SPayload payload = new FlowActionC2SPayload(
+				new StatefulRequest(
+					NetworkProtocol.CURRENT_VERSION,
+					sequence,
+					Optional.of(activePage.page.game()),
+					activePage.generation,
+					activePage.stateRevision,
+					Optional.of(flow.flowInstanceId()),
+					Optional.of(activePage.instanceId)
+				),
+				flow.flowId(),
+				flow.flowVersion(),
+				flow.nodeId(),
+				flow.instanceRevision(),
+				flow.memberRevision(),
+				actionId,
+				fieldValues
+			);
+			ClientPlayNetworking.send(payload);
+		} catch (RuntimeException error) {
+			return FlowSubmission.rejected(
+				truncate(
+					error.getMessage() == null
+						? error.getClass().getSimpleName()
+						: error.getMessage(),
+					256
+				)
+			);
+		}
+		nextFlowRequestSequence = sequence + 1L;
+		pendingFlowAction = new PendingFlowAction(sequence, activePage.instanceId);
+		flowActionResult = null;
+		revision++;
+		return FlowSubmission.sent(sequence);
+	}
+
+	public static synchronized void acceptOperationResult(
+		final OperationResultS2CPayload payload
+	) {
+		if (
+			!NetworkProtocol.isCompatible(payload.protocolVersion())
+				|| pendingFlowAction == null
+				|| pendingFlowAction.requestSequence != payload.requestSequence()
+		) {
+			return;
+		}
+		pendingFlowAction = null;
+		flowActionResult = payload;
+		if (
+			activePage != null
+				&& activePage.purpose == PagePurpose.FORCED_FLOW
+				&& (
+					payload.code() == OperationCode.SNAPSHOT_INVALID
+						|| payload.code() == OperationCode.RESOURCE_BLOCKED
+				)
+		) {
+			fatalFlowBlock = payload.code();
+			pageStatus = payload.code() == OperationCode.RESOURCE_BLOCKED
+				? PageStatus.RESOURCE_ERROR
+				: PageStatus.ERROR;
+			pageMessage = payload.message().isEmpty()
+				? "服务端已阻塞当前强制流程。"
+				: payload.message();
+		}
+		revision++;
+	}
+
+	public static synchronized Optional<OperationResultS2CPayload> consumeFlowActionResult(
+		final long requestSequence
+	) {
+		if (
+			flowActionResult == null
+				|| flowActionResult.requestSequence() != requestSequence
+		) {
+			return Optional.empty();
+		}
+		OperationResultS2CPayload result = flowActionResult;
+		flowActionResult = null;
+		return Optional.of(result);
+	}
+
+	public static synchronized boolean flowActionPending() {
+		return pendingFlowAction != null;
+	}
+
+	public static synchronized boolean acceptForcedRelease(
+		final ForcedPageReleaseS2CPayload payload
+	) {
+		if (
+			!NetworkProtocol.isCompatible(payload.protocolVersion())
+				|| activePage == null
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+				|| payload.stateRevision() < activePage.stateRevision
+		) {
+			return false;
+		}
+		FlowContext flow = activePage.flowContext.orElseThrow();
+		if (
+			!flow.flowInstanceId().equals(payload.flowInstanceId())
+				|| !activePage.instanceId.equals(payload.pageInstanceId())
+		) {
+			return false;
+		}
+		releaseActive(false);
+		pagePurpose = PagePurpose.PREVIEW;
 		pageStatus = PageStatus.IDLE;
 		pageMessage = "";
+		fatalFlowBlock = null;
+		clearFlowActionState();
 		revision++;
+		return true;
+	}
+
+	public static synchronized boolean closeActivePage() {
+		if (forcedPageActive()) {
+			return false;
+		}
+		releaseActive(true);
+		pagePurpose = PagePurpose.PREVIEW;
+		pageStatus = PageStatus.IDLE;
+		pageMessage = "";
+		clearFlowActionState();
+		revision++;
+		return true;
 	}
 
 	public static synchronized Catalog catalog() {
@@ -272,6 +506,14 @@ public final class ClientPageState {
 
 	public static synchronized Optional<ActivePage> activePage() {
 		return Optional.ofNullable(activePage);
+	}
+
+	public static synchronized PagePurpose pagePurpose() {
+		return pagePurpose;
+	}
+
+	public static synchronized boolean forcedPageActive() {
+		return pagePurpose == PagePurpose.FORCED_FLOW && pageStatus != PageStatus.IDLE;
 	}
 
 	public static synchronized long revision() {
@@ -306,16 +548,62 @@ public final class ClientPageState {
 				page.generation,
 				page.page.id(),
 				page.resources.totalMissing(),
-				entries
+				entries,
+				page.resources.requiredMissing(),
+				false,
+				Optional.empty()
 			)
 		);
+	}
+
+	private static void sendRenderReport(
+		final UUID instanceId,
+		final long generation,
+		final Identifier pageId,
+		final boolean ready,
+		final Optional<String> error
+	) {
+		if (!ClientPlayNetworking.canSend(ResourceReportC2SPayload.TYPE)) {
+			return;
+		}
+		ClientPlayNetworking.send(
+			new ResourceReportC2SPayload(
+				instanceId,
+				generation,
+				pageId,
+				0,
+				List.of(),
+				false,
+				ready,
+				error
+			)
+		);
+	}
+
+	private static boolean replacementAllowed(final PageBundleS2CPayload payload) {
+		if (!forcedPageActive()) {
+			return true;
+		}
+		if (payload.purpose() != PagePurpose.FORCED_FLOW) {
+			return false;
+		}
+		if (activePage == null) {
+			return true;
+		}
+		return activePage.flowContext
+			.map(FlowContext::flowInstanceId)
+			.equals(payload.flowContext().map(FlowContext::flowInstanceId));
 	}
 
 	private static void releaseActive(final boolean notifyServer) {
 		if (activePage == null) {
 			return;
 		}
-		if (notifyServer && ClientPlayNetworking.canSend(PageCloseC2SPayload.TYPE)) {
+		if (
+			notifyServer
+				&& activePage.purpose != PagePurpose.FORCED_FLOW
+				&& ClientPlayNetworking.canSend(PageCloseC2SPayload.TYPE)
+		) {
 			ClientPlayNetworking.send(new PageCloseC2SPayload(activePage.instanceId));
 		}
 		CACHE.unpin(activePage.cacheKey);
@@ -328,7 +616,16 @@ public final class ClientPageState {
 		catalog = Catalog.idle();
 		pageStatus = PageStatus.IDLE;
 		pageMessage = "";
+		pagePurpose = PagePurpose.PREVIEW;
+		fatalFlowBlock = null;
+		clearFlowActionState();
 		revision++;
+	}
+
+	private static void clearFlowActionState() {
+		nextFlowRequestSequence = 0L;
+		pendingFlowAction = null;
+		flowActionResult = null;
 	}
 
 	private static String decodeUtf8(final byte[] bytes, final String document) {
@@ -397,10 +694,16 @@ public final class ClientPageState {
 		ThemeDefinition theme,
 		Map<Identifier, PageBundleS2CPayload.FieldSchema> fields,
 		Key cacheKey,
-		Report resources
+		Report resources,
+		PagePurpose purpose,
+		Optional<FlowContext> flowContext,
+		BindingContext serverContext
 	) {
 		public ActivePage {
 			fields = Map.copyOf(fields);
+			purpose = Objects.requireNonNull(purpose, "purpose");
+			flowContext = Objects.requireNonNull(flowContext, "flowContext");
+			serverContext = Objects.requireNonNull(serverContext, "serverContext");
 		}
 
 		private ActivePage withResources(final Report updated) {
@@ -412,12 +715,28 @@ public final class ClientPageState {
 				this.theme,
 				this.fields,
 				this.cacheKey,
-				updated
+				updated,
+				this.purpose,
+				this.flowContext,
+				this.serverContext
 			);
 		}
 
 		public List<Diagnostic> resourceDiagnostics() {
 			return this.resources.details();
 		}
+	}
+
+	public record FlowSubmission(boolean sent, long requestSequence, String message) {
+		private static FlowSubmission sent(final long sequence) {
+			return new FlowSubmission(true, sequence, "");
+		}
+
+		private static FlowSubmission rejected(final String message) {
+			return new FlowSubmission(false, -1L, message);
+		}
+	}
+
+	private record PendingFlowAction(long requestSequence, java.util.UUID pageInstanceId) {
 	}
 }

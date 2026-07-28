@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "roles",
+  "order": 40,
+  "label": {
+    "text": "恢复为逃走者"
+  },
+  "description": {
+    "text": "将已经完成通用初始化的猎人或旁观者恢复为逃走者。"
+  },
+  "color": "#6EB98A",
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "multiple",
+    "min": 1,
+    "max": 64,
+    "filter": {
+      "roles": [
+        "pixel_tzz:hunter",
+        "pixel_tzz:spectator"
+      ],
+      "completed_flows": [
+        "pixel_tzz:general_tutorial"
+      ]
+    }
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认恢复为逃走者"
+    },
+    "consequences": [
+      {
+        "text": "目标玩家将立即恢复为逃走者并重新进入参与者名单。"
+      },
+      {
+        "text": "既有初始化记录和其他流程历史不会被删除。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "assign_role",
+    "role": "pixel_tzz:runner",
+    "apply": "immediate"
+  }
+}

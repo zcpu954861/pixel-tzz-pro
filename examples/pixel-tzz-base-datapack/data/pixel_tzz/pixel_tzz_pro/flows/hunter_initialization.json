@@ -1,9 +1,9 @@
 {
   "format_version": 1,
   "game": "pixel_tzz:main",
-  "version": 1,
+  "version": 2,
   "name": {
-    "text": "猎人初始化"
+    "text": "猎人身份初始化"
   },
   "entry": "briefing",
   "audience": {
@@ -40,6 +40,7 @@
       },
       "color": "green",
       "hold_ticks": 40,
+      "fade_ticks": 12,
       "sound": "minecraft:entity.player.levelup"
     }
   },
@@ -50,13 +51,13 @@
     {
       "id": "briefing",
       "type": "page",
-      "page": "pixel_tzz:hunter/briefing",
-      "next": "acknowledge"
+      "page": "pixel_tzz:fixture/hunter/briefing",
+      "next": "confirm"
     },
     {
-      "id": "acknowledge",
+      "id": "confirm",
       "type": "confirm",
-      "page": "pixel_tzz:hunter/acknowledge",
+      "page": "pixel_tzz:fixture/hunter/confirm",
       "next": "done"
     },
     {

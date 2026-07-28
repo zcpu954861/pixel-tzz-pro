@@ -1,0 +1,429 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "确认通用初始化"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "general_fixture_confirmation",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "runner_dossier",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "runner_eyebrow",
+              "text": {
+                "text": "FINAL CONFIRMATION / 最终确认"
+              }
+            },
+            {
+              "type": "text",
+              "style": "runner_title",
+              "text": {
+                "text": "完成通用初始化"
+              }
+            },
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 8,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "player_head",
+                  "uuid": {
+                    "bind": "viewer.uuid"
+                  },
+                  "name": {
+                    "bind": "viewer.name"
+                  },
+                  "online": {
+                    "bind": "viewer.online"
+                  },
+                  "show_status": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 28
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 28
+                    }
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "status_identity",
+                      "text": {
+                        "bind": "viewer.name"
+                      },
+                      "wrap": false,
+                      "max_lines": 1,
+                      "overflow": "ellipsis"
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "concat": [
+                          {
+                            "bind": "viewer.role_name"
+                          },
+                          {
+                            "text": " · PLAYER"
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 6,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 5,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "stage_complete",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "✓  01  说明"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "READ"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "divider",
+            "style": "stage_connector_complete",
+            "direction": "horizontal",
+            "thickness": 2,
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 22
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 2
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "fixed",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "card",
+            "style": "stage_current",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "text": "◆  02  确认"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "CONFIRM"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 5,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "warning_eyebrow",
+              "text": {
+                "text": "WHAT WILL HAPPEN / 确认结果"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "点击确认后，本次流程将自然完成，服务端记录完成历史并解除强制页面。此操作不会改变身份、准备状态或当前阶段。"
+              },
+              "wrap": true,
+              "max_lines": 4,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "status_rail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 8,
+            "padding": {
+              "vertical": 6,
+              "horizontal": 9
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "utility_label",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                }
+              },
+              "text": {
+                "text": "重复规则 · REPEAT"
+              }
+            },
+            {
+              "type": "text",
+              "style": "status_success",
+              "text": {
+                "text": "已完成者跳过"
+              },
+              "text_align": "right"
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 6,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "utility_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "第 2 步 / 共 2 步  ·  COMPLETE"
+            }
+          },
+          {
+            "type": "button",
+            "id": "confirm_general_fixture",
+            "style": "primary_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 184
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "确认并完成初始化"
+            },
+            "action": {
+              "type": "flow",
+              "name": "confirm"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

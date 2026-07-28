@@ -4,7 +4,6 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
-import io.github.zcpu954861.pixeltzzpro.client.screen.preview.PreviewModel.Viewport;
 import io.github.zcpu954861.pixeltzzpro.client.ui.ClientResourcePreflight;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetReference;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetType;
@@ -105,19 +104,15 @@ public final class PageRenderPlanBuilder {
 		final Font font,
 		final ActivePage active,
 		final BindingContext context,
-		final Viewport forcedViewport,
+		final ResponsiveTier forcedTier,
 		final int viewportWidth,
 		final int viewportHeight,
 		final Map<String, Integer> scrollOffsets,
 		final boolean forceDefaultFont
 	) {
-		ResponsiveTier tier = forcedViewport == null
+		ResponsiveTier tier = forcedTier == null
 			? tier(active, viewportWidth)
-			: switch (forcedViewport) {
-				case COMPACT -> ResponsiveTier.COMPACT;
-				case STANDARD -> ResponsiveTier.STANDARD;
-				case WIDE -> ResponsiveTier.WIDE;
-			};
+			: forcedTier;
 		PageRenderPlanBuilder builder = new PageRenderPlanBuilder(
 			font,
 			active,

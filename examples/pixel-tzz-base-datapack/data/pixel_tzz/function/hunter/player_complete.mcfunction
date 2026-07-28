@@ -1,1 +1,1 @@
-# 2A example hook: one target completes hunter initialization.
+# 2C acceptance hook: succeeds without side effects once for each naturally completing target.

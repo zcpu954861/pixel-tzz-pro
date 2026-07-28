@@ -1,1 +1,1 @@
-# 2A example hook: the flow runtime will call this once when the tutorial event starts.
+# 2C acceptance hook: succeeds without side effects when the general fixture starts.

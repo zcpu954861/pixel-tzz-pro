@@ -5,6 +5,7 @@ plugins {
 
 version = project.mod_version
 group = project.maven_group
+def testClientUsername = providers.gradleProperty("pixelTzzUsername").getOrElse("Player972")
 
 base {
 	archivesName = project.archives_base_name
@@ -36,6 +37,7 @@ loom {
 	runs {
 		client {
 			runDir "run/client"
+			programArgs "--username", testClientUsername
 		}
 		server {
 			runDir "run/server"
@@ -120,8 +122,138 @@ tasks.register("pageFrameworkSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("confirmationTokensSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the authoritative single-use confirmation token checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ConfirmationTokensSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hostAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the authoritative single-host transaction checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HostAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("forcedFlowAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the persisted page/confirm/complete forced-flow transaction checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ForcedFlowAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("statePersistenceSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs schema-v2 persistence, migration, and recovery checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.state.StatePersistenceSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("worldStateColdStartSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the schema-v2 codec check from the real migration-first class initialization order."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.state.WorldStateColdStartSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("protocolV7SelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the bounded protocol-v7 codec and trust-boundary checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV7SelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("flowCallbackRunnerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the isolated data-pack callback macro checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.FlowCallbackRunnerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("flowCallbackAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs callback marker, failure, and explicit retry state checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("flowRosterAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs active-flow roster adjustment and immediate role transaction checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.FlowRosterAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hostFlowBossBarSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the host-only flow BossBar template checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.HostFlowBossBarSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("controlRequestGateSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the administrator protocol replay and burst-window checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.ControlRequestGateSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("worldActivityInitializationSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the reload-time unconfigured-world activity binding checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.WorldActivityInitializationSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("tabListDisplaySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the TAB role-visibility and stable ordering checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TabListDisplaySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
-check.dependsOn foundationSelfCheck, pageFrameworkSelfCheck
+check.dependsOn foundationSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV7SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, tabListDisplaySelfCheck

@@ -306,6 +306,7 @@ data/pixel_tzz/pixel_tzz_pro/life_states/alive.json
       "name": {"text": "{event}: 全员已完成", "color": "green"},
       "color": "green",
       "hold_ticks": 40,
+      "fade_ticks": 12,
       "sound": "minecraft:entity.player.levelup"
     }
   },
@@ -404,9 +405,10 @@ progress, notched_6, notched_10, notched_12, notched_20
 | `name` | 是 | 无 | 非空原版文本组件，可继续使用 `{event}` 等占位符 |
 | `color` | 否 | `green` | 上述原版 BossBar 颜色之一 |
 | `hold_ticks` | 否 | `40` | `0..1200` |
+| `fade_ticks` | 否 | `12` | `0..100`；停留后逐帧收束退场 |
 | `sound` | 否 | 无 | 显式命名空间声音事件 ID |
 
-完成反馈沿用主 BossBar 的样式。2A 只校验 `sound` 的资源 ID 语法，不验证声音事件是否存在，也不播放声音。
+完成反馈沿用主 BossBar 的样式。`hold_ticks` 结束后，进度条会在 `fade_ticks` 内逐帧收束并隐藏；原版 BossBar 没有透明度通道，因此这里不会伪造 alpha 淡出。2A 只校验 `sound` 的资源 ID 语法，不验证声音事件是否存在，也不播放声音。
 
 ### 8.3 节点类型
 
@@ -501,7 +503,8 @@ progress, notched_6, notched_10, notched_12, notched_20
       "team_tags": [],
       "life_state_tags": [],
       "completed_flows": [],
-      "incomplete_flows": []
+      "incomplete_flows": [],
+      "status_flows": ["pixel_tzz:general_tutorial"]
     }
   },
   "confirmation": {
@@ -515,7 +518,8 @@ progress, notched_6, notched_10, notched_12, notched_20
     "type": "assign_role",
     "role": "pixel_tzz:hunter",
     "flow": "pixel_tzz:hunter_initialization",
-    "apply": "after_flow"
+    "apply": "after_flow",
+    "completion_policy": "always"
   }
 }
 ```
@@ -560,6 +564,7 @@ progress, notched_6, notched_10, notched_12, notched_20
 - `life_state_tags`
 - `completed_flows`
 - `incomplete_flows`
+- `status_flows`
 
 完整组合语义：
 
@@ -570,8 +575,13 @@ progress, notched_6, notched_10, notched_12, notched_20
 - 标签是开放 ID，分别匹配玩家当前身份、队伍或生存状态的标签；
 - `completed_flows` 中任一流程以当前注册版本完成即可满足该组；
 - `incomplete_flows` 中任一流程的当前注册版本未完成即可满足该组；
+- `status_flows` 只声明目标名单和二次确认要展示的流程完成状态，不参与候选资格筛选；
 - 同一流程不能同时出现在 `completed_flows` 与 `incomplete_flows`；
 - 两个流程组都非空时，必须同时满足“已完成组中的至少一个”和“未完成组中的至少一个”。
+
+框架还会自动展示 `completed_flows`、`incomplete_flows` 中引用的流程，因此无需在
+`status_flows` 重复声明。显示状态按流程当前注册版本计算，可区分“当前版本已完成”、
+“仅旧版本完成”和“尚未完成”；数据包无需硬编码中文状态文案。
 
 例如：
 
@@ -588,7 +598,7 @@ progress, notched_6, notched_10, notched_12, notched_20
 
 表示“当前身份是逃走者或猎人，且当前生存状态为存活，且已经完成当前版本通用教程或当前版本猎人初始化”。
 
-`mode: "none"` 时不能提供任何有效筛选条件。
+`mode: "none"` 时不能提供资格筛选条件；`status_flows` 是纯展示声明，可以保留。
 
 ### 9.3 二次确认
 
@@ -623,7 +633,11 @@ run_function
 最小格式：
 
 ```json
-{"type": "start_flow", "flow": "pixel_tzz:general_tutorial"}
+{
+  "type": "start_flow",
+  "flow": "pixel_tzz:general_tutorial",
+  "completion_policy": "if_incomplete"
+}
 ```
 
 ```json
@@ -631,7 +645,8 @@ run_function
   "type": "assign_role",
   "role": "pixel_tzz:hunter",
   "flow": "pixel_tzz:hunter_initialization",
-  "apply": "after_flow"
+  "apply": "after_flow",
+  "completion_policy": "always"
 }
 ```
 
@@ -663,8 +678,16 @@ run_function
 
 - `after_flow`：必须提供 `flow`，目标完成当前版本流程后才提交状态；
 - `immediate`：二次确认后立即提交，可选是否附带 `flow`；
+- `start_flow` 和带 `flow` 的 `assign_role` 可以声明 `completion_policy`：
+  - `if_incomplete`：同一流程 ID 与版本已有自然完成记录的玩家直接计为完成；
+  - `always`：忽略历史完成记录，本次仍要求重新完成；
+  - `resume_only`：只恢复匹配的未结束实例，不创建新实例；
+- `start_flow` 默认 `if_incomplete`，`assign_role` 默认 `always`；
+- `completion_policy` 是向后兼容的可选字段，不提高 `format_version`；
 - 所有实体、流程、阶段和函数引用都会校验；
 - 2A 不提交状态、不启动流程、不转换阶段，也不执行函数。
+
+2C 启动强制流程时会把实际使用的 predicate 文档冻结进实例。predicate 必须自包含；任意层级出现 `minecraft:reference` 都会以 `snapshot_invalid` 拒绝启动，因为该条件会在 `/reload` 后继续解析实时 predicate 注册表，破坏当前实例的冻结边界。需要复用条件时，应在数据包生成阶段展开为完整条件文档。
 
 ## 10. 原子重载与诊断
 
@@ -715,13 +738,16 @@ run_function
 examples/pixel-tzz-base-datapack
 ```
 
-当前示例共有 `23` 个文件，其中 `15` 个 Pixel TZZ 定义：
+当前跨里程碑示例共有 `35` 个文件，其中 `27` 个 Pixel TZZ 定义：
 
 - `1` 个游戏；
 - `3` 个身份；
 - `2` 个生存状态；
 - `3` 个阶段；
+- `1` 个版本化字段；
 - `2` 个流程；
-- `4` 个面板操作。
+- `4` 个面板操作；
+- `1` 个主题；
+- `10` 个页面，其中六个为 2B 预览页、四个为 2C 极短流程页。
 
-示例暂未注册队伍或自定义字段，但相应 Schema 已由 2A 注册层和自检覆盖。
+示例暂未注册队伍；相应 Schema 仍由 2A 注册层和自检覆盖。2A 只负责注册这些定义，四个 2C 页面是否进入真实强制流程由后续权威执行层决定。

@@ -358,6 +358,7 @@ public final class GameDefinitions {
 		RichText name,
 		BossBarColor color,
 		int holdTicks,
+		int fadeTicks,
 		Optional<Identifier> sound
 	) {
 		public BossBarCompletionFeedback {
@@ -423,7 +424,8 @@ public final class GameDefinitions {
 		Set<Identifier> teamTags,
 		Set<Identifier> lifeStateTags,
 		Set<Identifier> completedFlows,
-		Set<Identifier> incompleteFlows
+		Set<Identifier> incompleteFlows,
+		Set<Identifier> statusFlows
 	) {
 		public TargetFilter {
 			roles = Set.copyOf(roles);
@@ -434,6 +436,7 @@ public final class GameDefinitions {
 			lifeStateTags = Set.copyOf(lifeStateTags);
 			completedFlows = Set.copyOf(completedFlows);
 			incompleteFlows = Set.copyOf(incompleteFlows);
+			statusFlows = Set.copyOf(statusFlows);
 		}
 	}
 
@@ -459,6 +462,12 @@ public final class GameDefinitions {
 		AFTER_FLOW
 	}
 
+	public enum CompletionPolicy {
+		IF_INCOMPLETE,
+		ALWAYS,
+		RESUME_ONLY
+	}
+
 	public sealed interface PanelOperation permits
 		StartFlowOperation,
 		AssignRoleOperation,
@@ -468,13 +477,17 @@ public final class GameDefinitions {
 		RunFunctionOperation {
 	}
 
-	public record StartFlowOperation(Identifier flow) implements PanelOperation {
+	public record StartFlowOperation(
+		Identifier flow,
+		CompletionPolicy completionPolicy
+	) implements PanelOperation {
 	}
 
 	public record AssignRoleOperation(
 		Identifier role,
 		Optional<Identifier> flow,
-		ApplyTiming apply
+		ApplyTiming apply,
+		CompletionPolicy completionPolicy
 	) implements PanelOperation {
 		public AssignRoleOperation {
 			flow = flow == null ? Optional.empty() : flow;

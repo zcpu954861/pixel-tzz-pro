@@ -1,1 +1,1 @@
-# 2A example hook: the flow runtime will execute this as each completing player.
+# 2C acceptance hook: succeeds without side effects once for each naturally completing player.

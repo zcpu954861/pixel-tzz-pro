@@ -5,10 +5,10 @@
   "section": "roles",
   "order": 20,
   "label": {
-    "text": "指定或重新初始化猎人"
+    "text": "指定为猎人"
   },
   "description": {
-    "text": "选择一名或多名玩家执行猎人初始化。"
+    "text": "选择尚未成为猎人的玩家，完成身份说明后再提交猎人身份。"
   },
   "color": "#E94F64",
   "phases": [
@@ -22,11 +22,13 @@
     "max": 64,
     "filter": {
       "roles": [
-        "pixel_tzz:runner",
-        "pixel_tzz:hunter"
+        "pixel_tzz:runner"
       ],
       "life_states": [
         "pixel_tzz:alive"
+      ],
+      "status_flows": [
+        "pixel_tzz:general_tutorial"
       ]
     }
   },
@@ -36,13 +38,13 @@
     },
     "consequences": [
       {
-        "text": "目标玩家将进入猎人初始化流程。"
+        "text": "目标玩家将进入不可关闭的极短猎人初始化流程。"
       },
       {
-        "text": "完成流程后才正式变为猎人；已有猎人将重新初始化。"
+        "text": "完成流程后，服务端才会原子提交猎人身份。"
       },
       {
-        "text": "目标玩家已有的准备状态将失效。"
+        "text": "操作期间取消流程不会改变玩家当前身份。"
       }
     ]
   },
@@ -50,6 +52,7 @@
     "type": "assign_role",
     "role": "pixel_tzz:hunter",
     "flow": "pixel_tzz:hunter_initialization",
-    "apply": "after_flow"
+    "apply": "after_flow",
+    "completion_policy": "always"
   }
 }

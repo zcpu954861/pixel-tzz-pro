@@ -2,13 +2,25 @@ package io.github.zcpu954861.pixeltzzpro.network;
 
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.OperationResultS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageCloseC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewPageRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PrepareOperationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 /**
@@ -27,10 +39,34 @@ public final class NetworkPayloads {
 		PayloadTypeRegistry.serverboundPlay().register(PageCloseC2SPayload.TYPE, PageCloseC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 			.register(ResourceReportC2SPayload.TYPE, ResourceReportC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(PrepareOperationC2SPayload.TYPE, PrepareOperationC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(CommitConfirmationC2SPayload.TYPE, CommitConfirmationC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(CancelConfirmationC2SPayload.TYPE, CancelConfirmationC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(FlowActionC2SPayload.TYPE, FlowActionC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(ConsoleRequestC2SPayload.TYPE, ConsoleRequestC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(TargetSnapshotRequestC2SPayload.TYPE, TargetSnapshotRequestC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(HostUiStateC2SPayload.TYPE, HostUiStateC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
 			.register(PreviewCatalogS2CPayload.TYPE, PreviewCatalogS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(PageBundleS2CPayload.TYPE, PageBundleS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(ConfirmationS2CPayload.TYPE, ConfirmationS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(OperationResultS2CPayload.TYPE, OperationResultS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(ConsoleSnapshotS2CPayload.TYPE, ConsoleSnapshotS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(TargetSnapshotS2CPayload.TYPE, TargetSnapshotS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(ForcedPageReleaseS2CPayload.TYPE, ForcedPageReleaseS2CPayload.STREAM_CODEC);
 	}
 }

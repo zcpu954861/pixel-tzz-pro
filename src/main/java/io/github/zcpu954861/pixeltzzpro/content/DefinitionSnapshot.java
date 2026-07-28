@@ -8,9 +8,11 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefin
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -29,7 +31,11 @@ public record DefinitionSnapshot(
 	Map<Identifier, FlowDefinition> flows,
 	Map<Identifier, PanelActionDefinition> panelActions,
 	Map<Identifier, PageDefinition> pages,
-	Map<Identifier, ThemeDefinition> themes
+	Map<Identifier, ThemeDefinition> themes,
+	Map<DocumentKey, SourceDocument> sourceDocuments,
+	Set<Identifier> functions,
+	Set<Identifier> predicates,
+	Map<Identifier, String> predicateDocuments
 ) {
 	public DefinitionSnapshot {
 		games = Map.copyOf(games);
@@ -42,6 +48,10 @@ public record DefinitionSnapshot(
 		panelActions = Map.copyOf(panelActions);
 		pages = Map.copyOf(pages);
 		themes = Map.copyOf(themes);
+		sourceDocuments = Map.copyOf(sourceDocuments);
+		functions = Set.copyOf(functions);
+		predicates = Set.copyOf(predicates);
+		predicateDocuments = Map.copyOf(predicateDocuments);
 	}
 
 	public static DefinitionSnapshot empty() {
@@ -56,6 +66,10 @@ public record DefinitionSnapshot(
 			Map.of(),
 			Map.of(),
 			Map.of(),
+			Map.of(),
+			Map.of(),
+			Set.of(),
+			Set.of(),
 			Map.of()
 		);
 	}
@@ -89,7 +103,45 @@ public record DefinitionSnapshot(
 			this.flows,
 			this.panelActions,
 			this.pages,
-			this.themes
+			this.themes,
+			this.sourceDocuments,
+			this.functions,
+			this.predicates,
+			this.predicateDocuments
 		);
+	}
+
+	public DefinitionSnapshot withPredicateDocuments(
+		final Map<Identifier, String> documents
+	) {
+		return new DefinitionSnapshot(
+			this.generation,
+			this.games,
+			this.roles,
+			this.teams,
+			this.lifeStates,
+			this.phases,
+			this.fields,
+			this.flows,
+			this.panelActions,
+			this.pages,
+			this.themes,
+			this.sourceDocuments,
+			this.functions,
+			this.predicates,
+			documents
+		);
+	}
+
+	public record DocumentKey(DefinitionType type, Identifier id) {
+	}
+
+	public record SourceDocument(
+		DocumentKey key,
+		Identifier resource,
+		String sourcePack,
+		String canonicalJson,
+		String sha256
+	) {
 	}
 }

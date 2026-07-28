@@ -1,14 +1,18 @@
 package io.github.zcpu954861.pixeltzzpro.content;
 
+import com.google.gson.JsonParser;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Compilation;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Problem;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BranchNode;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -267,8 +271,54 @@ public final class DefinitionRegistry {
 			return new Compilation(java.util.Optional.empty(), readProblems);
 		}
 		Set<Identifier> functions = listExternalResources(resourceManager, "function", ".mcfunction");
-		Set<Identifier> predicates = listExternalResources(resourceManager, "predicate", ".json");
-		return DefinitionCompiler.compile(sources, functions, predicates);
+		Map<Identifier, Resource> predicates = mapExternalResources(
+			resourceManager,
+			"predicate",
+			".json"
+		);
+		Compilation compilation = DefinitionCompiler.compile(sources, functions, predicates.keySet());
+		if (!compilation.valid()) {
+			return compilation;
+		}
+		DefinitionSnapshot snapshot = compilation.snapshot().orElseThrow();
+		Map<Identifier, String> predicateDocuments = new LinkedHashMap<>();
+		for (Identifier predicateId : referencedPredicates(snapshot)) {
+			Resource resource = predicates.get(predicateId);
+			if (resource == null) {
+				continue;
+			}
+			try (Reader reader = resource.openAsReader()) {
+				predicateDocuments.put(
+					predicateId,
+					JsonParser.parseString(readBounded(reader)).toString()
+				);
+			} catch (IOException | RuntimeException error) {
+				Identifier resourceId = Identifier.fromNamespaceAndPath(
+					predicateId.getNamespace(),
+					"predicate/" + predicateId.getPath() + ".json"
+				);
+				return new Compilation(
+					java.util.Optional.empty(),
+					List.of(
+						new Problem(
+							"PREDICATE_READ_FAILED",
+							null,
+							predicateId,
+							resourceId,
+							resource.sourcePackId(),
+							"",
+							error.getMessage() == null
+								? error.getClass().getSimpleName()
+								: error.getMessage()
+						)
+					)
+				);
+			}
+		}
+		return new Compilation(
+			java.util.Optional.of(snapshot.withPredicateDocuments(predicateDocuments)),
+			List.of()
+		);
 	}
 
 	private static Set<Identifier> listExternalResources(
@@ -276,18 +326,49 @@ public final class DefinitionRegistry {
 		final String directory,
 		final String suffix
 	) {
+		return mapExternalResources(resourceManager, directory, suffix).keySet();
+	}
+
+	private static Map<Identifier, Resource> mapExternalResources(
+		final ResourceManager resourceManager,
+		final String directory,
+		final String suffix
+	) {
 		String prefix = directory + "/";
 		return resourceManager.listResources(directory, id -> id.getPath().endsWith(suffix))
-			.keySet()
+			.entrySet()
 			.stream()
-			.map(
-				resourceId -> {
+			.collect(
+				Collectors.toUnmodifiableMap(
+					entry -> {
+						Identifier resourceId = entry.getKey();
 					String path = resourceId.getPath();
 					String logicalPath = path.substring(prefix.length(), path.length() - suffix.length());
 					return Identifier.fromNamespaceAndPath(resourceId.getNamespace(), logicalPath);
-				}
-			)
-			.collect(Collectors.toUnmodifiableSet());
+					},
+					Map.Entry::getValue
+				)
+			);
+	}
+
+	private static Set<Identifier> referencedPredicates(
+		final DefinitionSnapshot snapshot
+	) {
+		Set<Identifier> result = new LinkedHashSet<>();
+		snapshot.fields().values().forEach(field -> field.visibleWhen().ifPresent(result::add));
+		snapshot.panelActions().values().forEach(action -> {
+			action.visibleWhen().ifPresent(result::add);
+			action.enabledWhen().ifPresent(result::add);
+		});
+		snapshot.flows().values().forEach(flow ->
+			flow.nodes().values().stream()
+				.filter(BranchNode.class::isInstance)
+				.map(BranchNode.class::cast)
+				.forEach(branch ->
+					branch.cases().forEach(branchCase -> result.add(branchCase.predicate()))
+				)
+		);
+		return Set.copyOf(result);
 	}
 
 	private static String readBounded(final Reader reader) throws IOException {

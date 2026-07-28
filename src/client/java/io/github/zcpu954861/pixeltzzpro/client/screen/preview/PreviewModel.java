@@ -6,6 +6,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonPrimitive;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
+import io.github.zcpu954861.pixeltzzpro.client.screen.PageScreenSession;
+import io.github.zcpu954861.pixeltzzpro.client.screen.PageScreenSession.Viewport;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
 import java.nio.charset.StandardCharsets;
@@ -17,7 +19,7 @@ import net.minecraft.resources.Identifier;
 /**
  * Local-only values exposed by the administrator previewer.
  */
-public final class PreviewModel {
+public final class PreviewModel implements PageScreenSession {
 	private Profile profile = Profile.RUNNER;
 	private PlayerCount playerCount = PlayerCount.THIRTY_TWO;
 	private Viewport viewport = Viewport.STANDARD;
@@ -27,6 +29,12 @@ public final class PreviewModel {
 	private boolean debugLayout;
 	private final Map<String, JsonElement> uiValues = new LinkedHashMap<>();
 
+	@Override
+	public boolean previewChrome() {
+		return true;
+	}
+
+	@Override
 	public BindingContext context(final ActivePage active) {
 		int completed = Math.min(this.playerCount.count, Math.max(0, this.playerCount.count - 8));
 		int remaining = Math.max(0, this.playerCount.count - completed);
@@ -159,10 +167,21 @@ public final class PreviewModel {
 		return this.profile;
 	}
 
+	@Override
+	public String profileDisplayName() {
+		return this.profile.displayName();
+	}
+
 	public PlayerCount playerCount() {
 		return this.playerCount;
 	}
 
+	@Override
+	public int playerCountValue() {
+		return this.playerCount.count();
+	}
+
+	@Override
 	public Viewport viewport() {
 		return this.viewport;
 	}
@@ -277,22 +296,4 @@ public final class PreviewModel {
 		}
 	}
 
-	public enum Viewport {
-		COMPACT,
-		STANDARD,
-		WIDE;
-
-		private Viewport next() {
-			Viewport[] values = values();
-			return values[(this.ordinal() + 1) % values.length];
-		}
-
-		public String label() {
-			return switch (this) {
-				case COMPACT -> "Compact";
-				case STANDARD -> "Standard";
-				case WIDE -> "Wide";
-			};
-		}
-	}
 }

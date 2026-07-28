@@ -68,6 +68,9 @@ public final class ClientResourcePreflight {
 
 		List<Diagnostic> details = missing.values()
 			.stream()
+			.sorted(
+				java.util.Comparator.comparing(Diagnostic::required).reversed()
+			)
 			.limit(MAX_DIAGNOSTIC_DETAILS)
 			.toList();
 		boolean requiredMissing = missing.values().stream().anyMatch(Diagnostic::required);

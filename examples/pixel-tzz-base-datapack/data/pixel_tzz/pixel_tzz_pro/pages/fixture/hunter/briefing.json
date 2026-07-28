@@ -1,0 +1,424 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "猎人身份说明"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "hunter_fixture_briefing",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "hunter_target",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "hunter_eyebrow",
+              "text": {
+                "text": "HUNTER BRIEFING / 猎人说明"
+              }
+            },
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 8,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "player_head",
+                  "uuid": {
+                    "bind": "viewer.uuid"
+                  },
+                  "name": {
+                    "bind": "viewer.name"
+                  },
+                  "online": {
+                    "bind": "viewer.online"
+                  },
+                  "show_status": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 28
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 28
+                    }
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "hunter_title",
+                      "text": {
+                        "text": "猎人身份调整通知"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "bind": "viewer.name"
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "divider",
+              "style": "hunter_divider",
+              "direction": "horizontal",
+              "thickness": 1
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "主持人正在为你调整猎人身份。阅读说明后继续；身份只会在下一页明确确认后生效。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "status_rail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "grid",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "columns": [
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              }
+            ],
+            "column_gap": 10,
+            "row_gap": 6,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "responsive": {
+            "compact": {
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "当前身份 · CURRENT"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "text": {
+                    "bind": "viewer.role_name"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "目标身份 · TARGET"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "hunter_title",
+                  "text": {
+                    "text": "猎人"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "生效时机 · APPLY"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "完成后生效"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "warning_eyebrow",
+              "text": {
+                "text": "ROLE UPDATE / 身份变更"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "确认完成前，你仍保持当前身份；完成后才会变更为猎人。若主持人取消流程，身份不会改变。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "broadcast_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 4,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "ABOUT THIS PAGE / 页面说明"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "本页只用于确认身份调整。猎人行动规则与具体任务会在游戏对应阶段另行说明。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 6,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "utility_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "第 1 步 / 共 2 步  ·  NOTICE"
+            }
+          },
+          {
+            "type": "button",
+            "id": "continue_to_hunter_confirmation",
+            "style": "primary_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 184
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "我已了解，继续确认"
+            },
+            "action": {
+              "type": "flow",
+              "name": "continue"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "io.github.zcpu954861.pixeltzzpro.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "ServerPlayerTabListMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

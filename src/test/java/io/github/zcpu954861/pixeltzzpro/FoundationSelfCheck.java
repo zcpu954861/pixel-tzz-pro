@@ -10,10 +10,17 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
+import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignLifeStateOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignRoleOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ApplyTiming;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarColor;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarStyle;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompletionPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationStrategy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
@@ -31,6 +38,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.StyleValue;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiEvent;
 import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
+import io.github.zcpu954861.pixeltzzpro.server.TabListDisplay;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline;
@@ -71,6 +79,12 @@ public final class FoundationSelfCheck {
 		check(NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION), "current protocol must be compatible");
 		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION + 1), "future protocol must fail closed");
 		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION - 1), "older protocol must fail closed");
+		check(
+			TabListDisplay.format("[猎人]", "PlayerB", 0xE94F64)
+				.getString()
+				.equals("[猎人] PlayerB"),
+			"TAB display formatting must preserve the data-pack prefix and player name"
+		);
 
 		PixelTzzWorldState state = PixelTzzWorldState.initial();
 		check(state.isSchemaCompatible(), "fresh state must be compatible");
@@ -445,6 +459,19 @@ public final class FoundationSelfCheck {
 		check(compiled.panelActions().size() == 2, "valid bundle panel action count failed");
 		check(compiled.pages().size() == 2, "valid bundle page count failed");
 		check(compiled.themes().size() == 1, "valid bundle theme count failed");
+		check(
+			compiled.sourceDocuments().size() == validSources.size(),
+			"every compiled definition must retain one canonical source document"
+		);
+		check(
+			compiled.sourceDocuments()
+				.values()
+				.stream()
+				.allMatch(document -> document.sha256().length() == 64),
+			"canonical definition documents must retain SHA-256 identities"
+		);
+		check(compiled.functions().equals(functions), "function references must survive compilation");
+		check(compiled.predicates().equals(predicates), "predicate references must survive compilation");
 		check(compiled.definitionCount() == 15, "valid bundle total definition count failed");
 		check(
 			compiled.games().get(Identifier.parse("test:main")).defaultLifeState().equals(
@@ -481,6 +508,11 @@ public final class FoundationSelfCheck {
 		check(assignHunter.color().orElseThrow().equals("#E94F64"), "panel color was lost");
 		check(assignHunter.enabledWhen().isPresent(), "panel enabled predicate was lost");
 		check(
+			((io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignRoleOperation)assignHunter.operation())
+				.completionPolicy() == CompletionPolicy.ALWAYS,
+			"assign_role must default to the always completion policy"
+		);
+		check(
 			assignHunter.target().filter().incompleteFlows().contains(Identifier.parse("test:tutorial")),
 			"panel completion filter was lost"
 		);
@@ -493,6 +525,9 @@ public final class FoundationSelfCheck {
 		expectUnsupported(() -> compiled.lifeStates().clear(), "life-state maps must be immutable");
 		expectUnsupported(() -> compiled.pages().clear(), "page maps must be immutable");
 		expectUnsupported(() -> compiled.themes().clear(), "theme maps must be immutable");
+		expectUnsupported(() -> compiled.sourceDocuments().clear(), "source-document maps must be immutable");
+		expectUnsupported(() -> compiled.functions().clear(), "function sets must be immutable");
+		expectUnsupported(() -> compiled.predicates().clear(), "predicate sets must be immutable");
 		expectUnsupported(
 			() -> compiled.pages().get(Identifier.parse("test:page/intro")).root().responsive().clear(),
 			"page node maps must be immutable"
@@ -1442,7 +1477,17 @@ public final class FoundationSelfCheck {
 	}
 
 	private static void checkExampleDatapack() {
-		Path root = Path.of("examples", "pixel-tzz-base-datapack", "data");
+		Path packRoot = Path.of("examples", "pixel-tzz-base-datapack");
+		check(Files.isDirectory(packRoot), "2C example data pack is missing");
+		try (var paths = Files.walk(packRoot)) {
+			check(
+				paths.filter(Files::isRegularFile).count() == 38,
+				"2C example data pack file count changed unexpectedly"
+			);
+		} catch (IOException error) {
+			throw new AssertionError("failed to count the 2C example data pack", error);
+		}
+		Path root = packRoot.resolve("data");
 		check(Files.isDirectory(root), "2A example data pack is missing");
 		List<Source> sources = new ArrayList<>();
 		Set<Identifier> functions = new HashSet<>();
@@ -1502,9 +1547,9 @@ public final class FoundationSelfCheck {
 		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
 		check(snapshot.games().size() == 1, "example must register one game");
 		check(snapshot.fields().size() == 1, "example must register one field");
-		check(snapshot.pages().size() == 6, "example must register six pages");
+		check(snapshot.pages().size() == 10, "example must register six preview pages and four 2C fixture pages");
 		check(snapshot.themes().size() == 1, "example must register one theme");
-		check(snapshot.definitionCount() == 23, "example definition count changed unexpectedly");
+		check(snapshot.definitionCount() == 30, "example definition count changed unexpectedly");
 		check(
 			snapshot.pages().containsKey(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/buttons")),
 			"example must expose the button component showcase"
@@ -1569,6 +1614,233 @@ public final class FoundationSelfCheck {
 			"button specimen content must leave an inset below its button"
 		);
 
+		Set<Identifier> previewPages = Set.of(
+			Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/welcome"),
+			Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/buttons"),
+			Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/rules"),
+			Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/acknowledge"),
+			Identifier.fromNamespaceAndPath("pixel_tzz", "hunter/briefing"),
+			Identifier.fromNamespaceAndPath("pixel_tzz", "hunter/acknowledge")
+		);
+		check(
+			snapshot.pages().keySet().containsAll(previewPages),
+			"the six 2B component pages must remain available as preview-only definitions"
+		);
+		Identifier generalFlowId = Identifier.fromNamespaceAndPath("pixel_tzz", "general_tutorial");
+		Identifier hunterFlowId = Identifier.fromNamespaceAndPath("pixel_tzz", "hunter_initialization");
+		var generalFlow = snapshot.flows().get(generalFlowId);
+		var hunterFlow = snapshot.flows().get(hunterFlowId);
+		check(
+			generalFlow.version() == 2 && generalFlow.entry().equals("briefing") && generalFlow.nodes().size() == 3,
+			"general 2C fixture must be a versioned briefing -> confirm -> complete flow"
+		);
+		check(
+			generalFlow.audience().roles().isEmpty()
+				&& generalFlow.audience().roleTags().isEmpty()
+				&& generalFlow.audience().excludeHost(),
+			"general initialization audience must support both runners and spectator recovery"
+		);
+		check(
+			generalFlow.nodes().get("briefing") instanceof PageNode briefing
+				&& briefing.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/general/briefing"))
+				&& briefing.next().equals("confirm"),
+			"general 2C fixture briefing page reference changed unexpectedly"
+		);
+		check(
+			generalFlow.nodes().get("confirm") instanceof ConfirmNode confirmation
+				&& confirmation.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/general/confirm"))
+				&& confirmation.next().equals("done"),
+			"general 2C fixture confirmation page reference changed unexpectedly"
+		);
+		check(
+			hunterFlow.version() == 2 && hunterFlow.entry().equals("briefing") && hunterFlow.nodes().size() == 3,
+			"hunter 2C fixture must be a versioned briefing -> confirm -> complete flow"
+		);
+		check(
+			hunterFlow.nodes().get("briefing") instanceof PageNode briefing
+				&& briefing.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/briefing"))
+				&& briefing.next().equals("confirm"),
+			"hunter 2C fixture briefing page reference changed unexpectedly"
+		);
+		check(
+			hunterFlow.nodes().get("confirm") instanceof ConfirmNode confirmation
+				&& confirmation.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/confirm"))
+				&& confirmation.next().equals("done"),
+			"hunter 2C fixture confirmation page reference changed unexpectedly"
+		);
+		check(
+			snapshot.flows()
+				.values()
+				.stream()
+				.flatMap(flow -> flow.nodes().values().stream())
+				.noneMatch(
+					node -> node instanceof PageNode page && previewPages.contains(page.page())
+						|| node instanceof ConfirmNode confirmation && previewPages.contains(confirmation.page())
+				),
+			"2B component pages must not be used as executable 2C flow pages"
+		);
+		var generalAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "start_general_initialization"));
+		check(
+			generalAction.operation() instanceof StartFlowOperation start
+				&& start.flow().equals(generalFlowId)
+				&& start.completionPolicy() == CompletionPolicy.IF_INCOMPLETE,
+			"general fixture action must explicitly use if_incomplete"
+		);
+		var hunterAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "assign_hunter"));
+		check(
+			hunterAction.operation() instanceof AssignRoleOperation assign
+				&& assign.flow().orElseThrow().equals(hunterFlowId)
+				&& assign.completionPolicy() == CompletionPolicy.ALWAYS,
+			"hunter fixture action must explicitly use always"
+		);
+		check(
+			hunterAction.target().filter().roles().equals(
+				Set.of(Identifier.fromNamespaceAndPath("pixel_tzz", "runner"))
+			),
+			"assign hunter must only target current runners"
+		);
+		var reinitializeHunterAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "reinitialize_hunter"));
+		check(
+			reinitializeHunterAction.target().filter().roles().equals(
+				Set.of(Identifier.fromNamespaceAndPath("pixel_tzz", "hunter"))
+			)
+				&& reinitializeHunterAction.operation() instanceof AssignRoleOperation assign
+				&& assign.flow().orElseThrow().equals(hunterFlowId)
+				&& assign.completionPolicy() == CompletionPolicy.ALWAYS,
+			"reinitialize hunter must only target current hunters"
+		);
+		var spectatorAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "set_spectator"));
+		check(
+			spectatorAction.target().filter().roles().equals(
+				Set.of(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "runner"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "hunter")
+				)
+			)
+				&& spectatorAction.target().filter().completedFlows().isEmpty()
+				&& spectatorAction.target().filter().incompleteFlows().isEmpty()
+				&& spectatorAction.operation() instanceof AssignRoleOperation assign
+				&& assign.apply() == ApplyTiming.IMMEDIATE,
+			"set spectator must accept uninitialized participants and apply immediately"
+		);
+		var restoreRunnerAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "restore_runner"));
+		check(
+			restoreRunnerAction.target().filter().roles().equals(
+				Set.of(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "hunter"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "spectator")
+				)
+			)
+				&& restoreRunnerAction.target().filter().completedFlows().equals(Set.of(generalFlowId))
+				&& restoreRunnerAction.operation() instanceof AssignRoleOperation assign
+				&& assign.apply() == ApplyTiming.IMMEDIATE,
+			"initialized hunters and spectators must have an immediate runner restore path"
+		);
+		var initializeRunnerAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "initialize_runner"));
+		check(
+			initializeRunnerAction.target().filter().roles().equals(
+				Set.of(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "hunter"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "spectator")
+				)
+			)
+				&& initializeRunnerAction.target().filter().incompleteFlows().equals(Set.of(generalFlowId))
+				&& initializeRunnerAction.operation() instanceof AssignRoleOperation assign
+				&& assign.flow().orElseThrow().equals(generalFlowId)
+				&& assign.apply() == ApplyTiming.AFTER_FLOW
+				&& assign.completionPolicy() == CompletionPolicy.IF_INCOMPLETE,
+			"uninitialized hunters and spectators must complete initialization before runner restore"
+		);
+		DefinitionSnapshot fixtureSnapshot = snapshot.withGeneration(8L);
+		var generalFreeze = ExecutionSnapshotCompiler.freeze(fixtureSnapshot, generalFlow, generalAction);
+		check(generalFreeze.success(), "general 2C fixture must satisfy the executable page contract");
+		check(
+			generalFreeze.compiled().orElseThrow().panelActions().containsKey(generalAction.id()),
+			"restored execution snapshot must retain its source panel action"
+		);
+		var hunterFreeze = ExecutionSnapshotCompiler.freeze(
+			fixtureSnapshot,
+			hunterFlow,
+			hunterAction
+		);
+		check(
+			hunterFreeze.success(),
+			"hunter 2C fixture must satisfy the executable page contract: "
+				+ hunterFreeze.code()
+				+ " at "
+				+ hunterFreeze.nodeId()
+				+ " ("
+				+ hunterFreeze.message()
+				+ ")"
+		);
+		Identifier referencePredicate = Identifier.fromNamespaceAndPath(
+			"pixel_tzz",
+			"fixture/live_reference"
+		);
+		Source originalActionSource = sources.stream()
+			.filter(
+				source -> source.type() == DefinitionType.PANEL_ACTION
+					&& source.id().equals(generalAction.id())
+			)
+			.findFirst()
+			.orElseThrow();
+		var referenceActionJson = JsonParser.parseString(originalActionSource.json())
+			.getAsJsonObject();
+		referenceActionJson.addProperty("visible_when", referencePredicate.toString());
+		List<Source> referenceSources = new ArrayList<>(sources);
+		referenceSources.remove(originalActionSource);
+		referenceSources.add(
+			new Source(
+				originalActionSource.type(),
+				originalActionSource.id(),
+				originalActionSource.resource(),
+				originalActionSource.sourcePack(),
+				referenceActionJson.toString()
+			)
+		);
+		Set<Identifier> referencePredicates = new HashSet<>(predicates);
+		referencePredicates.add(referencePredicate);
+		Compilation referenceCompilation = DefinitionCompiler.compile(
+			referenceSources,
+			functions,
+			referencePredicates
+		);
+		check(referenceCompilation.valid(), "reference predicate fixture must compile");
+		DefinitionSnapshot referenceSnapshot = referenceCompilation.snapshot()
+			.orElseThrow()
+			.withGeneration(9L)
+			.withPredicateDocuments(
+				Map.of(
+					referencePredicate,
+					"""
+					{
+					  "condition": "minecraft:inverted",
+					  "term": {
+					    "condition": "minecraft:reference",
+					    "name": "pixel_tzz:fixture/live_target"
+					  }
+					}
+					"""
+				)
+			);
+		var referenceFreeze = ExecutionSnapshotCompiler.freeze(
+			referenceSnapshot,
+			referenceSnapshot.flows().get(generalFlowId),
+			referenceSnapshot.panelActions().get(generalAction.id())
+		);
+		check(
+			!referenceFreeze.success()
+				&& referenceFreeze.code().equals("snapshot_invalid")
+				&& referenceFreeze.message().contains("minecraft:reference"),
+			"execution snapshot must reject predicates that escape the frozen closure"
+		);
+
 		NodeDefinition rulesRoot = snapshot.pages()
 			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/rules"))
 			.root();
@@ -1595,6 +1867,59 @@ public final class FoundationSelfCheck {
 				"compact rule cards must fill the column width and keep content-driven height"
 			);
 		}
+
+		Identifier setupPhase = Identifier.fromNamespaceAndPath("pixel_tzz", "setup");
+		Identifier phaseEnterFunction = Identifier.fromNamespaceAndPath("pixel_tzz", "phase/setup_enter");
+		List<Source> phaseHookSources = new ArrayList<>(sources);
+		phaseHookSources.removeIf(
+			source -> source.type() == DefinitionType.PHASE && source.id().equals(setupPhase)
+		);
+		phaseHookSources.add(
+			new Source(
+				DefinitionType.PHASE,
+				setupPhase,
+				Identifier.fromNamespaceAndPath(
+					"pixel_tzz",
+					"pixel_tzz_pro/phases/setup.json"
+				),
+				"snapshot-self-check",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "pixel_tzz:main",
+				  "name": {"text": "开局设置"},
+				  "transitions": ["pixel_tzz:initializing"],
+				  "on_enter": "pixel_tzz:phase/setup_enter"
+				}
+				"""
+			)
+		);
+		Set<Identifier> phaseHookFunctions = new HashSet<>(functions);
+		phaseHookFunctions.add(phaseEnterFunction);
+		Compilation phaseHookCompilation = DefinitionCompiler.compile(
+			phaseHookSources,
+			phaseHookFunctions,
+			predicates
+		);
+		check(
+			phaseHookCompilation.valid(),
+			"phase-hook snapshot fixture must compile: " + phaseHookCompilation.problems()
+		);
+		DefinitionSnapshot phaseHookSnapshot = phaseHookCompilation.snapshot()
+			.orElseThrow()
+			.withGeneration(9L);
+		var frozen = ExecutionSnapshotCompiler.freeze(
+			phaseHookSnapshot,
+			phaseHookSnapshot.flows()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "general_tutorial")),
+			phaseHookSnapshot.panelActions()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "start_general_initialization"))
+		);
+		check(frozen.success(), "execution snapshot with a phase hook must freeze and restore: " + frozen.message());
+		check(
+			frozen.frozen().orElseThrow().functionReferences().contains(phaseEnterFunction),
+			"execution snapshot must retain non-callback function references required by its frozen closure"
+		);
 	}
 
 	private static List<Source> validDefinitionSources() {

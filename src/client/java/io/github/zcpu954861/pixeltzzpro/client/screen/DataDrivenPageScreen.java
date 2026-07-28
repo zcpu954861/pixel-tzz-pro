@@ -38,8 +38,8 @@ import com.mojang.blaze3d.platform.NativeImage;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.FlowSubmission;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.PageStatus;
-import io.github.zcpu954861.pixeltzzpro.client.screen.preview.PreviewModel;
 import io.github.zcpu954861.pixeltzzpro.client.ui.ClientResourcePreflight.Diagnostic;
 import io.github.zcpu954861.pixeltzzpro.client.ui.page.PageRenderPlanBuilder;
 import io.github.zcpu954861.pixeltzzpro.client.ui.page.PageRenderPlanBuilder.RenderNode;
@@ -73,7 +73,9 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.TextContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.TextOverflow;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiAction;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiEvent;
+import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload.FieldValue;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.PlacedNode;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
@@ -104,14 +106,13 @@ import java.util.UUID;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.PlayerFaceExtractor;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.options.OptionsScreen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.renderer.RenderPipelines;
-import net.minecraft.client.resources.DefaultPlayerSkin;
+import io.github.zcpu954861.pixeltzzpro.client.ui.widget.PlayerIdentityRenderer;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
@@ -150,7 +151,7 @@ public final class DataDrivenPageScreen extends Screen {
 	private static final UUID FALLBACK_UUID = new UUID(0L, 0L);
 
 	private final Screen parent;
-	private final PreviewModel preview;
+	private final PageScreenSession session;
 	private final BindingRuntime bindings = new BindingRuntime(DataDrivenPageScreen::translate);
 	private final Map<String, Integer> scrollOffsets = new LinkedHashMap<>();
 	private final Map<String, WidgetBinding> pageWidgets = new LinkedHashMap<>();
@@ -179,19 +180,42 @@ public final class DataDrivenPageScreen extends Screen {
 	private long observedRevision = Long.MIN_VALUE;
 	private boolean pendingPlanRefresh;
 	private boolean closing;
+	private boolean serverReleased;
+	private boolean safetyDiagnosticsExpanded;
+	private long pendingActionSequence = -1L;
+	private String pendingActionNodeKey = "";
 	private int toolbarHeight;
 	private int viewportX;
 	private int viewportY;
 	private int viewportWidth;
 	private int viewportHeight;
+	private int pageContentWidth;
+	private int pageContentHeight;
+	private double pageScale = 1.0;
 	private String draggingScrollKey;
 	private double dragStartMouse;
 	private int dragStartOffset;
 
-	public DataDrivenPageScreen(final Screen parent, final PreviewModel preview) {
+	public DataDrivenPageScreen(final Screen parent, final PageScreenSession session) {
 		super(initialTitle());
 		this.parent = parent;
-		this.preview = preview;
+		this.session = session;
+	}
+
+	public boolean isLivePageScreen() {
+		return !this.session.previewChrome();
+	}
+
+	public Screen returnScreen() {
+		return this.parent;
+	}
+
+	public void releaseFromServer() {
+		if (!isLivePageScreen() || this.serverReleased) {
+			return;
+		}
+		this.serverReleased = true;
+		onClose();
 	}
 
 	private static Component initialTitle() {
@@ -282,22 +306,30 @@ public final class DataDrivenPageScreen extends Screen {
 			return;
 		}
 
-		layoutToolbar();
-		calculateViewport();
+		if (this.session.previewChrome()) {
+			layoutToolbar();
+			calculateViewport();
+		} else {
+			layoutLiveViewport();
+		}
 		try {
 			this.plan = PageRenderPlanBuilder.build(
 				this.font,
 				this.active,
-				contextWithLocalUi(this.preview.context(this.active)),
-				this.preview.viewport(),
+				contextWithLocalUi(this.session.context(this.active)),
+				this.session.responsiveTier(),
 				this.viewportWidth,
 				this.viewportHeight,
 				this.scrollOffsets,
-				this.preview.defaultFont()
+				this.session.defaultFont()
 			);
 			indexPlaced(this.plan.layout().root());
+			updatePageFit();
 			initializeShowMotions();
 			buildPageWidgets(this.plan.layout().root());
+			if (this.active.purpose() == PagePurpose.FORCED_FLOW) {
+				ClientPageState.reportRenderReady(this.active.instanceId());
+			}
 		} catch (RuntimeException error) {
 			this.plan = null;
 			PixelTzzPro.LOGGER.error(
@@ -306,21 +338,29 @@ public final class DataDrivenPageScreen extends Screen {
 				error
 			);
 			this.renderFailure = safeMessage(error);
+			if (this.active != null && this.active.purpose() == PagePurpose.FORCED_FLOW) {
+				ClientPageState.reportRenderFailure(
+					this.active.instanceId(),
+					this.renderFailure
+				);
+			}
 			layoutSafetyWidgets();
 			return;
 		}
 
-		int backWidth = Math.min(104, Math.max(72, this.width - 24));
-		ConsoleButton back = new ConsoleButton(
-			this.width - backWidth - 12,
-			this.height - 30,
-			backWidth,
-			22,
-			Component.literal("返回页面目录"),
-			button -> onClose(),
-			Variant.NAVIGATION
-		);
-		this.addRenderableWidget(back);
+		if (this.session.previewChrome()) {
+			int backWidth = Math.min(104, Math.max(72, this.width - 24));
+			ConsoleButton back = new ConsoleButton(
+				this.width - backWidth - 12,
+				this.height - 30,
+				backWidth,
+				22,
+				Component.literal("返回页面目录"),
+				button -> onClose(),
+				Variant.NAVIGATION
+			);
+			this.addRenderableWidget(back);
+		}
 
 		if (focusedKey != null) {
 			WidgetBinding restored = this.pageWidgets.get(focusedKey);
@@ -344,6 +384,7 @@ public final class DataDrivenPageScreen extends Screen {
 		this.lastSoundTimes.clear();
 		this.motionSequence = 0L;
 		this.closing = false;
+		this.serverReleased = false;
 		Map<String, String> colors = new HashMap<>(
 			BuiltInUiResources.defaultTheme().tokens().colors()
 		);
@@ -368,6 +409,14 @@ public final class DataDrivenPageScreen extends Screen {
 		return this.active == null
 			|| status != PageStatus.READY
 			|| !this.renderFailure.isEmpty();
+	}
+
+	private boolean forcedPage() {
+		return !this.serverReleased
+			&& (
+				(this.active != null && this.active.purpose() == PagePurpose.FORCED_FLOW)
+					|| ClientPageState.forcedPageActive()
+			);
 	}
 
 	private void layoutToolbar() {
@@ -403,52 +452,52 @@ public final class DataDrivenPageScreen extends Screen {
 		return List.of(
 			new ToolSpec(
 				116,
-				"身份: " + this.preview.profile().displayName(),
+				"身份: " + this.session.profileDisplayName(),
 				"循环模拟普通玩家、管理员、主持人、猎人、逃走者和旁观者",
-				this.preview::cycleProfile
+				this.session::cycleProfile
 			),
 			new ToolSpec(
 				76,
-				"人数: " + this.preview.playerCount().count(),
+				"人数: " + this.session.playerCountValue(),
 				"循环模拟 0、1、32、64 名参与者",
-				this.preview::cyclePlayerCount
+				this.session::cyclePlayerCount
 			),
 			new ToolSpec(
 				112,
-				"视口: " + this.preview.viewport().label(),
+				"视口: " + this.session.viewport().label(),
 				"真实改变中央业务视口宽度和响应档位",
-				this.preview::cycleViewport
+				this.session::cycleViewport
 			),
 			new ToolSpec(
 				98,
-				this.preview.reducedMotion() ? "动态: 减少" : "动态: 标准",
+				this.session.reducedMotion() ? "动态: 减少" : "动态: 标准",
 				"切换减少动态效果",
-				this.preview::toggleReducedMotion
+				this.session::toggleReducedMotion
 			),
 			new ToolSpec(
 				92,
-				this.preview.highContrast() ? "对比: 高" : "对比: 标准",
+				this.session.highContrast() ? "对比: 高" : "对比: 标准",
 				"切换高对比度预览",
-				this.preview::toggleHighContrast
+				this.session::toggleHighContrast
 			),
 			new ToolSpec(
 				92,
-				this.preview.defaultFont() ? "字体: 默认" : "字体: 主题",
+				this.session.defaultFont() ? "字体: 默认" : "字体: 主题",
 				"强制使用 Minecraft 默认字体回退",
-				this.preview::toggleDefaultFont
+				this.session::toggleDefaultFont
 			),
 			new ToolSpec(
 				80,
-				this.preview.debugLayout() ? "调试: 开" : "调试: 关",
+				this.session.debugLayout() ? "调试: 开" : "调试: 关",
 				"显示节点、裁剪、诊断、缓存及 Repeat 可见项",
-				this.preview::toggleDebugLayout
+				this.session::toggleDebugLayout
 			)
 		);
 	}
 
 	private void calculateViewport() {
 		int availableWidth = Math.max(1, this.width - 32);
-		int requestedWidth = switch (this.preview.viewport()) {
+		int requestedWidth = switch (this.session.viewport()) {
 			case COMPACT -> COMPACT_VIEWPORT_WIDTH;
 			case STANDARD -> STANDARD_VIEWPORT_WIDTH;
 			case WIDE -> WIDE_VIEWPORT_WIDTH;
@@ -460,7 +509,7 @@ public final class DataDrivenPageScreen extends Screen {
 			1,
 			this.height - contentTop - FOOTER_HEIGHT - OUTER_MARGIN
 		);
-		int requestedHeight = switch (this.preview.viewport()) {
+		int requestedHeight = switch (this.session.viewport()) {
 			case COMPACT -> COMPACT_VIEWPORT_HEIGHT;
 			case STANDARD -> STANDARD_VIEWPORT_HEIGHT;
 			case WIDE -> WIDE_VIEWPORT_HEIGHT;
@@ -469,12 +518,44 @@ public final class DataDrivenPageScreen extends Screen {
 		this.viewportY = contentTop + Math.max(0, availableHeight - this.viewportHeight) / 2;
 	}
 
+	private void layoutLiveViewport() {
+		this.toolbarHeight = 0;
+		this.viewportWidth = Math.max(1, Math.min(620, this.width - 24));
+		this.viewportHeight = Math.max(1, Math.min(360, this.height - 24));
+		this.viewportX = (this.width - this.viewportWidth) / 2;
+		this.viewportY = (this.height - this.viewportHeight) / 2;
+	}
+
+	private void updatePageFit() {
+		PlacedNode root = this.plan.layout().root();
+		this.pageContentWidth = Math.max(
+			root.bounds().right(),
+			root.contentBounds().x() + root.contentWidth()
+		);
+		this.pageContentHeight = Math.max(
+			root.bounds().bottom(),
+			root.contentBounds().y() + root.contentHeight()
+		);
+		this.pageScale = this.session.previewChrome()
+			? 1.0
+			: UiLayoutEngine.fitScale(
+				this.pageContentWidth,
+				this.pageContentHeight,
+				this.viewportWidth,
+				this.viewportHeight
+			);
+	}
+
 	private void layoutSafetyWidgets() {
-		int panelWidth = Math.min(620, Math.max(300, this.width - 24));
-		int panelHeight = Math.min(330, Math.max(220, this.height - 24));
+		int panelWidth = Math.max(1, Math.min(620, this.width - 24));
+		int panelHeight = Math.max(1, Math.min(330, this.height - 24));
 		int x = (this.width - panelWidth) / 2;
 		int y = (this.height - panelHeight) / 2;
 		int buttonY = y + panelHeight - 38;
+		if (forcedPage()) {
+			layoutForcedSafetyWidgets(x, panelWidth, buttonY);
+			return;
+		}
 		ConsoleButton retry = new ConsoleButton(
 			x + 18,
 			buttonY,
@@ -515,6 +596,57 @@ public final class DataDrivenPageScreen extends Screen {
 		this.setInitialFocus(retry.active ? retry : back);
 	}
 
+	private void layoutForcedSafetyWidgets(
+		final int x,
+		final int panelWidth,
+		final int buttonY
+	) {
+		ConsoleButton retry = new ConsoleButton(
+			x + 18,
+			buttonY,
+			112,
+			24,
+			Component.literal("重新检查资源"),
+			button -> {
+				ClientPageState.retryResourcePreflight();
+				rebuild();
+			},
+			Variant.PRIMARY
+		);
+		retry.active = this.active != null;
+		this.addRenderableWidget(retry);
+
+		ConsoleButton diagnostics = new ConsoleButton(
+			x + 138,
+			buttonY,
+			104,
+			24,
+			Component.literal(
+				this.safetyDiagnosticsExpanded ? "收起诊断" : "查看诊断"
+			),
+			button -> {
+				this.safetyDiagnosticsExpanded = !this.safetyDiagnosticsExpanded;
+				rebuild();
+			},
+			Variant.NORMAL
+		);
+		this.addRenderableWidget(diagnostics);
+
+		ConsoleButton disconnect = new ConsoleButton(
+			x + panelWidth - 118,
+			buttonY,
+			100,
+			24,
+			Component.literal("断开连接"),
+			button -> this.minecraft.disconnectFromWorld(
+				Component.literal("已从强制流程安全错误页断开连接")
+			),
+			Variant.DANGER
+		);
+		this.addRenderableWidget(disconnect);
+		this.setInitialFocus(retry.active ? retry : diagnostics);
+	}
+
 	private void indexPlaced(final PlacedNode placed) {
 		this.placedNodes.put(placed.key(), placed);
 		placed.children().forEach(this::indexPlaced);
@@ -552,7 +684,7 @@ public final class DataDrivenPageScreen extends Screen {
 			eventSound(node, UiEvent.PRESS).isEmpty(),
 			(state, fallback) -> buttonAppearance(node, state, fallback)
 		);
-		button.active = evaluateEnabled(node, content);
+		button.active = actionEnabled(node, content);
 		updateButtonTooltip(button, node, content);
 		addPageWidget(node.key(), button, placed, node);
 	}
@@ -591,6 +723,14 @@ public final class DataDrivenPageScreen extends Screen {
 			.orElse(true);
 	}
 
+	private boolean actionEnabled(final RenderNode node, final ButtonContent content) {
+		return evaluateEnabled(node, content)
+			&& (
+				content.action().type() == ActionType.LOCAL
+					|| !ClientPageState.flowActionPending()
+			);
+	}
+
 	private void updateButtonTooltip(
 		final ConsoleButton button,
 		final RenderNode node,
@@ -617,7 +757,13 @@ public final class DataDrivenPageScreen extends Screen {
 			return;
 		}
 		String nodeId = node.definition().id().orElseThrow();
-		JsonElement existing = this.preview.uiValue(nodeId);
+		JsonElement existing = this.session.uiValue(nodeId);
+		if (existing == null) {
+			existing = this.session.initialFieldValue(this.active, input.field());
+			if (existing != null) {
+				this.session.setUiValue(nodeId, existing);
+			}
+		}
 		if (existing != null) {
 			this.localUiValues.put(nodeId, existing);
 		}
@@ -847,7 +993,7 @@ public final class DataDrivenPageScreen extends Screen {
 	private void setUiValue(final String nodeId, final JsonElement value) {
 		JsonElement copied = value.deepCopy();
 		this.localUiValues.put(nodeId, copied);
-		this.preview.setUiValue(nodeId, copied);
+		this.session.setUiValue(nodeId, copied);
 		this.bindingContextCache.clear();
 	}
 
@@ -889,12 +1035,21 @@ public final class DataDrivenPageScreen extends Screen {
 		this.lastRequestEnvelope = PRETTY_JSON.toJson(envelope);
 
 		if (action.type() != ActionType.LOCAL) {
-			triggerActionOutcome(node, true);
+			if (this.session.previewChrome()) {
+				triggerActionOutcome(node, true);
+				return;
+			}
+			submitFlowAction(node, action);
 			return;
 		}
 		String name = action.name().orElse("");
 		switch (name) {
 			case "back", "close" -> {
+				if (forcedPage()) {
+					this.lastRequestEnvelope = "强制流程只能由匹配的服务端释放状态关闭。";
+					triggerActionOutcome(node, false);
+					return;
+				}
 				triggerActionOutcome(node, true);
 				onClose();
 			}
@@ -921,6 +1076,59 @@ public final class DataDrivenPageScreen extends Screen {
 				triggerActionOutcome(node, false);
 			}
 		}
+	}
+
+	private void submitFlowAction(final RenderNode node, final UiAction action) {
+		String actionId = action.name().orElse("");
+		if (actionId.isBlank()) {
+			this.lastRequestEnvelope = "当前非本地动作没有可提交的流程动作名称。";
+			triggerActionOutcome(node, false);
+			return;
+		}
+		FlowSubmission submission = ClientPageState.submitFlowAction(
+			actionId,
+			currentFieldValues()
+		);
+		if (!submission.sent()) {
+			this.lastRequestEnvelope = "动作未发送: " + submission.message();
+			triggerActionOutcome(node, false);
+			return;
+		}
+		this.pendingActionSequence = submission.requestSequence();
+		this.pendingActionNodeKey = node.key();
+		this.lastRequestEnvelope = "动作已发送，正在等待服务端确认…";
+	}
+
+	private List<FieldValue> currentFieldValues() {
+		if (this.plan == null) {
+			return List.of();
+		}
+		Map<Identifier, FieldValue> values = new LinkedHashMap<>();
+		for (RenderNode renderNode : this.plan.nodes().values()) {
+			if (
+				renderNode.definition() == null
+					|| !(renderNode.definition().content() instanceof FieldInputContent input)
+					|| renderNode.definition().id().isEmpty()
+			) {
+				continue;
+			}
+			FieldSchema schema = this.active.fields().get(input.field());
+			if (schema == null) {
+				continue;
+			}
+			String nodeId = renderNode.definition().id().orElseThrow();
+			JsonElement value = this.localUiValues.get(nodeId);
+			if (value == null) {
+				value = this.session.initialFieldValue(this.active, input.field());
+			}
+			if (value != null) {
+				values.put(
+					input.field(),
+					new FieldValue(input.field(), schema.type(), value.toString())
+				);
+			}
+		}
+		return List.copyOf(values.values());
 	}
 
 	private void triggerActionOutcome(final RenderNode node, final boolean success) {
@@ -962,6 +1170,7 @@ public final class DataDrivenPageScreen extends Screen {
 		super.tick();
 		long now = Util.getMillis();
 		playPendingSounds(now);
+		consumeActionResult();
 		if (this.observedRevision != ClientPageState.revision()) {
 			rebuild();
 			return;
@@ -984,13 +1193,33 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 	}
 
+	private void consumeActionResult() {
+		if (this.pendingActionSequence < 0L) {
+			return;
+		}
+		ClientPageState.consumeFlowActionResult(this.pendingActionSequence)
+			.ifPresent(result -> {
+				RenderNode node = this.plan == null
+					? null
+					: this.plan.nodes().get(this.pendingActionNodeKey);
+				this.pendingActionSequence = -1L;
+				this.pendingActionNodeKey = "";
+				this.lastRequestEnvelope = result.message().isEmpty()
+					? "服务端返回: " + result.code().serializedName()
+					: result.message();
+				if (node != null) {
+					triggerActionOutcome(node, result.success());
+				}
+			});
+	}
+
 	private void refreshButtonStates() {
 		for (WidgetBinding binding : this.pageWidgets.values()) {
 			if (
 				binding.widget() instanceof ConsoleButton button
 					&& binding.node().definition().content() instanceof ButtonContent content
 			) {
-				button.active = evaluateEnabled(binding.node(), content);
+				button.active = actionEnabled(binding.node(), content);
 				updateButtonTooltip(button, binding.node(), content);
 			}
 		}
@@ -1199,28 +1428,71 @@ public final class DataDrivenPageScreen extends Screen {
 			return;
 		}
 
-		renderToolbarFrame(graphics);
-		renderViewportFrame(graphics);
+		if (this.session.previewChrome()) {
+			renderToolbarFrame(graphics);
+			renderViewportFrame(graphics);
+		}
 		MotionLayout motionLayout = buildMotionLayout(Util.getMillis());
 		this.currentMotionLayout = motionLayout;
 		try {
+			renderForcedViewportFrame(graphics, motionLayout);
 			drawNode(graphics, this.plan.layout().root(), motionLayout);
 			graphics.nextStratum();
 			drawPageWidgets(graphics, mouseX, mouseY, tickProgress, motionLayout);
 			drawScrollbars(graphics, motionLayout);
-			if (this.preview.debugLayout()) {
+			if (this.session.debugLayout()) {
 				graphics.nextStratum();
 				drawDebugOverlay(graphics, mouseX, mouseY, motionLayout);
 			}
-			if (!this.lastRequestEnvelope.isEmpty()) {
+			if (this.session.previewChrome() && !this.lastRequestEnvelope.isEmpty()) {
 				graphics.nextStratum();
 				drawRequestEnvelope(graphics);
 			}
-			renderFooter(graphics);
+			if (this.session.previewChrome()) {
+				renderFooter(graphics);
+			}
 			super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
 		} finally {
 			this.currentMotionLayout = null;
 		}
+	}
+
+	private void renderForcedViewportFrame(
+		final GuiGraphicsExtractor graphics,
+		final MotionLayout motionLayout
+	) {
+		if (!forcedPage()) {
+			return;
+		}
+		PlacedNode root = this.plan.layout().root();
+		NodeFrame frame = motionLayout.frames().get(root.key());
+		RenderNode rootNode = this.plan.nodes().get(root.key());
+		if (frame == null || rootNode == null || frame.opacity() <= 0.0F) {
+			return;
+		}
+		float opacity = frame.opacity() * styleNumber(rootNode, "opacity", 1.0F);
+		int border = withOpacity(
+			styleColor(rootNode, "border_color", SURFACE_BORDER),
+			opacity
+		);
+		int brand = withOpacity(
+			parseHexColor(this.motionColorTokens.get("brand")).orElse(BRAND_GOLD),
+			opacity
+		);
+		int info = withOpacity(
+			parseHexColor(this.motionColorTokens.get("info")).orElse(INFO_CYAN),
+			opacity
+		);
+		int x = Math.max(0, this.viewportX - 2);
+		int y = Math.max(0, this.viewportY - 2);
+		int right = Math.min(this.width, this.viewportX + this.viewportWidth + 2);
+		int bottom = Math.min(this.height, this.viewportY + this.viewportHeight + 2);
+		if (right <= x || bottom <= y) {
+			return;
+		}
+		graphics.outline(x, y, right - x, bottom - y, border);
+		graphics.fill(x, y, Math.min(right, x + 4), bottom, info);
+		graphics.fill(Math.min(right, x + 4), y, right, Math.min(bottom, y + 2), brand);
 	}
 
 	private void renderToolbarFrame(final GuiGraphicsExtractor graphics) {
@@ -1271,7 +1543,7 @@ public final class DataDrivenPageScreen extends Screen {
 			this.viewportY,
 			this.viewportX + this.viewportWidth,
 			this.viewportY + this.viewportHeight,
-			this.preview.highContrast() ? 0xFF020406 : SURFACE
+			this.session.highContrast() ? 0xFF020406 : SURFACE
 		);
 	}
 
@@ -1324,7 +1596,7 @@ public final class DataDrivenPageScreen extends Screen {
 		Rect bounds = placed.bounds();
 		Rect content = placed.contentBounds();
 		float opacity = frame.opacity() * styleNumber(node, "opacity", 1.0F);
-		OptionalInt motionColor = this.preview.highContrast()
+		OptionalInt motionColor = this.session.highContrast()
 			? OptionalInt.empty()
 			: frame.color();
 		switch (node.type()) {
@@ -1336,7 +1608,7 @@ public final class DataDrivenPageScreen extends Screen {
 			case PLAYER_HEAD -> drawPlayerHead(graphics, node, content, opacity, motionColor);
 			case FIELD_INPUT -> drawFieldInput(graphics, node, content, opacity, motionColor);
 			case SCROLL -> {
-				if (this.preview.highContrast()) {
+				if (this.session.highContrast()) {
 					graphics.outline(
 						content.x(),
 						content.y(),
@@ -1959,7 +2231,7 @@ public final class DataDrivenPageScreen extends Screen {
 		int track = withOpacity(styleColor(node, "track_color", 0xFF17212B), opacity);
 		int border = styleColor(node, "border_color", SURFACE_BORDER);
 		int fill = withOpacity(
-			(this.preview.highContrast() ? OptionalInt.empty() : frame.color())
+			(this.session.highContrast() ? OptionalInt.empty() : frame.color())
 				.orElse(styleColor(node, "fill_color", BRAND_GOLD)),
 			opacity
 		);
@@ -2040,6 +2312,9 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 		FieldSchema field = this.active.fields().get(input.field());
 		if (field == null) {
+			if (forcedPage()) {
+				return;
+			}
 			graphics.text(
 				this.font,
 				styledText(node, "字段定义不可用: " + input.field()),
@@ -2132,16 +2407,14 @@ public final class DataDrivenPageScreen extends Screen {
 			.map(Boolean::parseBoolean)
 			.orElse(false);
 		int size = Math.max(1, Math.min(content.width(), content.height()));
-		var connection = this.minecraft.getConnection();
-		var playerInfo = connection == null ? null : connection.getPlayerInfo(uuid);
-		var skin = playerInfo == null ? DefaultPlayerSkin.get(uuid) : playerInfo.getSkin();
-		PlayerFaceExtractor.extractRenderState(
+		PlayerIdentityRenderer.drawHead(
 			graphics,
-			skin,
+			uuid,
+			online,
 			content.x(),
 			content.y(),
 			size,
-			withOpacity(motionColor.orElse(0xFFFFFFFF), opacity)
+			false
 		);
 		if (head.showStatus()) {
 			int dot = Math.max(3, size / 4);
@@ -2212,7 +2485,7 @@ public final class DataDrivenPageScreen extends Screen {
 			} else if (binding.widget() instanceof AnimatedEditBox edit) {
 				edit.setPresentationScale((float)frame.transform().scale());
 				edit.setMotionColor(
-					this.preview.highContrast()
+					this.session.highContrast()
 						? OptionalInt.empty()
 						: frame.color()
 				);
@@ -2399,11 +2672,11 @@ public final class DataDrivenPageScreen extends Screen {
 		);
 		lines.add(
 			"preview reduced="
-				+ this.preview.reducedMotion()
+				+ this.session.reducedMotion()
 				+ " contrast="
-				+ this.preview.highContrast()
+				+ this.session.highContrast()
 				+ " defaultFont="
-				+ this.preview.defaultFont()
+				+ this.session.defaultFont()
 		);
 		if (hovered != null) {
 			lines.add("hover key=" + hovered.key());
@@ -2522,8 +2795,8 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void renderSafetyPage(final GuiGraphicsExtractor graphics) {
-		int panelWidth = Math.min(620, Math.max(300, this.width - 24));
-		int panelHeight = Math.min(330, Math.max(220, this.height - 24));
+		int panelWidth = Math.max(1, Math.min(620, this.width - 24));
+		int panelHeight = Math.max(1, Math.min(330, this.height - 24));
 		int x = (this.width - panelWidth) / 2;
 		int y = (this.height - panelHeight) / 2;
 		graphics.fill(x, y, x + panelWidth, y + panelHeight, PANEL);
@@ -2567,7 +2840,11 @@ public final class DataDrivenPageScreen extends Screen {
 				false
 			);
 			lineY += 14;
-			for (Diagnostic diagnostic : this.active.resourceDiagnostics().stream().limit(6).toList()) {
+			int diagnosticLimit = this.safetyDiagnosticsExpanded ? 16 : 4;
+			for (
+				Diagnostic diagnostic
+					: this.active.resourceDiagnostics().stream().limit(diagnosticLimit).toList()
+			) {
 				String detail = diagnostic.serializedType()
 					+ "  "
 					+ diagnostic.id()
@@ -2587,7 +2864,9 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 		graphics.text(
 			this.font,
-			"此页只使用模组内置颜色、原版字体和控件；未渲染任何数据包业务节点。",
+			forcedPage()
+				? "强制流程仍保持锁定；这里只允许重试、查看诊断或断开连接。"
+				: "此页只使用模组内置颜色、原版字体和控件；未渲染任何数据包业务节点。",
 			x + 18,
 			y + panelHeight - 57,
 			MUTED_TEXT,
@@ -2633,10 +2912,10 @@ public final class DataDrivenPageScreen extends Screen {
 		UiMotionRuntime.Sample initial = UiMotionRuntime.sample(
 			motion,
 			0L,
-			this.preview.reducedMotion(),
+			this.session.reducedMotion(),
 			this.motionColorTokens
 		);
-		MotionCorrection correction = origin == null || this.preview.reducedMotion()
+		MotionCorrection correction = origin == null || this.session.reducedMotion()
 			? MotionCorrection.none()
 			: MotionCorrection.between(
 				origin,
@@ -2714,10 +2993,10 @@ public final class DataDrivenPageScreen extends Screen {
 		UiMotionRuntime.Sample sample = UiMotionRuntime.sample(
 			playback.motion(),
 			elapsed,
-			this.preview.reducedMotion(),
+			this.session.reducedMotion(),
 			this.motionColorTokens
 		);
-		if (this.preview.reducedMotion() || playback.correction().isIdentity()) {
+		if (this.session.reducedMotion() || playback.correction().isIdentity()) {
 			return sample;
 		}
 		long activeElapsed = elapsed - playback.motion().delayMilliseconds();
@@ -2753,13 +3032,24 @@ public final class DataDrivenPageScreen extends Screen {
 		Map<String, NodeFrame> frames = new LinkedHashMap<>();
 		buildNodeFrames(
 			this.plan.layout().root(),
-			Transform.root(this.viewportX, this.viewportY),
+			pageRootTransform(),
 			viewport,
 			1.0F,
 			now,
 			frames
 		);
 		return new MotionLayout(frames);
+	}
+
+	private Transform pageRootTransform() {
+		if (this.pageScale >= 0.999) {
+			return Transform.root(this.viewportX, this.viewportY);
+		}
+		double offsetX = this.viewportX
+			+ (this.viewportWidth - this.pageContentWidth * this.pageScale) / 2.0;
+		double offsetY = this.viewportY
+			+ (this.viewportHeight - this.pageContentHeight * this.pageScale) / 2.0;
+		return new Transform(this.pageScale, offsetX, offsetY);
 	}
 
 	private void buildNodeFrames(
@@ -2810,7 +3100,7 @@ public final class DataDrivenPageScreen extends Screen {
 			sample.progressValue()
 		);
 		frames.put(placed.key(), frame);
-		Rect childClip = placed.type() == NodeType.SCROLL
+		Rect childClip = placed.type() == NodeType.SCROLL || placed.type() == NodeType.CARD
 			? clip.intersection(content)
 			: clip;
 		for (PlacedNode child : placed.children()) {
@@ -2856,7 +3146,7 @@ public final class DataDrivenPageScreen extends Screen {
 		final String name,
 		final int fallback
 	) {
-		if (this.preview.highContrast()) {
+		if (this.session.highContrast()) {
 			return switch (name) {
 				case "background_color", "surface_color", "track_color" -> 0xFF05080C;
 				case "text_color" -> 0xFFFFFFFF;
@@ -2955,7 +3245,7 @@ public final class DataDrivenPageScreen extends Screen {
 		NodeFrame frame = this.currentMotionLayout == null
 			? null
 			: this.currentMotionLayout.frames().get(node.key());
-		OptionalInt motionColor = frame == null || this.preview.highContrast()
+		OptionalInt motionColor = frame == null || this.session.highContrast()
 			? OptionalInt.empty()
 			: frame.color();
 		int text = motionColor.orElse(styleColor(values, "text_color", fallback.text()));
@@ -3046,6 +3336,10 @@ public final class DataDrivenPageScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(final KeyEvent event) {
+		if (event.key() == GLFW_KEY_ESCAPE && forcedPage()) {
+			LivePageSupervisor.openRestrictedPause(this.minecraft, this);
+			return true;
+		}
 		if (this.closing) {
 			if (event.key() == GLFW_KEY_ESCAPE) {
 				finishClose();
@@ -3099,6 +3393,16 @@ public final class DataDrivenPageScreen extends Screen {
 			rebuild();
 		}
 		return true;
+	}
+
+	@Override
+	public boolean shouldCloseOnEsc() {
+		return !forcedPage();
+	}
+
+	@Override
+	public boolean canInterruptWithAnotherScreen() {
+		return !forcedPage();
 	}
 
 	private PlacedNode keyboardScrollTarget(final MotionLayout motionLayout) {
@@ -3362,6 +3666,9 @@ public final class DataDrivenPageScreen extends Screen {
 
 	@Override
 	public void onClose() {
+		if (forcedPage()) {
+			return;
+		}
 		if (this.closing) {
 			finishClose();
 			return;
@@ -3387,7 +3694,10 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void finishClose() {
-		ClientPageState.closeActivePage();
+		if (!this.serverReleased && !ClientPageState.closeActivePage()) {
+			this.closing = false;
+			return;
+		}
 		TransitioningConsoleScreen.preparePopEntry(this.parent);
 		this.minecraft.gui.setScreen(this.parent);
 	}

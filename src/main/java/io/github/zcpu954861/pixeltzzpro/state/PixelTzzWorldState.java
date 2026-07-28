@@ -4,16 +4,16 @@ import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.Dynamic;
 import com.mojang.serialization.JsonOps;
-import com.mojang.serialization.codecs.RecordCodecBuilder;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-import net.minecraft.core.UUIDUtil;
+import java.util.function.UnaryOperator;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -22,19 +22,13 @@ import net.minecraft.world.level.saveddata.SavedDataType;
 /**
  * The single world-level source of truth owned by the server mod.
  *
- * <p>Scoreboards and tags may project this state in later milestones, but never replace it.
+ * <p>The wrapper keeps its object identity for the lifetime of the loaded world. Successful changes
+ * replace one immutable {@link WorldStateV2} payload and mark this wrapper dirty; this prevents partial
+ * state mutations and keeps the unreadable-file guard from mistaking a legitimate replacement object
+ * for a failed load.
  */
 public final class PixelTzzWorldState extends SavedData {
-	public static final int CURRENT_SCHEMA_VERSION = 1;
-	private static final Codec<StoredState> STORED_CODEC = RecordCodecBuilder.create(
-		instance -> instance.group(
-				Codec.INT.fieldOf("schema_version").forGetter(StoredState::schemaVersion),
-				GamePhase.CODEC.fieldOf("phase").forGetter(StoredState::phase),
-				UUIDUtil.STRING_CODEC.optionalFieldOf("host_id").forGetter(StoredState::hostId),
-				Codec.LONG.fieldOf("state_revision").forGetter(StoredState::stateRevision)
-			)
-			.apply(instance, StoredState::new)
-	);
+	public static final int CURRENT_SCHEMA_VERSION = WorldStateV2.SCHEMA_VERSION;
 	public static final Codec<PixelTzzWorldState> CODEC = Codec.PASSTHROUGH.flatXmap(
 		PixelTzzWorldState::decode,
 		PixelTzzWorldState::encode
@@ -46,43 +40,33 @@ public final class PixelTzzWorldState extends SavedData {
 		null
 	);
 
-	private final int schemaVersion;
-	private final GamePhase phase;
-	private final Optional<UUID> hostId;
-	private final long stateRevision;
-	private final Dynamic<?> opaqueData;
+	private LoadKind loadKind;
+	private WorldStateV2 currentV2;
+	private LegacyWorldStateV1 legacyV1;
+	private Dynamic<?> preservedData;
 	private boolean loadGuardChecked;
 	private boolean loadFailureProtected;
 	private String incompatibilityReason;
 
 	private PixelTzzWorldState(
-		final int schemaVersion,
-		final GamePhase phase,
-		final Optional<UUID> hostId,
-		final long stateRevision,
-		final Dynamic<?> opaqueData,
+		final LoadKind loadKind,
+		final WorldStateV2 currentV2,
+		final LegacyWorldStateV1 legacyV1,
+		final Dynamic<?> preservedData,
 		final boolean loadFailureProtected,
 		final String incompatibilityReason
 	) {
-		this.schemaVersion = schemaVersion;
-		this.phase = phase;
-		this.hostId = hostId;
-		this.stateRevision = stateRevision;
-		this.opaqueData = opaqueData;
+		this.loadKind = Objects.requireNonNull(loadKind, "loadKind");
+		this.currentV2 = currentV2;
+		this.legacyV1 = legacyV1;
+		this.preservedData = preservedData;
 		this.loadFailureProtected = loadFailureProtected;
-		this.incompatibilityReason = incompatibilityReason;
+		this.incompatibilityReason = Objects.requireNonNull(incompatibilityReason, "incompatibilityReason");
+		requirePayloadInvariant();
 	}
 
 	public static PixelTzzWorldState initial() {
-		return new PixelTzzWorldState(
-			CURRENT_SCHEMA_VERSION,
-			GamePhase.IDLE,
-			Optional.empty(),
-			0L,
-			null,
-			false,
-			""
-		);
+		return current(WorldStateV2.initial());
 	}
 
 	public static PixelTzzWorldState get(final MinecraftServer server) {
@@ -98,34 +82,52 @@ public final class PixelTzzWorldState extends SavedData {
 		return state;
 	}
 
+	static Path stateFile(final MinecraftServer server) {
+		Path dataDirectory = server.getWorldPath(LevelResource.ROOT).resolve("data");
+		return TYPE.id().withSuffix(".dat").resolveAgainst(dataDirectory);
+	}
+
 	private static DataResult<PixelTzzWorldState> decode(final Dynamic<?> data) {
 		int schemaVersion = data.get("schema_version").asInt(0);
-		if (schemaVersion != CURRENT_SCHEMA_VERSION) {
-			return DataResult.success(opaque(schemaVersion, data, "unsupported schema " + schemaVersion));
+		if (schemaVersion == WorldStateV2.SCHEMA_VERSION) {
+			DataResult<WorldStateV2> decoded = WorldStateV2.CODEC.parse(data);
+			return decoded.result()
+				.map(value -> DataResult.success(current(value)))
+				.orElseGet(() -> DataResult.success(
+					opaque(
+						schemaVersion,
+						data,
+						decoded.error().map(DataResult.Error::message).orElse("invalid schema v2 world state")
+					)
+				));
 		}
-
-		DataResult<StoredState> decoded = STORED_CODEC.parse(data);
-		Optional<StoredState> result = decoded.result();
-		if (result.isEmpty()) {
-			String reason = decoded.error().map(DataResult.Error::message).orElse("invalid world state");
-			return DataResult.success(opaque(schemaVersion, data, reason));
+		if (schemaVersion == LegacyWorldStateV1.SCHEMA_VERSION) {
+			DataResult<LegacyWorldStateV1> decoded = LegacyWorldStateV1.CODEC.parse(data);
+			return decoded.result()
+				.map(value -> DataResult.success(legacy(value, data)))
+				.orElseGet(() -> DataResult.success(
+					opaque(
+						schemaVersion,
+						data,
+						decoded.error().map(DataResult.Error::message).orElse("invalid schema v1 world state")
+					)
+				));
 		}
+		return DataResult.success(opaque(schemaVersion, data, "unsupported schema " + schemaVersion));
+	}
 
-		StoredState stored = result.orElseThrow();
-		if (stored.stateRevision() < 0L) {
-			return DataResult.success(opaque(schemaVersion, data, "negative state revision"));
-		}
+	private static PixelTzzWorldState current(final WorldStateV2 value) {
+		return new PixelTzzWorldState(LoadKind.CURRENT_V2, value, null, null, false, "");
+	}
 
-		return DataResult.success(
-			new PixelTzzWorldState(
-				stored.schemaVersion(),
-				stored.phase(),
-				stored.hostId(),
-				stored.stateRevision(),
-				null,
-				false,
-				""
-			)
+	private static PixelTzzWorldState legacy(final LegacyWorldStateV1 value, final Dynamic<?> preservedData) {
+		return new PixelTzzWorldState(
+			LoadKind.LEGACY_V1,
+			null,
+			value,
+			preservedData,
+			false,
+			"schema v1 requires a conservative startup migration"
 		);
 	}
 
@@ -135,19 +137,24 @@ public final class PixelTzzWorldState extends SavedData {
 		final String reason
 	) {
 		return new PixelTzzWorldState(
-			schemaVersion,
-			GamePhase.IDLE,
-			Optional.empty(),
-			0L,
+			LoadKind.OPAQUE,
+			null,
+			null,
 			data,
 			false,
-			reason
+			(schemaVersion == 0 ? "missing or invalid schema; " : "") + reason
 		);
 	}
 
-	private static Path stateFile(final MinecraftServer server) {
-		Path dataDirectory = server.getWorldPath(LevelResource.ROOT).resolve("data");
-		return TYPE.id().withSuffix(".dat").resolveAgainst(dataDirectory);
+	private static DataResult<Dynamic<?>> encode(final PixelTzzWorldState state) {
+		if (state.currentV2 != null) {
+			return WorldStateV2.CODEC.encodeStart(JsonOps.INSTANCE, state.currentV2)
+				.map(value -> new Dynamic<>(JsonOps.INSTANCE, value));
+		}
+		if (state.preservedData != null) {
+			return DataResult.success(state.preservedData);
+		}
+		return DataResult.error(() -> "Pixel TZZ world-state payload is missing");
 	}
 
 	private static void protectUnreadableStateFile(
@@ -181,52 +188,191 @@ public final class PixelTzzWorldState extends SavedData {
 		state.setDirty(false);
 	}
 
-	private static DataResult<Dynamic<?>> encode(final PixelTzzWorldState state) {
-		if (state.opaqueData != null) {
-			return DataResult.success(state.opaqueData);
+	public synchronized CommitResult commit(
+		final long expectedRevision,
+		final UnaryOperator<WorldStateV2> mutation
+	) {
+		Objects.requireNonNull(mutation, "mutation");
+		if (!isSchemaCompatible()) {
+			return CommitResult.rejected("world state is not writable: " + this.incompatibilityReason);
+		}
+		if (this.currentV2.stateRevision() != expectedRevision) {
+			return CommitResult.rejected(
+				"state revision mismatch: expected " + expectedRevision + ", current " + this.currentV2.stateRevision()
+			);
 		}
 
-		StoredState stored = new StoredState(
-			state.schemaVersion,
-			state.phase,
-			state.hostId,
-			state.stateRevision
-		);
-		return STORED_CODEC.encodeStart(JsonOps.INSTANCE, stored)
-			.map(value -> new Dynamic<>(JsonOps.INSTANCE, value));
+		final long nextRevision;
+		try {
+			nextRevision = Math.incrementExact(expectedRevision);
+		} catch (ArithmeticException error) {
+			return CommitResult.rejected("state revision overflow");
+		}
+
+		final WorldStateV2 candidate;
+		try {
+			candidate = Objects.requireNonNull(mutation.apply(this.currentV2), "mutation result")
+				.withStateRevision(nextRevision);
+		} catch (RuntimeException error) {
+			return CommitResult.rejected("state mutation failed validation: " + safeMessage(error));
+		}
+		DataResult<WorldStateV2> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return CommitResult.rejected(validated.error().orElseThrow().message());
+		}
+
+		this.currentV2 = candidate;
+		this.setDirty();
+		return CommitResult.committed(candidate);
+	}
+
+	synchronized MigrationCommitResult commitLegacyMigration(
+		final LegacyWorldStateV1 expectedLegacy,
+		final WorldStateV2 candidate
+	) {
+		Objects.requireNonNull(expectedLegacy, "expectedLegacy");
+		Objects.requireNonNull(candidate, "candidate");
+		if (
+			this.loadFailureProtected
+				|| this.loadKind != LoadKind.LEGACY_V1
+				|| !expectedLegacy.equals(this.legacyV1)
+		) {
+			return MigrationCommitResult.rejected("legacy state changed before migration commit");
+		}
+		DataResult<WorldStateV2> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return MigrationCommitResult.rejected(validated.error().orElseThrow().message());
+		}
+		long expectedRevision;
+		try {
+			expectedRevision = Math.incrementExact(expectedLegacy.stateRevision());
+		} catch (ArithmeticException error) {
+			return MigrationCommitResult.rejected("legacy state revision overflow");
+		}
+		if (candidate.stateRevision() != expectedRevision) {
+			return MigrationCommitResult.rejected("migration candidate revision is not legacy revision + 1");
+		}
+
+		this.loadKind = LoadKind.CURRENT_V2;
+		this.currentV2 = candidate;
+		this.legacyV1 = null;
+		this.preservedData = null;
+		this.incompatibilityReason = "";
+		this.setDirty();
+		requirePayloadInvariant();
+		return MigrationCommitResult.committed(candidate);
+	}
+
+	synchronized void setMigrationDiagnostic(final String diagnostic) {
+		if (this.loadKind == LoadKind.LEGACY_V1 && !this.loadFailureProtected) {
+			this.incompatibilityReason = Objects.requireNonNull(diagnostic, "diagnostic");
+		}
+	}
+
+	public LoadKind loadKind() {
+		return this.loadKind;
 	}
 
 	public int schemaVersion() {
-		return this.schemaVersion;
+		if (this.currentV2 != null) {
+			return this.currentV2.schemaVersion();
+		}
+		if (this.legacyV1 != null) {
+			return this.legacyV1.schemaVersion();
+		}
+		return this.preservedData == null ? 0 : this.preservedData.get("schema_version").asInt(0);
 	}
 
+	public Optional<WorldStateV2> currentV2() {
+		return Optional.ofNullable(this.currentV2);
+	}
+
+	public Optional<LegacyWorldStateV1> legacyV1() {
+		return Optional.ofNullable(this.legacyV1);
+	}
+
+	public Optional<net.minecraft.resources.Identifier> activeGameId() {
+		return this.currentV2 == null ? Optional.empty() : this.currentV2.activeGameId();
+	}
+
+	public Optional<net.minecraft.resources.Identifier> activePhaseId() {
+		return this.currentV2 == null ? Optional.empty() : this.currentV2.activePhaseId();
+	}
+
+	/**
+	 * Temporary v1 bridge for existing protocol-v5 callers. Schema v2 callers must use
+	 * {@link #activePhaseId()}.
+	 */
+	@Deprecated
 	public GamePhase phase() {
-		return this.phase;
+		return this.legacyV1 == null ? GamePhase.IDLE : this.legacyV1.phase();
 	}
 
 	public Optional<UUID> hostId() {
-		return this.hostId;
+		if (this.currentV2 != null) {
+			return this.currentV2.host().map(WorldStateV2.HostRecord::playerId);
+		}
+		return this.legacyV1 == null ? Optional.empty() : this.legacyV1.hostId();
 	}
 
 	public long stateRevision() {
-		return this.stateRevision;
+		if (this.currentV2 != null) {
+			return this.currentV2.stateRevision();
+		}
+		return this.legacyV1 == null ? 0L : this.legacyV1.stateRevision();
 	}
 
 	public boolean isSchemaCompatible() {
-		return !this.loadFailureProtected
-			&& this.opaqueData == null
-			&& this.schemaVersion == CURRENT_SCHEMA_VERSION;
+		return !this.loadFailureProtected && this.loadKind == LoadKind.CURRENT_V2;
 	}
 
 	public String incompatibilityReason() {
 		return this.incompatibilityReason;
 	}
 
-	private record StoredState(
-		int schemaVersion,
-		GamePhase phase,
-		Optional<UUID> hostId,
-		long stateRevision
-	) {
+	private void requirePayloadInvariant() {
+		boolean valid = switch (this.loadKind) {
+			case CURRENT_V2 -> this.currentV2 != null && this.legacyV1 == null && this.preservedData == null;
+			case LEGACY_V1 -> this.currentV2 == null && this.legacyV1 != null && this.preservedData != null;
+			case OPAQUE -> this.currentV2 == null && this.legacyV1 == null && this.preservedData != null;
+		};
+		if (!valid) {
+			throw new IllegalStateException("invalid " + this.loadKind + " world-state payload");
+		}
+	}
+
+	private static String safeMessage(final RuntimeException error) {
+		return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+	}
+
+	public enum LoadKind {
+		CURRENT_V2,
+		LEGACY_V1,
+		OPAQUE
+	}
+
+	public record CommitResult(boolean committed, String reason, Optional<WorldStateV2> state) {
+		public CommitResult {
+			Objects.requireNonNull(reason, "reason");
+			state = Objects.requireNonNull(state, "state");
+		}
+
+		private static CommitResult committed(final WorldStateV2 state) {
+			return new CommitResult(true, "", Optional.of(state));
+		}
+
+		private static CommitResult rejected(final String reason) {
+			return new CommitResult(false, reason, Optional.empty());
+		}
+	}
+
+	record MigrationCommitResult(boolean committed, String reason, Optional<WorldStateV2> state) {
+		private static MigrationCommitResult committed(final WorldStateV2 state) {
+			return new MigrationCommitResult(true, "", Optional.of(state));
+		}
+
+		private static MigrationCommitResult rejected(final String reason) {
+			return new MigrationCommitResult(false, reason, Optional.empty());
+		}
 	}
 }

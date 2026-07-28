@@ -1,1 +1,1 @@
-# 2A example hook: every selected hunter target completes.
+# 2C acceptance hook: succeeds without side effects once after every selected target completes.

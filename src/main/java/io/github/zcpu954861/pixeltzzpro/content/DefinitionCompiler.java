@@ -26,6 +26,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChangeStateNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceRoute;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompleteNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompletionPolicy;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.Confirmation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.EditPolicy;
@@ -91,11 +92,14 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.AbstractList;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -108,6 +112,8 @@ import java.util.regex.Pattern;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.Identifier;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DocumentKey;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.SourceDocument;
 
 /**
  * Pure compiler from resolved data-pack JSON to one validated immutable definition snapshot.
@@ -268,6 +274,7 @@ public final class DefinitionCompiler {
 		private final Map<Identifier, PanelActionDefinition> panelActions = new LinkedHashMap<>();
 		private final Map<Identifier, PageDefinition> pages = new LinkedHashMap<>();
 		private final Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
+		private final Map<DocumentKey, SourceDocument> sourceDocuments = new LinkedHashMap<>();
 
 		private Compiler(final Set<Identifier> functions, final Set<Identifier> predicates) {
 			this.functions = Set.copyOf(functions);
@@ -343,7 +350,11 @@ public final class DefinitionCompiler {
 						this.flows,
 						this.panelActions,
 						this.pages,
-						this.themes
+						this.themes,
+						this.sourceDocuments,
+						this.functions,
+						this.predicates,
+						Map.of()
 					)
 				),
 				List.of()
@@ -390,6 +401,18 @@ public final class DefinitionCompiler {
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
 			}
 			reader.finish();
+			String canonicalJson = canonical(root);
+			DocumentKey key = new DocumentKey(source.type(), source.id());
+			this.sourceDocuments.put(
+				key,
+				new SourceDocument(
+					key,
+					source.resource(),
+					source.sourcePack(),
+					canonicalJson,
+					sha256(canonicalJson)
+				)
+			);
 		}
 
 		private void parseUiDefinition(final Source source) {
@@ -400,6 +423,7 @@ public final class DefinitionCompiler {
 					page -> {
 						if (canonicalDocumentFits(page.canonicalDocument())) {
 							this.pages.put(source.id(), page);
+							storeUiDocument(source, page.canonicalDocument(), page.sha256());
 						} else {
 							add(
 								source,
@@ -420,6 +444,7 @@ public final class DefinitionCompiler {
 				theme -> {
 					if (canonicalDocumentFits(theme.canonicalDocument())) {
 						this.themes.put(source.id(), theme);
+						storeUiDocument(source, theme.canonicalDocument(), theme.sha256());
 					} else {
 						add(
 							source,
@@ -431,6 +456,24 @@ public final class DefinitionCompiler {
 						);
 					}
 				}
+			);
+		}
+
+		private void storeUiDocument(
+			final Source source,
+			final String canonicalJson,
+			final String sha256
+		) {
+			DocumentKey key = new DocumentKey(source.type(), source.id());
+			this.sourceDocuments.put(
+				key,
+				new SourceDocument(
+					key,
+					source.resource(),
+					source.sourcePack(),
+					canonicalJson,
+					sha256
+				)
 			);
 		}
 
@@ -907,6 +950,7 @@ public final class DefinitionCompiler {
 			RichText name = reader.requiredText("name");
 			BossBarColor color = reader.optionalEnum("color", BossBarColor.class, BossBarColor.GREEN);
 			int holdTicks = reader.optionalInt("hold_ticks", 40);
+			int fadeTicks = reader.optionalInt("fade_ticks", 12);
 			Optional<Identifier> sound = reader.optionalIdentifier("sound");
 			if (holdTicks < 0 || holdTicks > 1_200) {
 				add(
@@ -916,10 +960,20 @@ public final class DefinitionCompiler {
 					"hold_ticks must be between 0 and 1200"
 				);
 			}
+			if (fadeTicks < 0 || fadeTicks > 100) {
+				add(
+					parent.source,
+					"OUT_OF_RANGE",
+					reader.pointer("/fade_ticks"),
+					"fade_ticks must be between 0 and 100"
+				);
+			}
 			reader.finish();
 			return name == null || color == null
 				? Optional.empty()
-				: Optional.of(new BossBarCompletionFeedback(name, color, holdTicks, sound));
+				: Optional.of(
+					new BossBarCompletionFeedback(name, color, holdTicks, fadeTicks, sound)
+				);
 		}
 
 		private Audience parseAudience(final ObjectReader parent) {
@@ -1287,6 +1341,7 @@ public final class DefinitionCompiler {
 				Set.of(),
 				Set.of(),
 				Set.of(),
+				Set.of(),
 				Set.of()
 			);
 			if (filterObject != null) {
@@ -1299,7 +1354,8 @@ public final class DefinitionCompiler {
 					filterReader.optionalIdentifierSet("team_tags"),
 					filterReader.optionalIdentifierSet("life_state_tags"),
 					filterReader.optionalIdentifierSet("completed_flows"),
-					filterReader.optionalIdentifierSet("incomplete_flows")
+					filterReader.optionalIdentifierSet("incomplete_flows"),
+					filterReader.optionalIdentifierSet("status_flows")
 				);
 				Set<Identifier> contradictoryFlows = new HashSet<>(filter.completedFlows());
 				contradictoryFlows.retainAll(filter.incompleteFlows());
@@ -1392,12 +1448,22 @@ public final class DefinitionCompiler {
 				operation = switch (type.toLowerCase(Locale.ROOT)) {
 					case "start_flow" -> {
 						Identifier flow = reader.requiredIdentifier("flow");
-						yield flow == null ? null : new StartFlowOperation(flow);
+						CompletionPolicy completionPolicy = reader.optionalEnum(
+							"completion_policy",
+							CompletionPolicy.class,
+							CompletionPolicy.IF_INCOMPLETE
+						);
+						yield flow == null ? null : new StartFlowOperation(flow, completionPolicy);
 					}
 					case "assign_role" -> {
 						Identifier role = reader.requiredIdentifier("role");
 						Optional<Identifier> flow = reader.optionalIdentifier("flow");
 						ApplyTiming apply = reader.optionalEnum("apply", ApplyTiming.class, ApplyTiming.AFTER_FLOW);
+						CompletionPolicy completionPolicy = reader.optionalEnum(
+							"completion_policy",
+							CompletionPolicy.class,
+							CompletionPolicy.ALWAYS
+						);
 						if (apply == ApplyTiming.AFTER_FLOW && flow.isEmpty()) {
 							add(
 								source,
@@ -1408,7 +1474,7 @@ public final class DefinitionCompiler {
 						}
 						yield role == null || (apply == ApplyTiming.AFTER_FLOW && flow.isEmpty())
 							? null
-							: new AssignRoleOperation(role, flow, apply);
+							: new AssignRoleOperation(role, flow, apply, completionPolicy);
 					}
 					case "assign_team" -> {
 						Identifier team = reader.requiredIdentifier("team");
@@ -1674,6 +1740,18 @@ public final class DefinitionCompiler {
 						DefinitionType.PANEL_ACTION,
 						action.id(),
 						"/target/filter/incomplete_flows",
+						action.game(),
+						flow,
+						this.flows,
+						FlowDefinition::game,
+						"flow"
+					);
+				}
+				for (Identifier flow : action.target().filter().statusFlows()) {
+					requireSameGame(
+						DefinitionType.PANEL_ACTION,
+						action.id(),
+						"/target/filter/status_flows",
 						action.game(),
 						flow,
 						this.flows,
@@ -3096,6 +3174,48 @@ public final class DefinitionCompiler {
 
 	private static String escapePointer(final String value) {
 		return value.replace("~", "~0").replace("/", "~1");
+	}
+
+	private static String canonical(final JsonElement value) {
+		if (value.isJsonObject()) {
+			StringBuilder result = new StringBuilder("{");
+			List<Map.Entry<String, JsonElement>> entries = value.getAsJsonObject()
+				.entrySet()
+				.stream()
+				.sorted(Map.Entry.comparingByKey())
+				.toList();
+			for (int index = 0; index < entries.size(); index++) {
+				if (index > 0) {
+					result.append(',');
+				}
+				Map.Entry<String, JsonElement> entry = entries.get(index);
+				result.append(new JsonPrimitive(entry.getKey()))
+					.append(':')
+					.append(canonical(entry.getValue()));
+			}
+			return result.append('}').toString();
+		}
+		if (value.isJsonArray()) {
+			StringBuilder result = new StringBuilder("[");
+			for (int index = 0; index < value.getAsJsonArray().size(); index++) {
+				if (index > 0) {
+					result.append(',');
+				}
+				result.append(canonical(value.getAsJsonArray().get(index)));
+			}
+			return result.append(']').toString();
+		}
+		return value.toString();
+	}
+
+	private static String sha256(final String value) {
+		try {
+			byte[] digest = MessageDigest.getInstance("SHA-256")
+				.digest(value.getBytes(StandardCharsets.UTF_8));
+			return HexFormat.of().formatHex(digest);
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is required by the Java runtime", error);
+		}
 	}
 
 	private static JsonElement parseStrict(final String json) throws IOException {

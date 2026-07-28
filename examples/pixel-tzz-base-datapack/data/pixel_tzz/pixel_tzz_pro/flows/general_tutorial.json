@@ -1,15 +1,12 @@
 {
   "format_version": 1,
   "game": "pixel_tzz:main",
-  "version": 1,
+  "version": 2,
   "name": {
-    "text": "通用教程"
+    "text": "通用初始化"
   },
-  "entry": "welcome",
+  "entry": "briefing",
   "audience": {
-    "role_tags": [
-      "pixel_tzz:general_initialization"
-    ],
     "exclude_host": true,
     "online_only": true
   },
@@ -43,6 +40,7 @@
       },
       "color": "green",
       "hold_ticks": 40,
+      "fade_ticks": 12,
       "sound": "minecraft:entity.player.levelup"
     }
   },
@@ -51,27 +49,15 @@
   "on_all_complete": "pixel_tzz:tutorial/all_complete",
   "nodes": [
     {
-      "id": "welcome",
+      "id": "briefing",
       "type": "page",
-      "page": "pixel_tzz:tutorial/welcome",
-      "next": "buttons"
+      "page": "pixel_tzz:fixture/general/briefing",
+      "next": "confirm"
     },
     {
-      "id": "buttons",
-      "type": "page",
-      "page": "pixel_tzz:tutorial/buttons",
-      "next": "rules"
-    },
-    {
-      "id": "rules",
-      "type": "page",
-      "page": "pixel_tzz:tutorial/rules",
-      "next": "acknowledge"
-    },
-    {
-      "id": "acknowledge",
+      "id": "confirm",
       "type": "confirm",
-      "page": "pixel_tzz:tutorial/acknowledge",
+      "page": "pixel_tzz:fixture/general/confirm",
       "next": "done"
     },
     {

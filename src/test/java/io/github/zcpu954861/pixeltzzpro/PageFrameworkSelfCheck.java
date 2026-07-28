@@ -49,6 +49,7 @@ import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.LayoutResult;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.PlacedNode;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime.Evaluation;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache;
@@ -84,13 +85,26 @@ public final class PageFrameworkSelfCheck {
 		Bootstrap.bootStrap();
 		checkPageCache();
 		checkBindingContext();
+		checkBindingContextDocument();
 		checkBindingRuntime();
 		checkBindingDiagnostics();
 		checkStyleRuntime();
 		checkTextLineWrapper();
 		checkPayloadBounds();
 		checkLayoutEngine();
+		checkViewportFit();
 		System.out.println("PAGE_FRAMEWORK_SELF_CHECK=PASS");
+	}
+
+	private static void checkViewportFit() {
+		check(
+			Math.abs(UiLayoutEngine.fitScale(620, 480, 620, 360) - 0.75) < 0.0001,
+			"oversized live pages must scale to keep their complete action area visible"
+		);
+		check(
+			UiLayoutEngine.fitScale(400, 240, 620, 360) == 1.0,
+			"pages already inside the viewport must not be enlarged"
+		);
 	}
 
 	private static void checkPayloadBounds() {
@@ -601,6 +615,62 @@ public final class PageFrameworkSelfCheck {
 		);
 		check(context.resolve("viewer.missing").isEmpty(), "missing bindings must stay absent");
 		check(context.resolve("ui/route/value/extra").isEmpty(), "invalid UI binding paths must fail closed");
+	}
+
+	private static void checkBindingContextDocument() {
+		JsonObject document = new JsonObject();
+		JsonObject viewer = new JsonObject();
+		viewer.addProperty("name", "Alex");
+		JsonObject session = new JsonObject();
+		session.addProperty("revision", 9L);
+		JsonObject flow = new JsonObject();
+		flow.addProperty("completed", 1);
+		JsonObject fields = new JsonObject();
+		fields.addProperty("test:profile/route", "safe");
+		JsonObject flowFields = new JsonObject();
+		flowFields.addProperty("test:temporary/choice", 3);
+		document.add("viewer", viewer);
+		document.add("session", session);
+		document.add("flow", flow);
+		document.add("fields", fields);
+		document.add("flow_fields", flowFields);
+
+		BindingContext decoded = BindingContextDocument.decode(
+			BindingContextDocument.encode(document)
+		);
+		check(text(decoded, "viewer.name").equals("Alex"), "binding document viewer root failed");
+		check(
+			decoded.resolve("session.revision").orElseThrow().getAsLong() == 9L,
+			"binding document session root failed"
+		);
+		check(
+			text(decoded, "fields/test:profile/route").equals("safe"),
+			"binding document field identifiers must preserve paths"
+		);
+		check(
+			decoded.resolve("flow/fields/test:temporary/choice").orElseThrow().getAsInt() == 3,
+			"binding document flow fields failed"
+		);
+		expectIllegalArgument(
+			() -> BindingContextDocument.decode(
+				bytes(
+					"""
+					{"viewer":{},"viewer":{},"session":{},"flow":{},"fields":{},"flow_fields":{}}
+					"""
+				)
+			),
+			"binding documents must reject duplicate keys"
+		);
+		expectIllegalArgument(
+			() -> BindingContextDocument.decode(
+				bytes(
+					"""
+					{"viewer":{},"session":{},"flow":{},"fields":{},"flow_fields":{},"ui":{}}
+					"""
+				)
+			),
+			"binding documents must reject client-local roots"
+		);
 	}
 
 	private static void checkBindingRuntime() {

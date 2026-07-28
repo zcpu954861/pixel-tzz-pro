@@ -36,7 +36,10 @@ public record PageBundleS2CPayload(
 	byte[] pageJson,
 	byte[] themeHash,
 	byte[] themeJson,
-	List<FieldSchema> fields
+	List<FieldSchema> fields,
+	PagePurpose purpose,
+	Optional<FlowContext> flowContext,
+	byte[] bindingJson
 ) implements CustomPacketPayload {
 	public static final int HASH_LENGTH = 32;
 	public static final int MAX_DOCUMENT_BYTES = UiDefinitions.MAX_CANONICAL_DOCUMENT_BYTES;
@@ -47,6 +50,7 @@ public record PageBundleS2CPayload(
 	public static final int MAX_FIELD_DEFAULT_LENGTH = 2_048;
 	public static final int MAX_FIELD_OPTIONS = 128;
 	public static final int MAX_FIELD_OPTION_LENGTH = 256;
+	public static final int MAX_BINDING_BYTES = 65_536;
 	public static final Type<PageBundleS2CPayload> TYPE = new Type<>(PixelTzzPro.id("page_bundle_s2c"));
 	public static final StreamCodec<RegistryFriendlyByteBuf, PageBundleS2CPayload> STREAM_CODEC =
 		CustomPacketPayload.codec(PageBundleS2CPayload::write, PageBundleS2CPayload::new);
@@ -72,6 +76,50 @@ public record PageBundleS2CPayload(
 		if (fields.size() > MAX_FIELDS) {
 			throw new IllegalArgumentException("fields size exceeds " + MAX_FIELDS);
 		}
+		purpose = Objects.requireNonNull(purpose, "purpose");
+		flowContext = Objects.requireNonNull(flowContext, "flowContext");
+		bindingJson = copyBinding(bindingJson);
+		if ((purpose == PagePurpose.FORCED_FLOW) != flowContext.isPresent()) {
+			throw new IllegalArgumentException("forced-flow pages require exactly one flow context");
+		}
+		if (
+			purpose == PagePurpose.FORCED_FLOW
+				&& flowContext.orElseThrow().closable()
+		) {
+			throw new IllegalArgumentException("forced-flow pages cannot be client-closable");
+		}
+		if (purpose == PagePurpose.FORCED_FLOW && bindingJson.length == 0) {
+			throw new IllegalArgumentException("forced-flow pages require a server binding snapshot");
+		}
+	}
+
+	public PageBundleS2CPayload(
+		final UUID instanceId,
+		final long generation,
+		final long stateRevision,
+		final Identifier pageId,
+		final Identifier themeId,
+		final byte[] pageHash,
+		final byte[] pageJson,
+		final byte[] themeHash,
+		final byte[] themeJson,
+		final List<FieldSchema> fields
+	) {
+		this(
+			instanceId,
+			generation,
+			stateRevision,
+			pageId,
+			themeId,
+			pageHash,
+			pageJson,
+			themeHash,
+			themeJson,
+			fields,
+			PagePurpose.PREVIEW,
+			Optional.empty(),
+			new byte[0]
+		);
 	}
 
 	private PageBundleS2CPayload(final RegistryFriendlyByteBuf buffer) {
@@ -85,7 +133,10 @@ public record PageBundleS2CPayload(
 			readByteArray(buffer, MAX_DOCUMENT_BYTES, "pageJson"),
 			readFixedBytes(buffer, HASH_LENGTH),
 			readByteArray(buffer, MAX_DOCUMENT_BYTES, "themeJson"),
-			readList(buffer, MAX_FIELDS, "fields", FieldSchema::read)
+			readList(buffer, MAX_FIELDS, "fields", FieldSchema::read),
+			PagePurpose.read(buffer),
+			readFlowContext(buffer),
+			readByteArray(buffer, MAX_BINDING_BYTES, "bindingJson")
 		);
 	}
 
@@ -100,6 +151,10 @@ public record PageBundleS2CPayload(
 		buffer.writeBytes(this.themeHash);
 		writeByteArray(buffer, this.themeJson);
 		writeList(buffer, this.fields, FieldSchema::write);
+		buffer.writeUtf(this.purpose.serializedName, 32);
+		buffer.writeBoolean(this.flowContext.isPresent());
+		this.flowContext.ifPresent(context -> context.write(buffer));
+		writeByteArray(buffer, this.bindingJson);
 	}
 
 	@Override
@@ -120,6 +175,11 @@ public record PageBundleS2CPayload(
 	@Override
 	public byte[] themeJson() {
 		return this.themeJson.clone();
+	}
+
+	@Override
+	public byte[] bindingJson() {
+		return this.bindingJson.clone();
 	}
 
 	public boolean documentsOmitted() {
@@ -145,6 +205,109 @@ public record PageBundleS2CPayload(
 			throw new IllegalArgumentException(field + " length exceeds " + MAX_DOCUMENT_BYTES);
 		}
 		return value.clone();
+	}
+
+	private static byte[] copyBinding(final byte[] value) {
+		Objects.requireNonNull(value, "bindingJson");
+		if (value.length > MAX_BINDING_BYTES) {
+			throw new IllegalArgumentException("bindingJson length exceeds " + MAX_BINDING_BYTES);
+		}
+		return value.clone();
+	}
+
+	private static Optional<FlowContext> readFlowContext(
+		final RegistryFriendlyByteBuf buffer
+	) {
+		return buffer.readBoolean() ? Optional.of(FlowContext.read(buffer)) : Optional.empty();
+	}
+
+	public enum PagePurpose {
+		PREVIEW("preview"),
+		NORMAL("normal"),
+		FORCED_FLOW("forced_flow");
+
+		private final String serializedName;
+
+		PagePurpose(final String serializedName) {
+			this.serializedName = serializedName;
+		}
+
+		public String serializedName() {
+			return this.serializedName;
+		}
+
+		private static PagePurpose read(final RegistryFriendlyByteBuf buffer) {
+			String name = buffer.readUtf(32);
+			for (PagePurpose value : values()) {
+				if (value.serializedName.equals(name)) {
+					return value;
+				}
+			}
+			throw new IllegalArgumentException("unknown page purpose " + name);
+		}
+	}
+
+	public record FlowContext(
+		UUID flowInstanceId,
+		Identifier flowId,
+		int flowVersion,
+		String nodeId,
+		long instanceRevision,
+		long memberRevision,
+		long nextRequestSequence,
+		int completed,
+		int total,
+		boolean closable
+	) {
+		private static final int MAX_NODE_ID_LENGTH = 128;
+
+		public FlowContext {
+			flowInstanceId = Objects.requireNonNull(flowInstanceId, "flowInstanceId");
+			flowId = requireIdentifier(flowId, "flowId");
+			nodeId = requireBounded(nodeId, MAX_NODE_ID_LENGTH, "nodeId");
+			if (flowVersion <= 0) {
+				throw new IllegalArgumentException("flowVersion must be positive");
+			}
+			if (
+				nodeId.isBlank()
+					|| instanceRevision < 0L
+					|| memberRevision < 0L
+					|| nextRequestSequence < 0L
+					|| completed < 0
+					|| total < 0
+					|| completed > total
+			) {
+				throw new IllegalArgumentException("invalid forced-flow page context");
+			}
+		}
+
+		private static FlowContext read(final RegistryFriendlyByteBuf buffer) {
+			return new FlowContext(
+				buffer.readUUID(),
+				readIdentifier(buffer, "flowId"),
+				buffer.readVarInt(),
+				buffer.readUtf(MAX_NODE_ID_LENGTH),
+				buffer.readLong(),
+				buffer.readLong(),
+				buffer.readVarLong(),
+				buffer.readVarInt(),
+				buffer.readVarInt(),
+				buffer.readBoolean()
+			);
+		}
+
+		private void write(final RegistryFriendlyByteBuf buffer) {
+			buffer.writeUUID(this.flowInstanceId);
+			writeIdentifier(buffer, this.flowId);
+			buffer.writeVarInt(this.flowVersion);
+			buffer.writeUtf(this.nodeId, MAX_NODE_ID_LENGTH);
+			buffer.writeLong(this.instanceRevision);
+			buffer.writeLong(this.memberRevision);
+			buffer.writeVarLong(this.nextRequestSequence);
+			buffer.writeVarInt(this.completed);
+			buffer.writeVarInt(this.total);
+			buffer.writeBoolean(this.closable);
+		}
 	}
 
 	public record FieldSchema(

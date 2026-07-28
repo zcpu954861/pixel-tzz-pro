@@ -1,5 +1,9 @@
 package io.github.zcpu954861.pixeltzzpro.client.ui.widget;
 
+import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.INFO_CYAN;
+import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SURFACE;
+import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SURFACE_BORDER;
+
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime;
 import java.util.Objects;
@@ -21,6 +25,7 @@ public final class AnimatedEditBox extends EditBox {
 	private int baseTextColor = DEFAULT_TEXT_COLOR;
 	private int baseUneditableTextColor = DEFAULT_TEXT_COLOR;
 	private boolean usingSourceBounds;
+	private boolean consoleChrome;
 
 	public AnimatedEditBox(
 		final Font font,
@@ -42,6 +47,11 @@ public final class AnimatedEditBox extends EditBox {
 	public void setMotionColor(final OptionalInt color) {
 		this.motionColor = Objects.requireNonNull(color, "color");
 		applyTextColors();
+	}
+
+	public void enableConsoleChrome() {
+		this.consoleChrome = true;
+		this.setBordered(false);
 	}
 
 	@Override
@@ -76,7 +86,7 @@ public final class AnimatedEditBox extends EditBox {
 			return;
 		}
 		if (Math.abs(scale - 1.0F) < 0.001F) {
-			super.extractWidgetRenderState(graphics, mouseX, mouseY, tickProgress);
+			extractUnscaledWidget(graphics, mouseX, mouseY, tickProgress);
 			return;
 		}
 		Rect hit = bounds();
@@ -90,11 +100,48 @@ public final class AnimatedEditBox extends EditBox {
 		try {
 			withBounds(
 				source,
-				() -> super.extractWidgetRenderState(graphics, mouseX, mouseY, tickProgress)
+				() -> extractUnscaledWidget(graphics, mouseX, mouseY, tickProgress)
 			);
 		} finally {
 			graphics.pose().popMatrix();
 		}
+	}
+
+	private void extractUnscaledWidget(
+		final GuiGraphicsExtractor graphics,
+		final int mouseX,
+		final int mouseY,
+		final float tickProgress
+	) {
+		if (this.consoleChrome) {
+			graphics.fill(
+				this.getX(),
+				this.getY(),
+				this.getX() + this.getWidth(),
+				this.getY() + this.getHeight(),
+				SURFACE
+			);
+			graphics.outline(
+				this.getX(),
+				this.getY(),
+				this.getWidth(),
+				this.getHeight(),
+				this.isFocused() ? INFO_CYAN : SURFACE_BORDER
+			);
+			graphics.fill(
+				this.getX(),
+				this.getY(),
+				this.getX() + (this.isFocused() ? 3 : 2),
+				this.getY() + this.getHeight(),
+				this.isFocused() ? INFO_CYAN : SURFACE_BORDER
+			);
+			withBounds(
+				contentBounds(bounds()),
+				() -> super.extractWidgetRenderState(graphics, mouseX, mouseY, tickProgress)
+			);
+			return;
+		}
+		super.extractWidgetRenderState(graphics, mouseX, mouseY, tickProgress);
 	}
 
 	@Override
@@ -102,7 +149,7 @@ public final class AnimatedEditBox extends EditBox {
 		Rect hit = bounds();
 		Rect source = UiMotionRuntime.presentationSource(hit, this.presentationScale);
 		MouseButtonEvent mapped = mapToSource(event, hit, this.presentationScale);
-		withBounds(source, () -> super.onClick(mapped, doubleClick));
+		withBounds(contentBounds(source), () -> super.onClick(mapped, doubleClick));
 	}
 
 	@Override
@@ -116,7 +163,7 @@ public final class AnimatedEditBox extends EditBox {
 		MouseButtonEvent mapped = mapToSource(event, hit, this.presentationScale);
 		double scale = safeScale(this.presentationScale);
 		withBounds(
-			source,
+			contentBounds(source),
 			() -> super.onDrag(mapped, deltaX / scale, deltaY / scale)
 		);
 	}
@@ -124,28 +171,53 @@ public final class AnimatedEditBox extends EditBox {
 	@Override
 	public int getInnerWidth() {
 		int inherited = super.getInnerWidth();
-		if (this.usingSourceBounds || Math.abs(this.presentationScale - 1.0F) < 0.001F) {
+		if (this.usingSourceBounds) {
 			return inherited;
 		}
+		int inset = this.consoleChrome ? 14 : Math.max(0, this.getWidth() - inherited);
+		if (Math.abs(this.presentationScale - 1.0F) < 0.001F) {
+			return Math.max(0, this.getWidth() - inset);
+		}
 		Rect source = UiMotionRuntime.presentationSource(bounds(), this.presentationScale);
-		int inset = Math.max(0, this.getWidth() - inherited);
 		return Math.max(0, source.width() - inset);
 	}
 
 	@Override
 	public int getScreenX(final int characterIndex) {
-		if (this.usingSourceBounds || Math.abs(this.presentationScale - 1.0F) < 0.001F) {
+		if (this.usingSourceBounds) {
 			return super.getScreenX(characterIndex);
+		}
+		if (Math.abs(this.presentationScale - 1.0F) < 0.001F) {
+			return withBounds(
+				contentBounds(bounds()),
+				() -> super.getScreenX(characterIndex)
+			);
 		}
 		Rect hit = bounds();
 		Rect source = UiMotionRuntime.presentationSource(hit, this.presentationScale);
-		int logical = withBounds(source, () -> super.getScreenX(characterIndex));
+		int logical = withBounds(
+			contentBounds(source),
+			() -> super.getScreenX(characterIndex)
+		);
 		double center = hit.x() + hit.width() / 2.0;
 		return safeRound(center + (logical - center) * safeScale(this.presentationScale));
 	}
 
 	private Rect bounds() {
 		return new Rect(this.getX(), this.getY(), this.getWidth(), this.getHeight());
+	}
+
+	private Rect contentBounds(final Rect bounds) {
+		if (!this.consoleChrome) {
+			return bounds;
+		}
+		int textHeight = Math.min(8, bounds.height());
+		return new Rect(
+			bounds.x() + 7,
+			bounds.y() + Math.max(0, bounds.height() - textHeight) / 2,
+			Math.max(1, bounds.width() - 14),
+			Math.max(1, textHeight)
+		);
 	}
 
 	private static MouseButtonEvent mapToSource(

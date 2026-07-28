@@ -8,7 +8,7 @@
     "text": "发起通用初始化"
   },
   "description": {
-    "text": "锁定当前符合条件的在线参与者并发起通用教程。"
+    "text": "向尚未完成当前版本初始化的在线逃走者发送必要说明。"
   },
   "color": "#D7B45A",
   "phases": [
@@ -23,15 +23,19 @@
     },
     "consequences": [
       {
-        "text": "符合流程受众规则的当前在线玩家将进入不可关闭的教程。"
+        "text": "符合条件的在线逃走者将进入不可关闭的初始化说明。"
       },
       {
-        "text": "发起时锁定名单；后来上线者不会自动改变分母。"
+        "text": "发起时锁定名单；完成过当前流程版本的玩家不会重复打开。"
+      },
+      {
+        "text": "完成初始化不会自动准备、推进阶段或开始游戏。"
       }
     ]
   },
   "operation": {
     "type": "start_flow",
-    "flow": "pixel_tzz:general_tutorial"
+    "flow": "pixel_tzz:general_tutorial",
+    "completion_policy": "if_incomplete"
   }
 }

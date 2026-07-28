@@ -101,6 +101,27 @@ public final class UiLayoutEngine {
 			: new Rect(coordinateAdd(track.x(), position), track.y(), thumbExtent, track.height());
 	}
 
+	/**
+	 * Returns a uniform down-scale that keeps oversized page content inside its physical viewport.
+	 */
+	public static double fitScale(
+		final int contentWidth,
+		final int contentHeight,
+		final int viewportWidth,
+		final int viewportHeight
+	) {
+		if (contentWidth <= 0 || contentHeight <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+			return 1.0;
+		}
+		return Math.min(
+			1.0,
+			Math.min(
+				(double)viewportWidth / contentWidth,
+				(double)viewportHeight / contentHeight
+			)
+		);
+	}
+
 	private static PlacedNode place(
 		final LayoutItem item,
 		final Rect bounds,
