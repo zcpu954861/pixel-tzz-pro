@@ -11,6 +11,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.resources.Identifier;
@@ -29,6 +30,7 @@ public record DefinitionSnapshot(
 	Map<Identifier, PhaseDefinition> phases,
 	Map<Identifier, FieldDefinition> fields,
 	Map<Identifier, FlowDefinition> flows,
+	Map<Identifier, TaskDefinition> tasks,
 	Map<Identifier, PanelActionDefinition> panelActions,
 	Map<Identifier, PageDefinition> pages,
 	Map<Identifier, ThemeDefinition> themes,
@@ -45,6 +47,7 @@ public record DefinitionSnapshot(
 		phases = Map.copyOf(phases);
 		fields = Map.copyOf(fields);
 		flows = Map.copyOf(flows);
+		tasks = Map.copyOf(tasks);
 		panelActions = Map.copyOf(panelActions);
 		pages = Map.copyOf(pages);
 		themes = Map.copyOf(themes);
@@ -52,6 +55,43 @@ public record DefinitionSnapshot(
 		functions = Set.copyOf(functions);
 		predicates = Set.copyOf(predicates);
 		predicateDocuments = Map.copyOf(predicateDocuments);
+	}
+
+	public DefinitionSnapshot(
+		final long generation,
+		final Map<Identifier, GameDefinition> games,
+		final Map<Identifier, RoleDefinition> roles,
+		final Map<Identifier, TeamDefinition> teams,
+		final Map<Identifier, LifeStateDefinition> lifeStates,
+		final Map<Identifier, PhaseDefinition> phases,
+		final Map<Identifier, FieldDefinition> fields,
+		final Map<Identifier, FlowDefinition> flows,
+		final Map<Identifier, PanelActionDefinition> panelActions,
+		final Map<Identifier, PageDefinition> pages,
+		final Map<Identifier, ThemeDefinition> themes,
+		final Map<DocumentKey, SourceDocument> sourceDocuments,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates,
+		final Map<Identifier, String> predicateDocuments
+	) {
+		this(
+			generation,
+			games,
+			roles,
+			teams,
+			lifeStates,
+			phases,
+			fields,
+			flows,
+			Map.of(),
+			panelActions,
+			pages,
+			themes,
+			sourceDocuments,
+			functions,
+			predicates,
+			predicateDocuments
+		);
 	}
 
 	public static DefinitionSnapshot empty() {
@@ -86,6 +126,7 @@ public record DefinitionSnapshot(
 			+ this.phases.size()
 			+ this.fields.size()
 			+ this.flows.size()
+			+ this.tasks.size()
 			+ this.panelActions.size()
 			+ this.pages.size()
 			+ this.themes.size();
@@ -101,6 +142,7 @@ public record DefinitionSnapshot(
 			this.phases,
 			this.fields,
 			this.flows,
+			this.tasks,
 			this.panelActions,
 			this.pages,
 			this.themes,
@@ -123,6 +165,7 @@ public record DefinitionSnapshot(
 			this.phases,
 			this.fields,
 			this.flows,
+			this.tasks,
 			this.panelActions,
 			this.pages,
 			this.themes,

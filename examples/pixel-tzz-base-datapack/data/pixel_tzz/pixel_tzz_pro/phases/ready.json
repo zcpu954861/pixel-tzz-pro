@@ -4,5 +4,7 @@
   "name": {
     "text": "等待玩家准备"
   },
-  "transitions": []
+  "transitions": [
+    "pixel_tzz:warmup"
+  ]
 }

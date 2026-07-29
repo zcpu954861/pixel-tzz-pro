@@ -1,0 +1,2 @@
+# Append so adjacent callback steps with identical ticks still succeed and remain observable.
+$data modify storage pixel_tzz:acceptance_2d session.result_history append value {game_id:"$(game_id)",timeline_instance_id:"$(timeline_instance_id)",task_id:"$(task_id)",task_instance_id:"$(task_instance_id)",result_id:"$(result_id)",game_elapsed_ticks:$(game_elapsed_ticks),task_elapsed_ticks:$(task_elapsed_ticks)}

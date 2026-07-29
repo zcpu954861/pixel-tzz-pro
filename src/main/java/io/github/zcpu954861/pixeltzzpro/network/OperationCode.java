@@ -4,7 +4,7 @@ import java.util.Arrays;
 import java.util.Optional;
 
 /**
- * Stable machine-readable outcomes for protocol-v7 authority requests.
+ * Stable machine-readable outcomes for protocol-v10 authority requests.
  */
 public enum OperationCode {
 	SUCCESS("success"),
@@ -33,6 +33,26 @@ public enum OperationCode {
 	SNAPSHOT_INVALID("snapshot_invalid"),
 	RESOURCE_BLOCKED("resource_blocked"),
 	CALLBACK_FAILED("callback_failed"),
+	TIMELINE_NOT_ACTIVE("timeline_not_active"),
+	TIMELINE_ALREADY_ACTIVE("timeline_already_active"),
+	TIMELINE_COMPLETED("timeline_completed"),
+	TASK_NOT_CURRENT("task_not_current"),
+	TASK_STATE_MISMATCH("task_state_mismatch"),
+	RESULT_NOT_REGISTERED("result_not_registered"),
+	RESULT_ALREADY_FROZEN("result_already_frozen"),
+	COMPLETION_POLICY_MISMATCH("completion_policy_mismatch"),
+	INTERMISSION_NOT_ACTIVE("intermission_not_active"),
+	EVENT_NOT_REGISTERED("event_not_registered"),
+	EVENT_DUPLICATE("event_duplicate"),
+	EVENT_LIMIT_REACHED("event_limit_reached"),
+	STATISTIC_NOT_REGISTERED("statistic_not_registered"),
+	STATISTIC_TYPE_MISMATCH("statistic_type_mismatch"),
+	EXCLUSIVE_OPTION_TAKEN("exclusive_option_taken"),
+	EXCLUSIVE_VALUE_INVALID("exclusive_value_invalid"),
+	EXCLUSIVE_REQUIREMENT_INCOMPLETE("exclusive_requirement_incomplete"),
+	PHASE_MISSING("phase_missing"),
+	REVISION_MISMATCH("revision_mismatch"),
+	PERMISSION_DENIED("permission_denied"),
 	SCHEMA_BLOCKED("schema_blocked"),
 	RATE_LIMITED("rate_limited"),
 	DEFINITION_UNAVAILABLE("definition_unavailable"),

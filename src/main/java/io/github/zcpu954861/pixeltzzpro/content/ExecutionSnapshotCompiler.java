@@ -127,8 +127,10 @@ public final class ExecutionSnapshotCompiler {
 
 		Set<Identifier> fieldIds = new LinkedHashSet<>(choiceFields);
 		pages.values().forEach(page -> collectFieldIds(page.root(), fieldIds));
+		List<Identifier> pendingFields = new ArrayList<>(fieldIds);
 		Map<Identifier, FieldDefinition> fields = new LinkedHashMap<>();
-		for (Identifier fieldId : fieldIds) {
+		for (int index = 0; index < pendingFields.size(); index++) {
+			Identifier fieldId = pendingFields.get(index);
 			FieldDefinition field = definitions.fields().get(fieldId);
 			if (field == null) {
 				return FreezeResult.rejected(
@@ -139,6 +141,33 @@ public final class ExecutionSnapshotCompiler {
 			}
 			fields.put(fieldId, field);
 			field.visibleWhen().ifPresent(predicates::add);
+			if (field.exclusiveChoice().isEmpty()) {
+				continue;
+			}
+			for (var option : field.exclusiveChoice().orElseThrow().options()) {
+				if (option.previewPage().isEmpty()) {
+					continue;
+				}
+				Identifier previewId = option.previewPage().orElseThrow();
+				PageDefinition preview = definitions.pages().get(previewId);
+				if (preview == null) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"exclusive choice references missing preview page " + previewId,
+						""
+					);
+				}
+				if (pages.putIfAbsent(previewId, preview) != null) {
+					continue;
+				}
+				Set<Identifier> previewFields = new LinkedHashSet<>();
+				collectFieldIds(preview.root(), previewFields);
+				for (Identifier previewField : previewFields) {
+					if (fieldIds.add(previewField)) {
+						pendingFields.add(previewField);
+					}
+				}
+			}
 		}
 		sourceAction.visibleWhen().ifPresent(predicates::add);
 		sourceAction.enabledWhen().ifPresent(predicates::add);
@@ -193,6 +222,7 @@ public final class ExecutionSnapshotCompiler {
 		List<FrozenSourceDocument> support = freezeSupportingDefinitions(
 			definitions,
 			flow.game(),
+			flow.id(),
 			sourceAction
 		);
 		if (support == null) {
@@ -416,6 +446,7 @@ public final class ExecutionSnapshotCompiler {
 	private static List<FrozenSourceDocument> freezeSupportingDefinitions(
 		final DefinitionSnapshot definitions,
 		final Identifier gameId,
+		final Identifier flowId,
 		final PanelActionDefinition sourceAction
 	) {
 		List<DocumentKey> keys = new ArrayList<>();
@@ -443,11 +474,16 @@ public final class ExecutionSnapshotCompiler {
 			if (document == null) {
 				return null;
 			}
+			FrozenDocument frozenDocument = switch (key.type()) {
+				case GAME -> frozenFlowGame(document);
+				case ROLE -> frozenFlowRole(document, flowId);
+				default -> frozen(document);
+			};
 			result.add(
 				new FrozenSourceDocument(
 					frozenDefinitionType(key.type()),
 					key.id(),
-					frozen(document)
+					frozenDocument
 				)
 			);
 		}
@@ -480,6 +516,37 @@ public final class ExecutionSnapshotCompiler {
 		return FrozenDocument.of(root.toString());
 	}
 
+	private static FrozenDocument frozenFlowGame(final SourceDocument document) {
+		JsonObject root = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
+		// ponytail: a forced-flow snapshot owns one flow, not the task plan. Keep API v2 for
+		// exclusive_choice, but leave the unrelated task DAG to TimelineSnapshotCompiler.
+		root.remove("task_timeline");
+		// Readiness lifecycle metadata is also world-level. The readiness instance separately
+		// retains its disconnect/force policy while this snapshot owns only the executable page.
+		root.remove("readiness");
+		return FrozenDocument.of(root.toString());
+	}
+
+	private static FrozenDocument frozenFlowRole(
+		final SourceDocument document,
+		final Identifier flowId
+	) {
+		JsonObject root = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
+		JsonElement initializationFlow = root.get("initialization_flow");
+		if (
+			initializationFlow != null
+				&& (
+					!initializationFlow.isJsonPrimitive()
+						|| !initializationFlow.getAsJsonPrimitive().isString()
+						|| !initializationFlow.getAsString().equals(flowId.toString())
+				)
+		) {
+			// ponytail: one execution snapshot owns one flow; unrelated role bootstrap flows stay live.
+			root.remove("initialization_flow");
+		}
+		return FrozenDocument.of(root.toString());
+	}
+
 	private static String validatePageContract(
 		final FlowNode node,
 		final PageDefinition page
@@ -487,13 +554,22 @@ public final class ExecutionSnapshotCompiler {
 		List<UiAction> actions = new ArrayList<>();
 		Set<Identifier> fields = new LinkedHashSet<>();
 		collectPageContract(page.root(), actions, fields);
-		if (node instanceof ConfirmNode) {
-			return actions.stream().anyMatch(
+		if (node instanceof ConfirmNode confirm) {
+			boolean confirms = actions.stream().anyMatch(
 				action -> action.type() == UiDefinitions.ActionType.FLOW
 					&& action.name().filter("confirm"::equals).isPresent()
-			)
+			);
+			if (!confirms) {
+				return "confirm node page requires a flow action named confirm";
+			}
+			boolean returns = confirm.back().isEmpty()
+				|| actions.stream().anyMatch(
+					action -> action.type() == UiDefinitions.ActionType.FLOW
+						&& action.name().filter("back"::equals).isPresent()
+				);
+			return returns
 				? null
-				: "confirm node page requires a flow action named confirm";
+				: "confirm node with back requires a flow action named back";
 		}
 		if (node instanceof ChoiceNode choice) {
 			if (!fields.contains(choice.field())) {
@@ -589,7 +665,7 @@ public final class ExecutionSnapshotCompiler {
 			case LIFE_STATE -> FrozenDefinitionType.LIFE_STATE;
 			case PHASE -> FrozenDefinitionType.PHASE;
 			case PANEL_ACTION -> FrozenDefinitionType.PANEL_ACTION;
-			case FIELD, FLOW, PAGE, THEME -> throw new IllegalArgumentException(
+			case FIELD, FLOW, TASK, PAGE, THEME -> throw new IllegalArgumentException(
 				"type is not a supporting definition: " + type
 			);
 		};

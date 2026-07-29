@@ -1,5 +1,8 @@
 package io.github.zcpu954861.pixeltzzpro;
 
+import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
+import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState.RequestKind;
+import io.github.zcpu954861.pixeltzzpro.client.ClientTimelineState;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
@@ -7,35 +10,47 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPay
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.OperationResultS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.ExclusiveOptionState;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FlowContext;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PrepareOperationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.StatefulRequest;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.OptionalLong;
 import java.util.UUID;
 import net.minecraft.core.RegistryAccess;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Util;
 
 /**
- * Small protocol-v7 codec and trust-boundary check without a test framework.
+ * Small protocol-v10 codec and trust-boundary check without a test framework.
  */
-public final class ProtocolV7SelfCheck {
+public final class ProtocolV10SelfCheck {
 	private static final UUID FLOW_INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000101");
 	private static final UUID PAGE_INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000102");
 	private static final UUID TOKEN = UUID.fromString("00000000-0000-0000-0000-000000000103");
@@ -43,11 +58,12 @@ public final class ProtocolV7SelfCheck {
 	private static final Identifier OPERATION = Identifier.parse("pixel_tzz:test_operation");
 	private static final Identifier FLOW = Identifier.parse("pixel_tzz:test_flow");
 
-	private ProtocolV7SelfCheck() {
+	private ProtocolV10SelfCheck() {
 	}
 
 	public static void main(final String[] args) {
-		check(NetworkProtocol.CURRENT_VERSION == 7, "2C requires protocol v7");
+		check(NetworkProtocol.CURRENT_VERSION == 10, "exclusive live mutations require protocol v10");
+		checkSessionSnapshot();
 		checkStatefulRequests();
 		checkConfirmationPayloads();
 		checkConsolePayloads();
@@ -56,7 +72,288 @@ public final class ProtocolV7SelfCheck {
 		checkResourceReports();
 		checkForcedPagePayloads();
 		checkHostUiPayload();
-		System.out.println("PROTOCOL_V7_SELF_CHECK=PASS");
+		checkHostSubtitlePayload();
+		checkTimelinePushSupersedesPendingResponse();
+		checkConsoleCommitResultSurvivesSessionPush();
+		checkNoTargetReviewRemainsTargetless();
+		System.out.println("PROTOCOL_V10_SELF_CHECK=PASS");
+	}
+
+	private static void checkConsoleCommitResultSurvivesSessionPush() {
+		ClientConsoleState.beginConnection();
+		long prepareSequence = 41L;
+		long commitSequence = 42L;
+		setConsolePending(prepareSequence, RequestKind.PREPARE, OPERATION);
+		ClientConsoleState.acceptConfirmation(
+			new ConfirmationS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				prepareSequence,
+				TOKEN,
+				"interrupt_timeline",
+				OPERATION,
+				"{\"text\":\"确认紧急终止整局\"}",
+				List.of("{\"text\":\"任务时间线将立即停止\"}"),
+				List.of(),
+				"主线任务 · 进行中 · 无需选择玩家",
+				30_000L,
+				7L,
+				3L
+			)
+		);
+		check(
+			ClientConsoleState.confirmation().isPresent(),
+			"the fixture confirmation must be accepted before commit"
+		);
+
+		setConsolePending(commitSequence, RequestKind.COMMIT, OPERATION);
+		ClientConsoleState.acceptSessionProjection(sessionSnapshot(8L, 3L));
+		check(
+			ClientConsoleState.pending() && ClientConsoleState.confirmation().isPresent(),
+			"a newer session push from the committed transaction must not consume COMMIT state"
+		);
+
+		String successMessage = "本局任务时间线已紧急终止。";
+		ClientConsoleState.acceptOperationResult(
+			new OperationResultS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				commitSequence,
+				OperationCode.SUCCESS,
+				successMessage,
+				8L,
+				3L,
+				false
+			)
+		);
+		check(!ClientConsoleState.pending(), "the correlated success result must settle COMMIT");
+		check(
+			ClientConsoleState.lastResult()
+				.filter(result -> result.successfulCommit(OPERATION))
+				.isPresent(),
+			"the correlated success result must still be consumed after the newer session push"
+		);
+		check(
+			ClientConsoleState.feedback().equals(successMessage)
+				&& !ClientConsoleState.feedbackError(),
+			"successful operations must retain the server-authored success message"
+		);
+
+		setConsolePending(43L, RequestKind.PREPARE, OPERATION);
+		ClientConsoleState.acceptOperationResult(
+			new OperationResultS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				43L,
+				OperationCode.ACTION_UNAVAILABLE,
+				"manual target selection is not allowed in the current state",
+				8L,
+				3L,
+				false
+			)
+		);
+		check(
+			ClientConsoleState.feedback().equals("此操作当前不可用"),
+			"expected failures must prefer stable Chinese copy over raw authority diagnostics"
+		);
+		ClientConsoleState.disconnect();
+	}
+
+	private static void checkNoTargetReviewRemainsTargetless() {
+		ConsoleSnapshotS2CPayload.ActionEntry noTargetAction =
+			new ConsoleSnapshotS2CPayload.ActionEntry(
+				"interrupt_timeline",
+				OPERATION,
+				"danger",
+				0,
+				"{\"text\":\"紧急终止整局\"}",
+				"{\"text\":\"停止当前任务时间线\"}",
+				"red",
+				true,
+				"",
+				"none",
+				0,
+				0,
+				true
+			);
+		List<UUID> affectedPlayerLabels = List.of(
+			UUID.fromString("00000000-0000-0000-0000-000000000201"),
+			UUID.fromString("00000000-0000-0000-0000-000000000202")
+		);
+		check(
+			invokeRenewalTargetIds(noTargetAction, affectedPlayerLabels).isEmpty(),
+			"no-target review must not turn explanatory affected-player labels into targetIds"
+		);
+	}
+
+	private static void checkTimelinePushSupersedesPendingResponse() {
+		ClientTimelineState.beginConnection();
+		setStaticLong(ClientTimelineState.class, "pendingSequence", 41L);
+		setStaticLong(ClientTimelineState.class, "pendingSinceMillis", Util.getMillis());
+		setStaticBoolean(ClientTimelineState.class, "pendingVisible", false);
+		check(
+			!ClientTimelineState.pending(),
+			"a silent timeline refresh must not expose a pending UI state"
+		);
+		setStaticBoolean(ClientTimelineState.class, "pendingVisible", true);
+		check(ClientTimelineState.pending(), "fixture request must begin pending");
+
+		TimelineViewS2CPayload push = TimelineViewS2CPayload.unavailable(
+			NetworkProtocol.CURRENT_VERSION,
+			0L,
+			"push"
+		);
+		ClientTimelineState.accept(push);
+		check(!ClientTimelineState.pending(), "an authoritative timeline push must settle pending UI");
+
+		ClientTimelineState.accept(
+			TimelineViewS2CPayload.unavailable(
+				NetworkProtocol.CURRENT_VERSION,
+				41L,
+				"late response"
+			)
+		);
+		check(
+			ClientTimelineState.snapshot().orElseThrow().message().equals("push"),
+			"a late response must not overwrite the newer authoritative push"
+		);
+		ClientTimelineState.disconnect();
+	}
+
+	private static SessionSnapshotS2CPayload sessionSnapshot(
+		final long stateRevision,
+		final long definitionGeneration
+	) {
+		return new SessionSnapshotS2CPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			Optional.empty(),
+			true,
+			true,
+			true,
+			true,
+			stateRevision,
+			1L,
+			"ready",
+			true,
+			definitionGeneration,
+			1,
+			1,
+			"",
+			false
+		);
+	}
+
+	private static void setConsolePending(
+		final long sequence,
+		final RequestKind kind,
+		final Identifier operationId
+	) {
+		try {
+			Class<?> pendingType = Arrays.stream(ClientConsoleState.class.getDeclaredClasses())
+				.filter(type -> type.getSimpleName().equals("Pending"))
+				.findFirst()
+				.orElseThrow();
+			Constructor<?> constructor = pendingType.getDeclaredConstructor(
+				long.class,
+				RequestKind.class,
+				Optional.class
+			);
+			constructor.setAccessible(true);
+			Object value = constructor.newInstance(sequence, kind, Optional.of(operationId));
+			Field field = ClientConsoleState.class.getDeclaredField("pending");
+			field.setAccessible(true);
+			field.set(null, value);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not prepare console request fixture", error);
+		}
+	}
+
+	@SuppressWarnings("unchecked")
+	private static List<UUID> invokeRenewalTargetIds(
+		final ConsoleSnapshotS2CPayload.ActionEntry action,
+		final List<UUID> reviewedTargetIds
+	) {
+		try {
+			Method method = ClientConsoleState.class.getDeclaredMethod(
+				"renewalTargetIds",
+				ConsoleSnapshotS2CPayload.ActionEntry.class,
+				List.class
+			);
+			method.setAccessible(true);
+			return (List<UUID>) method.invoke(null, action, reviewedTargetIds);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not verify no-target review normalization", error);
+		}
+	}
+
+	private static void setStaticBoolean(
+		final Class<?> owner,
+		final String fieldName,
+		final boolean value
+	) {
+		try {
+			Field field = owner.getDeclaredField(fieldName);
+			field.setAccessible(true);
+			field.setBoolean(null, value);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not prepare timeline visibility fixture", error);
+		}
+	}
+
+	private static void setStaticLong(
+		final Class<?> owner,
+		final String fieldName,
+		final long value
+	) {
+		try {
+			Field field = owner.getDeclaredField(fieldName);
+			field.setAccessible(true);
+			field.setLong(null, value);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not prepare timeline response gate fixture", error);
+		}
+	}
+
+	private static void checkSessionSnapshot() {
+		SessionSnapshotS2CPayload dynamicPhase = new SessionSnapshotS2CPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			Optional.of(Identifier.parse("test:cinematic/setup")),
+			true,
+			true,
+			true,
+			true,
+			4L,
+			2L,
+			"ready",
+			true,
+			3L,
+			1,
+			8,
+			"",
+			false
+		);
+		check(
+			roundTrip(SessionSnapshotS2CPayload.STREAM_CODEC, dynamicPhase).equals(dynamicPhase),
+			"session snapshot must retain an arbitrary full phase identifier"
+		);
+		SessionSnapshotS2CPayload absentPhase = new SessionSnapshotS2CPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			Optional.empty(),
+			false,
+			false,
+			false,
+			true,
+			0L,
+			0L,
+			"empty",
+			false,
+			0L,
+			0,
+			0,
+			"",
+			false
+		);
+		check(
+			roundTrip(SessionSnapshotS2CPayload.STREAM_CODEC, absentPhase).phaseId().isEmpty(),
+			"session snapshot must retain an absent phase without inventing idle"
+		);
 	}
 
 	private static void checkHostUiPayload() {
@@ -64,6 +361,21 @@ public final class ProtocolV7SelfCheck {
 		check(
 			roundTrip(HostUiStateC2SPayload.STREAM_CODEC, visible).equals(visible),
 			"host UI state codec round-trip failed"
+		);
+	}
+
+	private static void checkHostSubtitlePayload() {
+		HostSubtitleS2CPayload payload = new HostSubtitleS2CPayload(
+			23L,
+			"任务开始 · 广场逃脱"
+		);
+		check(
+			roundTrip(HostSubtitleS2CPayload.STREAM_CODEC, payload).equals(payload),
+			"host subtitle codec round-trip failed"
+		);
+		expectRejected(
+			() -> new HostSubtitleS2CPayload(24L, " "),
+			"host subtitle must reject blank feedback"
 		);
 	}
 
@@ -202,6 +514,18 @@ public final class ProtocolV7SelfCheck {
 			Optional.of(Identifier.parse("pixel_tzz:setup")),
 			"{\"text\":\"全员逃走中\"}",
 			"{\"text\":\"设置\"}",
+			List.of(
+				new ConsoleSnapshotS2CPayload.PhaseEntry(
+					Identifier.parse("pixel_tzz:setup"),
+					"{\"text\":\"设置\"}",
+					"current"
+				),
+				new ConsoleSnapshotS2CPayload.PhaseEntry(
+					Identifier.parse("pixel_tzz:ready"),
+					"{\"text\":\"准备\"}",
+					"future"
+				)
+			),
 			true,
 			true,
 			Optional.of(
@@ -234,7 +558,44 @@ public final class ProtocolV7SelfCheck {
 					true
 				)
 			),
-			Optional.empty(),
+			Optional.of(
+				new ConsoleSnapshotS2CPayload.ActiveFlowSummary(
+					FLOW_INSTANCE,
+					FLOW,
+					"{\"text\":\"猎人初始化\"}",
+					"active",
+					target(
+						UUID.fromString("00000000-0000-0000-0000-000000000301"),
+						"Host"
+					),
+					1L,
+					0,
+					1,
+					2L,
+					List.of(
+						new ConsoleSnapshotS2CPayload.MemberSummary(
+							target(
+								UUID.fromString("00000000-0000-0000-0000-000000000302"),
+								"Player"
+							),
+							"in_progress",
+							"choose_spawn",
+							"{\"text\":\"选择出生点\"}",
+							List.of(
+								new ConsoleSnapshotS2CPayload.MemberFieldSummary(
+									Identifier.parse("pixel_tzz:hunter_spawn"),
+									"{\"text\":\"猎人出生点\"}",
+									"{\"text\":\"北门\"}",
+									"held"
+								)
+							),
+							false
+						)
+					),
+					false,
+					false
+				)
+			),
 			Optional.empty(),
 			2L,
 			List.of()
@@ -377,6 +738,65 @@ public final class ProtocolV7SelfCheck {
 			),
 			"field payloads over 64 KiB must be rejected before transmission"
 		);
+
+		ExclusiveChoiceMutationC2SPayload hold = new ExclusiveChoiceMutationC2SPayload(
+			request(18L),
+			FLOW,
+			1,
+			"choose_spawn",
+			4L,
+			2L,
+			Identifier.parse("pixel_tzz:hunter_spawn"),
+			ExclusiveChoiceMutationC2SPayload.Operation.HOLD,
+			Optional.of("north_gate")
+		);
+		check(
+			roundTrip(ExclusiveChoiceMutationC2SPayload.STREAM_CODEC, hold).equals(hold),
+			"exclusive-choice hold codec round-trip failed"
+		);
+		ExclusiveChoiceMutationC2SPayload release = new ExclusiveChoiceMutationC2SPayload(
+			request(19L),
+			FLOW,
+			1,
+			"choose_spawn",
+			5L,
+			3L,
+			Identifier.parse("pixel_tzz:hunter_spawn"),
+			ExclusiveChoiceMutationC2SPayload.Operation.RELEASE,
+			Optional.empty()
+		);
+		check(
+			roundTrip(ExclusiveChoiceMutationC2SPayload.STREAM_CODEC, release).equals(release),
+			"exclusive-choice release codec round-trip failed"
+		);
+		expectRejected(
+			() -> new ExclusiveChoiceMutationC2SPayload(
+				request(20L),
+				FLOW,
+				1,
+				"choose_spawn",
+				5L,
+				3L,
+				Identifier.parse("pixel_tzz:hunter_spawn"),
+				ExclusiveChoiceMutationC2SPayload.Operation.RELEASE,
+				Optional.of("north_gate")
+			),
+			"exclusive-choice release payloads must not carry a value"
+		);
+		expectRejected(
+			() -> new ExclusiveChoiceMutationC2SPayload(
+				request(21L),
+				FLOW,
+				1,
+				"choose_spawn",
+				5L,
+				3L,
+				Identifier.parse("pixel_tzz:hunter_spawn"),
+				ExclusiveChoiceMutationC2SPayload.Operation.HOLD,
+				Optional.empty()
+			),
+			"exclusive-choice hold payloads must carry exactly one value"
+		);
 	}
 
 	private static void checkResourceReports() {
@@ -452,6 +872,34 @@ public final class ProtocolV7SelfCheck {
 			1,
 			false
 		);
+		UUID occupantId = UUID.fromString("00000000-0000-0000-0000-000000000104");
+		ExclusiveOptionState exclusiveOption = new ExclusiveOptionState(
+			"north",
+			"{\"text\":\"北侧出生点\"}",
+			"{\"text\":\"靠近广场入口\"}",
+			Optional.of(Identifier.parse("pixel_tzz:spawn/north")),
+			Optional.of(Identifier.parse("pixel_tzz:preview/spawn/north")),
+			"locked_by_other",
+			Optional.of(occupantId),
+			Optional.of("Player B"),
+			false
+		);
+		FieldSchema exclusiveField = new FieldSchema(
+			Identifier.parse("pixel_tzz:spawn"),
+			"exclusive_choice",
+			"出生点",
+			"每个出生点只能由一名玩家选择",
+			true,
+			Optional.empty(),
+			OptionalLong.empty(),
+			OptionalLong.empty(),
+			OptionalInt.empty(),
+			OptionalInt.empty(),
+			List.of("north"),
+			OptionalInt.empty(),
+			OptionalInt.empty(),
+			List.of(exclusiveOption)
+		);
 		PageBundleS2CPayload bundle = new PageBundleS2CPayload(
 			PAGE_INSTANCE,
 			3L,
@@ -462,7 +910,7 @@ public final class ProtocolV7SelfCheck {
 			page,
 			themeHash,
 			theme,
-			List.of(),
+			List.of(exclusiveField),
 			PagePurpose.FORCED_FLOW,
 			Optional.of(context),
 			binding
@@ -472,6 +920,7 @@ public final class ProtocolV7SelfCheck {
 			decoded.instanceId().equals(bundle.instanceId())
 				&& decoded.purpose() == PagePurpose.FORCED_FLOW
 				&& decoded.flowContext().equals(bundle.flowContext())
+				&& decoded.fields().equals(List.of(exclusiveField))
 				&& Arrays.equals(decoded.pageHash(), pageHash)
 				&& Arrays.equals(decoded.bindingJson(), binding),
 			"forced page bundle codec round-trip failed"

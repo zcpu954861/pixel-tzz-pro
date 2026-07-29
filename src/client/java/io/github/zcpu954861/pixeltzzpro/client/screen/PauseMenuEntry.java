@@ -1,6 +1,7 @@
 package io.github.zcpu954861.pixeltzzpro.client.screen;
 
 import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState;
+import io.github.zcpu954861.pixeltzzpro.client.ClientTimelineState;
 import java.util.Comparator;
 import java.util.List;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
@@ -61,11 +62,14 @@ public final class PauseMenuEntry {
 
 				Button entry = buildEntry(client, screen, rightColumn.getX(), iconRowY, rightColumn.getWidth());
 				widgets.add(entry);
+				registerLiveRefresh(screen, entry);
 				return;
 			}
 
 			// ponytail: another mod changed the vanilla grid; retain a usable fallback instead of guessing its layout.
-			widgets.add(buildEntry(client, screen, Math.max(8, scaledWidth - 128), 8, 120));
+			Button entry = buildEntry(client, screen, Math.max(8, scaledWidth - 128), 8, 120);
+			widgets.add(entry);
+			registerLiveRefresh(screen, entry);
 		});
 	}
 
@@ -76,16 +80,64 @@ public final class PauseMenuEntry {
 		final int y,
 		final int width
 	) {
-		ClientSessionState.Snapshot snapshot = ClientSessionState.snapshot();
-		String labelKey = snapshot.currentPlayerHost()
-			? "pixel_tzz_pro.menu.host"
-			: snapshot.adminEligible() ? "pixel_tzz_pro.menu.admin" : "pixel_tzz_pro.menu.open";
-		return Button.builder(
-				Component.translatable(labelKey).withColor(BRAND_GOLD),
-				button -> client.gui.setScreen(new ControlConsoleScreen(parent))
+		EntryState state = entryState();
+		Button entry = Button.builder(
+				label(state.labelKey()),
+				button -> {
+					EntryState current = entryState();
+					client.gui.setScreen(
+						current.openRecap()
+							? new RecapScreen(parent)
+							: new ControlConsoleScreen(parent)
+					);
+				}
 			)
 			.bounds(x, y, width, 20)
-			.tooltip(Tooltip.create(Component.translatable("pixel_tzz_pro.menu.open.tooltip")))
+			.tooltip(tooltip(state))
 			.build();
+		return entry;
+	}
+
+	private static void registerLiveRefresh(final Screen screen, final Button entry) {
+		ScreenEvents.afterTick(screen).register(ignored -> refreshEntry(entry));
+	}
+
+	private static void refreshEntry(final Button entry) {
+		EntryState state = entryState();
+		Component label = label(state.labelKey());
+		if (!entry.getMessage().equals(label)) {
+			entry.setMessage(label);
+			entry.setTooltip(tooltip(state));
+		}
+	}
+
+	private static EntryState entryState() {
+		ClientSessionState.Snapshot snapshot = ClientSessionState.snapshot();
+		boolean openRecap = !snapshot.currentPlayerHost() && ClientTimelineState.recapAvailable();
+		String labelKey = openRecap
+			? "pixel_tzz_pro.menu.recap"
+			: snapshot.currentPlayerHost()
+				? "pixel_tzz_pro.menu.host"
+				: snapshot.adminEligible()
+					? "pixel_tzz_pro.menu.admin"
+					: "pixel_tzz_pro.menu.open";
+		return new EntryState(labelKey, openRecap);
+	}
+
+	private static Component label(final String key) {
+		return Component.translatable(key).withColor(BRAND_GOLD);
+	}
+
+	private static Tooltip tooltip(final EntryState state) {
+		return Tooltip.create(
+			Component.translatable(
+				state.openRecap()
+					? "pixel_tzz_pro.menu.recap.tooltip"
+					: "pixel_tzz_pro.menu.open.tooltip"
+			)
+		);
+	}
+
+	private record EntryState(String labelKey, boolean openRecap) {
 	}
 }

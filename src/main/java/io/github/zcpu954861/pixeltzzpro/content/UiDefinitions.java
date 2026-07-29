@@ -518,7 +518,7 @@ public final class UiDefinitions {
 					|| this.presentation == FieldPresentation.TEXT;
 				case IDENTIFIER -> this.presentation == FieldPresentation.AUTO
 					|| this.presentation == FieldPresentation.IDENTIFIER_TEXT;
-				case SINGLE_CHOICE -> this.presentation == FieldPresentation.AUTO
+				case SINGLE_CHOICE, EXCLUSIVE_CHOICE -> this.presentation == FieldPresentation.AUTO
 					|| this.presentation == FieldPresentation.CHOICE_CARDS
 					|| this.presentation == FieldPresentation.RADIO_LIST
 					|| this.presentation == FieldPresentation.DROPDOWN;

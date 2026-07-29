@@ -35,6 +35,7 @@ public final class ConsoleButton extends Button {
 	private final StyleResolver styleResolver;
 	private float hoverProgress;
 	private float presentationScale = 1.0F;
+	private boolean renderLabel = true;
 	private long lastRenderMillis = Util.getMillis();
 	private long pressedUntilMillis;
 
@@ -204,21 +205,26 @@ public final class ConsoleButton extends Button {
 			);
 		}
 
-		ActiveTextCollector output = graphics.textRendererForWidget(this, GuiGraphicsExtractor.HoveredTextEffects.NONE);
-		output.defaultParameters(
-			output.defaultParameters().withOpacity(output.defaultParameters().opacity() * opacity)
-		);
-		var label = this.getMessage().copy().withColor(textColor);
-		if (!appearance.shadow()) {
-			label.withoutShadow();
+		if (this.renderLabel) {
+			ActiveTextCollector output = graphics.textRendererForWidget(
+				this,
+				GuiGraphicsExtractor.HoveredTextEffects.NONE
+			);
+			output.defaultParameters(
+				output.defaultParameters().withOpacity(output.defaultParameters().opacity() * opacity)
+			);
+			var label = this.getMessage().copy().withColor(textColor);
+			if (!appearance.shadow()) {
+				label.withoutShadow();
+			}
+			output.acceptScrollingWithDefaultCenter(
+				label,
+				this.getX() + 8,
+				this.getRight() - 8,
+				this.getY(),
+				this.getBottom()
+			);
 		}
-		output.acceptScrollingWithDefaultCenter(
-			label,
-			this.getX() + 8,
-			this.getRight() - 8,
-			this.getY(),
-			this.getBottom()
-		);
 		drawHoverArrows(
 			graphics,
 			hoverAmount,
@@ -233,6 +239,13 @@ public final class ConsoleButton extends Button {
 		this.presentationScale = Float.isFinite(scale)
 			? Math.clamp(scale, 0.0F, 8.0F)
 			: 1.0F;
+	}
+
+	/**
+	 * Keeps the button's message for narration while allowing a richer caller-drawn label.
+	 */
+	public void setRenderLabel(final boolean renderLabel) {
+		this.renderLabel = renderLabel;
 	}
 
 	private Appearance resolveAppearance(final StyleState state) {

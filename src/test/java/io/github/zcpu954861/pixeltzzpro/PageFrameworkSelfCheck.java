@@ -52,9 +52,11 @@ import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime.Evaluation;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.ChoiceCardGrid;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.CachedPage;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.Key;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageRenderProjection;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TextLineWrapper;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime.Transform;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiStyleRuntime;
@@ -93,7 +95,54 @@ public final class PageFrameworkSelfCheck {
 		checkPayloadBounds();
 		checkLayoutEngine();
 		checkViewportFit();
+		checkChoiceCardGrid();
+		checkPageRenderProjection();
 		System.out.println("PAGE_FRAMEWORK_SELF_CHECK=PASS");
+	}
+
+	private static void checkChoiceCardGrid() {
+		check(
+			ChoiceCardGrid.columns("exclusive_choice", 3, 360) == 3,
+			"three exclusive choices must share one row when three readable cards fit"
+		);
+		check(
+			ChoiceCardGrid.controlHeight("exclusive_choice", 3, 360) == 48,
+			"a one-row exclusive choice grid must not create vertical overflow"
+		);
+		check(
+			ChoiceCardGrid.columns("exclusive_choice", 3, 359) == 2
+				&& ChoiceCardGrid.columns("exclusive_choice", 3, 239) == 1,
+			"exclusive choices must retain two-column and one-column narrow fallbacks"
+		);
+		check(
+			ChoiceCardGrid.controlHeight("exclusive_choice", 4, 360) > 48,
+			"additional exclusive choices must overflow only the bounded card viewport"
+		);
+	}
+
+	private static void checkPageRenderProjection() {
+		PageRenderProjection<String, String> ready = new PageRenderProjection<>(
+			"page-bundle-1",
+			"ready",
+			""
+		);
+		PageRenderProjection<String, String> pendingOnly = new PageRenderProjection<>(
+			"page-bundle-1",
+			"ready",
+			""
+		);
+		check(
+			!ready.differsFrom(pendingOnly),
+			"transport pending must not rebuild an unchanged page projection"
+		);
+		check(
+			ready.differsFrom(new PageRenderProjection<>("page-bundle-2", "ready", "")),
+			"a new page bundle or exclusive occupancy projection must rebuild"
+		);
+		check(
+			ready.differsFrom(new PageRenderProjection<>("page-bundle-1", "error", "blocked")),
+			"a safety status or message change must rebuild"
+		);
 	}
 
 	private static void checkViewportFit() {
@@ -127,6 +176,77 @@ public final class PageFrameworkSelfCheck {
 		mutableOptions.add("late");
 		check(field.options().size() == 2, "field schemas must copy option lists");
 		expectUnsupported(() -> field.options().add("mutated"), "field schema options must be immutable");
+
+		PageBundleS2CPayload.ExclusiveOptionState hiddenOccupant =
+			new PageBundleS2CPayload.ExclusiveOptionState(
+				"north",
+				"{\"text\":\"北侧出生点\"}",
+				"{\"text\":\"靠近广场入口\"}",
+				Optional.of(id("textures/gui/spawn/north")),
+				Optional.of(id("preview/spawn/north")),
+				"held_by_other",
+				Optional.empty(),
+				Optional.empty(),
+				false
+			);
+		PageBundleS2CPayload.FieldSchema exclusiveField =
+			new PageBundleS2CPayload.FieldSchema(
+				id("spawn"),
+				"exclusive_choice",
+				"出生点",
+				"每个出生点只能由一名玩家选择",
+				true,
+				Optional.empty(),
+				OptionalLong.empty(),
+				OptionalLong.empty(),
+				OptionalInt.empty(),
+				OptionalInt.empty(),
+				List.of("north"),
+				OptionalInt.empty(),
+				OptionalInt.empty(),
+				List.of(hiddenOccupant)
+			);
+		check(
+			exclusiveField.exclusiveOptions().getFirst().occupantId().isEmpty(),
+			"hidden exclusive occupants must not require identity disclosure"
+		);
+		expectUnsupported(
+			() -> exclusiveField.exclusiveOptions().clear(),
+			"exclusive option metadata must be immutable"
+		);
+		expectIllegalArgument(
+			() -> new PageBundleS2CPayload.FieldSchema(
+				id("spawn"),
+				"exclusive_choice",
+				"出生点",
+				"",
+				true,
+				Optional.empty(),
+				OptionalLong.empty(),
+				OptionalLong.empty(),
+				OptionalInt.empty(),
+				OptionalInt.empty(),
+				List.of("south"),
+				OptionalInt.empty(),
+				OptionalInt.empty(),
+				List.of(hiddenOccupant)
+			),
+			"exclusive metadata must match stable option values"
+		);
+		expectIllegalArgument(
+			() -> new PageBundleS2CPayload.ExclusiveOptionState(
+				"north",
+				"{\"text\":\"北侧出生点\"}",
+				"",
+				Optional.empty(),
+				Optional.empty(),
+				"available",
+				Optional.of(UUID.randomUUID()),
+				Optional.of("Unexpected"),
+				false
+			),
+			"available exclusive options must reject occupant leakage"
+		);
 
 		byte[] hash = new byte[PageBundleS2CPayload.HASH_LENGTH];
 		byte[] page = bytes("{}");

@@ -1,5 +1,6 @@
 package io.github.zcpu954861.pixeltzzpro.client.animation;
 
+import io.github.zcpu954861.pixeltzzpro.animation.SubtitleQueueTimeline;
 import io.github.zcpu954861.pixeltzzpro.animation.TypewriterTimeline;
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -16,6 +17,7 @@ public final class OperationSubtitleAnimator {
 	private static final long BASE_NANOS_PER_CODE_POINT = 120_000_000L;
 	private static final long MINIMUM_REVEAL_NANOS = 900_000_000L;
 	private static final int HUD_SETTLE_TICKS = 3;
+	private static final int COMPLETE_TEXT_HOLD_TICKS = 30;
 	private static final int HOLD_TICKS = 80;
 	private static final int FADE_TICKS = 24;
 	private static final int MAX_PENDING = 3;
@@ -27,6 +29,7 @@ public final class OperationSubtitleAnimator {
 	private static long startedAtNanos;
 	private static long nanosPerCodePoint;
 	private static int hudTicks;
+	private static int completedTicks;
 
 	private OperationSubtitleAnimator() {
 	}
@@ -47,6 +50,7 @@ public final class OperationSubtitleAnimator {
 		startedAtNanos = 0L;
 		nanosPerCodePoint = 0L;
 		hudTicks = 0;
+		completedTicks = 0;
 	}
 
 	public static void tick(final Minecraft client) {
@@ -70,6 +74,7 @@ public final class OperationSubtitleAnimator {
 				BASE_NANOS_PER_CODE_POINT,
 				Math.ceilDiv(MINIMUM_REVEAL_NANOS, Math.max(1, current.length))
 			);
+			completedTicks = 0;
 			client.getSoundManager().play(
 				SimpleSoundInstance.forUI(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.22F, 0.32F)
 			);
@@ -84,7 +89,15 @@ public final class OperationSubtitleAnimator {
 		client.gui.hud.setSubtitle(frame(current, visible));
 		client.gui.hud.setTitle(Component.empty());
 		if (visible == current.length) {
-			current = null;
+			var hold = SubtitleQueueTimeline.afterCompletedFrame(
+				completedTicks,
+				COMPLETE_TEXT_HOLD_TICKS
+			);
+			completedTicks = hold.completedTicks();
+			if (hold.mayAdvance()) {
+				current = null;
+				completedTicks = 0;
+			}
 		}
 	}
 

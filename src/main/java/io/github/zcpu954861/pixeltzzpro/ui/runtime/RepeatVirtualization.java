@@ -7,6 +7,23 @@ public final class RepeatVirtualization {
 	private RepeatVirtualization() {
 	}
 
+	/**
+	 * Counts rows that fit completely inside a viewport.
+	 *
+	 * <p>The final row does not need a trailing gap, so the gap is added back before division.
+	 * Treating every row as a full {@code rowExtent + rowGap} stride incorrectly drops a row when
+	 * the viewport exactly contains {@code n} rows and only {@code n - 1} gaps.</p>
+	 */
+	public static int fullyVisibleRows(
+		final int viewportExtent,
+		final int rowExtent,
+		final int rowGap
+	) {
+		int extent = Math.max(1, rowExtent);
+		int gap = Math.max(0, rowGap);
+		return Math.max(1, (Math.max(0, viewportExtent) + gap) / (extent + gap));
+	}
+
 	public static Window verticalWindow(
 		final int itemCount,
 		final int columnCount,

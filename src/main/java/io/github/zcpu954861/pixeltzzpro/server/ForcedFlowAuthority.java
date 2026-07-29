@@ -58,6 +58,9 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerFlowParticipati
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RequestSequenceWindow;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.StoredValue;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -110,7 +113,8 @@ public final class ForcedFlowAuthority {
 			instanceId,
 			pageInstanceIds,
 			occurredAtEpochMillis,
-			Optional.empty()
+			Optional.empty(),
+			false
 		);
 	}
 
@@ -139,8 +143,131 @@ public final class ForcedFlowAuthority {
 			instanceId,
 			pageInstanceIds,
 			occurredAtEpochMillis,
-			Optional.of(Objects.requireNonNull(authorization, "authorization"))
+			Optional.of(Objects.requireNonNull(authorization, "authorization")),
+			false
 		);
+	}
+
+	/**
+	 * Starts a schema-v3 forced flow after checking every referenced exclusive field has enough
+	 * capacity for the exact target set.
+	 */
+	public static V3StartResult start(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final PanelActionDefinition sourceAction,
+		final UUID initiatedBy,
+		final List<ConnectedPlayer> connectedPlayers,
+		final List<UUID> explicitTargetIds,
+		final UUID instanceId,
+		final Supplier<UUID> pageInstanceIds,
+		final long occurredAtEpochMillis,
+		final ExclusiveContext exclusiveContext
+	) {
+		return startV3(
+			state,
+			definitions,
+			sourceAction,
+			initiatedBy,
+			connectedPlayers,
+			explicitTargetIds,
+			instanceId,
+			pageInstanceIds,
+			occurredAtEpochMillis,
+			Optional.empty(),
+			exclusiveContext
+		);
+	}
+
+	/**
+	 * Predicate-authorized schema-v3 start.
+	 */
+	public static V3StartResult start(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final PanelActionDefinition sourceAction,
+		final UUID initiatedBy,
+		final List<ConnectedPlayer> connectedPlayers,
+		final List<UUID> explicitTargetIds,
+		final UUID instanceId,
+		final Supplier<UUID> pageInstanceIds,
+		final long occurredAtEpochMillis,
+		final PanelActionAuthorization authorization,
+		final ExclusiveContext exclusiveContext
+	) {
+		return startV3(
+			state,
+			definitions,
+			sourceAction,
+			initiatedBy,
+			connectedPlayers,
+			explicitTargetIds,
+			instanceId,
+			pageInstanceIds,
+			occurredAtEpochMillis,
+			Optional.of(Objects.requireNonNull(authorization, "authorization")),
+			exclusiveContext
+		);
+	}
+
+	private static V3StartResult startV3(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final PanelActionDefinition sourceAction,
+		final UUID initiatedBy,
+		final List<ConnectedPlayer> connectedPlayers,
+		final List<UUID> explicitTargetIds,
+		final UUID instanceId,
+		final Supplier<UUID> pageInstanceIds,
+		final long occurredAtEpochMillis,
+		final Optional<PanelActionAuthorization> authorization,
+		final ExclusiveContext exclusiveContext
+	) {
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(exclusiveContext, "exclusiveContext");
+		if (state.validated().result().isEmpty()) {
+			return V3StartResult.failed(OperationCode.SCHEMA_BLOCKED, "world state is not writable");
+		}
+		if (state.activeGameInstanceId().filter(exclusiveContext.scopeId()::equals).isEmpty()) {
+			return V3StartResult.failed(
+				OperationCode.FLOW_INSTANCE_MISMATCH,
+				"exclusive scope is not the active game instance"
+			);
+		}
+		StartResult coreResult = start(
+			state.core(),
+			definitions,
+			sourceAction,
+			initiatedBy,
+			connectedPlayers,
+			explicitTargetIds,
+			instanceId,
+			pageInstanceIds,
+			occurredAtEpochMillis,
+			authorization,
+			true
+		);
+		if (!coreResult.successful()) {
+			return V3StartResult.failed(coreResult.code(), coreResult.message());
+		}
+		if (coreResult.completedImmediately()) {
+			return V3StartResult.completedWithoutChange(coreResult.message());
+		}
+		WorldStateV3 candidate = state.withCore(coreResult.nextState().orElseThrow());
+		CapacityFailure capacity = exclusiveCapacityFailure(
+			candidate,
+			definitions,
+			exclusiveContext.scopeId()
+		);
+		if (capacity != null) {
+			return V3StartResult.failed(capacity.code(), capacity.message());
+		}
+		return candidate.validated().result().isPresent()
+			? V3StartResult.succeeded(candidate, coreResult.instanceId().orElseThrow())
+			: V3StartResult.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 forced-flow start failed state validation"
+			);
 	}
 
 	private static StartResult start(
@@ -153,7 +280,8 @@ public final class ForcedFlowAuthority {
 		final UUID instanceId,
 		final Supplier<UUID> pageInstanceIds,
 		final long occurredAtEpochMillis,
-		final Optional<PanelActionAuthorization> authorization
+		final Optional<PanelActionAuthorization> authorization,
+		final boolean exclusiveChoiceAuthorized
 	) {
 		Objects.requireNonNull(state, "state");
 		Objects.requireNonNull(definitions, "definitions");
@@ -268,6 +396,12 @@ public final class ForcedFlowAuthority {
 				"the entry must be a displayable player node"
 			);
 		}
+		if (!exclusiveChoiceAuthorized && !exclusiveFields(definitions, flow).isEmpty()) {
+			return StartResult.failed(
+				OperationCode.UNSUPPORTED_OPERATION,
+				"exclusive_choice requires the schema-v3 forced-flow transaction"
+			);
+		}
 
 		FreezeResult freeze = ExecutionSnapshotCompiler.freeze(definitions, flow, sourceAction);
 		if (!freeze.success()) {
@@ -345,7 +479,15 @@ public final class ForcedFlowAuthority {
 				members.put(connected.playerId(), member);
 
 				Optional<PendingRoleChange> pendingRoleChange = player.pendingRoleChange();
-				if (flowPlan.targetRoleId().isPresent() && !alreadyComplete) {
+				Optional<Identifier> initializationRole = flowPlan.targetRoleId()
+					.or(() ->
+						Optional.ofNullable(definitions.roles().get(player.roleId()))
+							.flatMap(role -> role.initializationFlow()
+								.filter(flow.id()::equals)
+								.map(ignored -> player.roleId())
+							)
+					);
+				if (initializationRole.isPresent() && !alreadyComplete) {
 					if (
 						pendingRoleChange
 							.filter(change -> change.status() == PendingRoleChangeStatus.PENDING)
@@ -359,7 +501,7 @@ public final class ForcedFlowAuthority {
 					pendingRoleChange = Optional.of(
 						new PendingRoleChange(
 							player.playerId(),
-							flowPlan.targetRoleId().orElseThrow(),
+							initializationRole.orElseThrow(),
 							sourceAction.id(),
 							instanceId,
 							initiatedBy,
@@ -461,6 +603,397 @@ public final class ForcedFlowAuthority {
 		final UUID nextPageInstanceId,
 		final long occurredAtEpochMillis
 	) {
+		return advanceCore(
+			state,
+			frozenDefinitions,
+			submission,
+			predicateEvaluator,
+			nextPageInstanceId,
+			occurredAtEpochMillis,
+			Optional.empty()
+		);
+	}
+
+	/**
+	 * Advances a schema-v3 member transaction, atomically composing temporary exclusive holds and
+	 * final locks with the existing forced-flow reducer.
+	 */
+	public static V3ActionResult advance(
+		final WorldStateV3 state,
+		final DefinitionSnapshot frozenDefinitions,
+		final Submission submission,
+		final UUID nextPageInstanceId,
+		final long occurredAtEpochMillis,
+		final ExclusiveContext exclusiveContext
+	) {
+		return advance(
+			state,
+			frozenDefinitions,
+			submission,
+			NO_PREDICATE_EVALUATOR,
+			nextPageInstanceId,
+			occurredAtEpochMillis,
+			exclusiveContext
+		);
+	}
+
+	public static V3ActionResult advance(
+		final WorldStateV3 state,
+		final DefinitionSnapshot frozenDefinitions,
+		final Submission submission,
+		final PredicateEvaluator predicateEvaluator,
+		final UUID nextPageInstanceId,
+		final long occurredAtEpochMillis,
+		final ExclusiveContext exclusiveContext
+	) {
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(frozenDefinitions, "frozenDefinitions");
+		Objects.requireNonNull(submission, "submission");
+		Objects.requireNonNull(predicateEvaluator, "predicateEvaluator");
+		Objects.requireNonNull(nextPageInstanceId, "nextPageInstanceId");
+		Objects.requireNonNull(exclusiveContext, "exclusiveContext");
+		if (state.activeGameInstanceId().filter(exclusiveContext.scopeId()::equals).isEmpty()) {
+			return V3ActionResult.failed(
+				OperationCode.FLOW_INSTANCE_MISMATCH,
+				"exclusive scope is not the active game instance",
+				Optional.empty()
+			);
+		}
+		ExclusivePreparation preparation = prepareExclusiveSubmission(
+			state,
+			frozenDefinitions,
+			submission,
+			exclusiveContext
+		);
+		if (!preparation.successful()) {
+			return V3ActionResult.failed(
+				preparation.code(),
+				preparation.message(),
+				preparation.conflict()
+			);
+		}
+		ActionResult coreResult = advanceCore(
+			preparation.nextState().orElseThrow().core(),
+			frozenDefinitions,
+			submission,
+			predicateEvaluator,
+			nextPageInstanceId,
+			occurredAtEpochMillis,
+			preparation.authorization()
+		);
+		if (!coreResult.successful()) {
+			return V3ActionResult.failed(coreResult.code(), coreResult.message(), Optional.empty());
+		}
+		WorldStateV3 candidate = preparation.nextState().orElseThrow()
+			.withCore(coreResult.nextState().orElseThrow());
+		if (coreResult.memberCompleted()) {
+			ExclusiveCompletion completion = completeExclusiveFields(
+				candidate,
+				frozenDefinitions,
+				submission.playerId(),
+				submission.flowInstanceId(),
+				exclusiveContext
+			);
+			if (!completion.successful()) {
+				return V3ActionResult.failed(
+					completion.code(),
+					completion.message(),
+					Optional.empty()
+				);
+			}
+			candidate = completion.state();
+			ExclusiveChoiceAuthority.Result release = ExclusiveChoiceAuthority.releaseRoleMismatches(
+				candidate,
+				frozenDefinitions,
+				exclusiveContext.scopeId(),
+				exclusiveContext.serverTick()
+			);
+			if (!release.accepted()) {
+				return V3ActionResult.failed(release.code(), release.message(), release.conflict());
+			}
+			candidate = release.nextState().orElse(candidate);
+		}
+		return candidate.validated().result().isPresent()
+			? V3ActionResult.succeeded(
+				candidate,
+				coreResult.memberCompleted(),
+				coreResult.flowCompleted()
+			)
+			: V3ActionResult.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 flow advance failed state validation",
+				Optional.empty()
+			);
+	}
+
+	/**
+	 * Mutates one exclusive choice on the member's current choice page without advancing its node.
+	 *
+	 * <p>The request window, member revision, instance revision, and world revision are committed
+	 * together with the reservation mutation. This makes a card click an authoritative write fence
+	 * while leaving the normal {@code submit} action responsible only for moving to the next node.
+	 */
+	public static ExclusiveChoiceMutationResult mutateExclusiveChoice(
+		final WorldStateV3 state,
+		final DefinitionSnapshot frozenDefinitions,
+		final ExclusiveChoiceMutation mutation,
+		final long occurredAtEpochMillis,
+		final ExclusiveContext exclusiveContext
+	) {
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(frozenDefinitions, "frozenDefinitions");
+		Objects.requireNonNull(mutation, "mutation");
+		Objects.requireNonNull(exclusiveContext, "exclusiveContext");
+		if (occurredAtEpochMillis < 0L || state.validated().result().isEmpty()) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.SCHEMA_BLOCKED,
+				"world state is not writable",
+				Optional.empty()
+			);
+		}
+		if (state.activeGameInstanceId().filter(exclusiveContext.scopeId()::equals).isEmpty()) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.FLOW_INSTANCE_MISMATCH,
+				"exclusive scope is not the active game instance",
+				Optional.empty()
+			);
+		}
+
+		ForcedFlowInstance instance = state.core().activeForcedFlow().orElse(null);
+		if (instance == null || instance.runtime().status() != FlowInstanceStatus.ACTIVE) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.FLOW_NOT_ACTIVE,
+				"no active forced flow accepts this choice",
+				Optional.empty()
+			);
+		}
+		if (
+			!instance.identity().instanceId().equals(mutation.flowInstanceId())
+				|| !instance.identity().flowId().equals(mutation.flowId())
+				|| instance.identity().flowVersion() != mutation.flowVersion()
+		) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.FLOW_INSTANCE_MISMATCH,
+				"flow identity changed",
+				Optional.empty()
+			);
+		}
+		if (
+			mutation.instanceRevision() < 0L
+				|| mutation.instanceRevision() > instance.runtime().instanceRevision()
+		) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.STATE_REVISION_STALE,
+				"flow revision is invalid",
+				Optional.empty()
+			);
+		}
+
+		FlowMemberState member = instance.runtime().members().get(mutation.playerId());
+		if (member == null) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.FORBIDDEN,
+				"the player is not a flow member",
+				Optional.empty()
+			);
+		}
+		if (member.status() != FlowMemberStatus.IN_PROGRESS || member.offline()) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.ACTION_UNAVAILABLE,
+				"the member cannot change this choice",
+				Optional.empty()
+			);
+		}
+		if (member.memberRevision() != mutation.memberRevision()) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.STATE_REVISION_STALE,
+				"member revision changed",
+				Optional.empty()
+			);
+		}
+		if (
+			!member.currentNodeId().equals(Optional.of(mutation.nodeId()))
+				|| !member.pageInstanceId().equals(Optional.of(mutation.pageInstanceId()))
+		) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.NODE_MISMATCH,
+				"the displayed choice page is stale",
+				Optional.empty()
+			);
+		}
+		Optional<RequestSequenceWindow> acceptedWindow = acceptSequence(
+			member.requestSequenceWindow(),
+			mutation.requestSequence()
+		);
+		if (acceptedWindow.isEmpty()) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.REQUEST_REPLAYED,
+				"request sequence was already accepted",
+				Optional.empty()
+			);
+		}
+
+		FlowDefinition flow = frozenDefinitions.flows().get(instance.identity().flowId());
+		FlowNode node = flow == null ? null : flow.nodes().get(mutation.nodeId());
+		if (
+			flow == null
+				|| flow.version() != instance.identity().flowVersion()
+				|| !(node instanceof ChoiceNode choice)
+				|| !choice.field().equals(mutation.fieldId())
+		) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.NODE_MISMATCH,
+				"the current node does not own this exclusive field",
+				Optional.empty()
+			);
+		}
+		FieldDefinition field = frozenDefinitions.fields().get(mutation.fieldId());
+		PlayerRecord player = state.core().players().get(mutation.playerId());
+		if (
+			field == null
+				|| field.type() != FieldType.EXCLUSIVE_CHOICE
+				|| field.exclusiveChoice().isEmpty()
+				|| player == null
+				|| !applicableInFlow(field, player, instance)
+		) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.SNAPSHOT_INVALID,
+				"exclusive field is unavailable in the current frozen flow",
+				Optional.empty()
+			);
+		}
+
+		ExclusiveChoiceAuthority.Result reservationResult;
+		if (mutation.operation() == ExclusiveChoiceMutationOperation.HOLD) {
+			String value = mutation.value().orElseThrow();
+			if (!field.exclusiveChoice().orElseThrow().values().contains(value)) {
+				return ExclusiveChoiceMutationResult.failed(
+					OperationCode.TARGET_INVALID,
+					"exclusive choice is not registered",
+					Optional.empty()
+				);
+			}
+			UUID reservationId;
+			try {
+				reservationId = exclusiveContext.nextReservationId();
+			} catch (RuntimeException error) {
+				return ExclusiveChoiceMutationResult.failed(
+					OperationCode.INTERNAL_ERROR,
+					"exclusive reservation ID allocation failed: " + safeMessage(error),
+					Optional.empty()
+				);
+			}
+			if (
+				state.exclusiveReservations()
+					.stream()
+					.anyMatch(valueReservation ->
+						valueReservation.reservationId().equals(reservationId)
+					)
+			) {
+				return ExclusiveChoiceMutationResult.failed(
+					OperationCode.INTERNAL_ERROR,
+					"exclusive reservation ID is not unique",
+					Optional.empty()
+				);
+			}
+			reservationResult = ExclusiveChoiceAuthority.hold(
+				state,
+				new ExclusiveChoiceAuthority.Selection(
+					field.game(),
+					field.id(),
+					exclusiveContext.scopeId(),
+					mutation.playerId(),
+					mutation.flowInstanceId(),
+					value
+				),
+				Set.copyOf(field.exclusiveChoice().orElseThrow().values()),
+				reservationId,
+				exclusiveContext.serverTick()
+			);
+		} else {
+			reservationResult = ExclusiveChoiceAuthority.cancelHeld(
+				state,
+				new ExclusiveChoiceAuthority.ReservationOwner(
+					field.game(),
+					field.id(),
+					exclusiveContext.scopeId(),
+					mutation.playerId()
+				),
+				mutation.flowInstanceId(),
+				exclusiveContext.serverTick()
+			);
+		}
+		if (!reservationResult.accepted()) {
+			return ExclusiveChoiceMutationResult.failed(
+				reservationResult.code(),
+				reservationResult.message(),
+				reservationResult.conflict()
+			);
+		}
+
+		try {
+			WorldStateV3 reservationState = reservationResult.nextState().orElse(state);
+			long nextMemberRevision = Math.incrementExact(member.memberRevision());
+			long nextInstanceRevision = Math.incrementExact(instance.runtime().instanceRevision());
+			FlowMemberState nextMember = new FlowMemberState(
+				member.playerId(),
+				member.lockedName(),
+				member.currentNodeId(),
+				member.status(),
+				nextMemberRevision,
+				member.flowFields(),
+				member.pageInstanceId(),
+				acceptedWindow.orElseThrow(),
+				Optional.of(occurredAtEpochMillis),
+				member.offline(),
+				member.lastOnlineAtEpochMillis(),
+				member.completedAtEpochMillis(),
+				member.removal()
+			);
+			Map<UUID, FlowMemberState> members = new LinkedHashMap<>(instance.runtime().members());
+			members.put(member.playerId(), nextMember);
+			ForcedFlowRuntime runtime = new ForcedFlowRuntime(
+				instance.runtime().status(),
+				members,
+				instance.runtime().completedCount(),
+				instance.runtime().totalCount(),
+				nextInstanceRevision,
+				instance.runtime().executionSnapshot(),
+				instance.runtime().callbacks(),
+				instance.runtime().blockDiagnostic(),
+				occurredAtEpochMillis
+			);
+			WorldStateV2 nextCore = reservationState.core()
+				.withActiveForcedFlow(
+					Optional.of(new ForcedFlowInstance(instance.identity(), runtime))
+				)
+				.withStateRevision(Math.incrementExact(reservationState.core().stateRevision()));
+			WorldStateV3 candidate = reservationState.withCore(nextCore);
+			return candidate.validated().result().isPresent()
+				? ExclusiveChoiceMutationResult.succeeded(candidate, reservationResult.message())
+				: ExclusiveChoiceMutationResult.failed(
+					OperationCode.INTERNAL_ERROR,
+					"exclusive mutation failed state validation",
+					Optional.empty()
+				);
+		} catch (ArithmeticException | IllegalArgumentException | NullPointerException error) {
+			return ExclusiveChoiceMutationResult.failed(
+				OperationCode.INTERNAL_ERROR,
+				safeMessage(error),
+				Optional.empty()
+			);
+		}
+	}
+
+	private static ActionResult advanceCore(
+		final WorldStateV2 state,
+		final DefinitionSnapshot frozenDefinitions,
+		final Submission submission,
+		final PredicateEvaluator predicateEvaluator,
+		final UUID nextPageInstanceId,
+		final long occurredAtEpochMillis,
+		final Optional<ExclusiveInputAuthorization> exclusiveAuthorization
+	) {
 		Objects.requireNonNull(state, "state");
 		Objects.requireNonNull(frozenDefinitions, "frozenDefinitions");
 		Objects.requireNonNull(submission, "submission");
@@ -538,11 +1071,16 @@ public final class ForcedFlowAuthority {
 			}
 			pageId = page.page();
 		} else if (node instanceof ConfirmNode confirm) {
+			boolean confirming = "confirm".equals(submission.actionId());
+			boolean returning = "back".equals(submission.actionId()) && confirm.back().isPresent();
 			if (
-				!"confirm".equals(submission.actionId())
+				(!confirming && !returning)
 					|| !validPageAction(frozenDefinitions, confirm.page(), submission.actionId())
 			) {
-				return ActionResult.failed(OperationCode.NODE_MISMATCH, "explicit confirmation is required");
+				return ActionResult.failed(
+					OperationCode.NODE_MISMATCH,
+					"confirm node requires an explicit confirm or registered back action"
+				);
 			}
 			pageId = confirm.page();
 		} else if (node instanceof ChoiceNode choice) {
@@ -553,10 +1091,19 @@ public final class ForcedFlowAuthority {
 				return ActionResult.failed(OperationCode.NODE_MISMATCH, "choice requires the submit action");
 			}
 			FieldDefinition choiceField = frozenDefinitions.fields().get(choice.field());
-			if (choiceField == null || choiceField.type() != FieldType.SINGLE_CHOICE) {
+			if (
+				choiceField == null
+					|| (
+						choiceField.type() != FieldType.SINGLE_CHOICE
+							&& !(
+								choiceField.type() == FieldType.EXCLUSIVE_CHOICE
+									&& exclusiveAuthorization.isPresent()
+							)
+					)
+			) {
 				return ActionResult.failed(
 					OperationCode.SNAPSHOT_INVALID,
-					"choice field is not a frozen single_choice definition"
+					"choice field is not an authorized frozen choice definition"
 				);
 			}
 			pageId = choice.page();
@@ -572,11 +1119,14 @@ public final class ForcedFlowAuthority {
 				player,
 				pageId,
 				predicateEvaluator,
-				submission.fieldValues()
+				submission.fieldValues(),
+				exclusiveAuthorization
 			);
 			String directNext = switch (node) {
 				case PageNode page -> page.next();
-				case ConfirmNode confirm -> confirm.next();
+				case ConfirmNode confirm -> "back".equals(submission.actionId())
+					? confirm.back().orElseThrow()
+					: confirm.next();
 				case ChoiceNode choice -> choiceNext(choice, fieldUpdates);
 				default -> throw new ActionValidationException(
 					OperationCode.NODE_MISMATCH,
@@ -829,6 +1379,31 @@ public final class ForcedFlowAuthority {
 	}
 
 	/**
+	 * Uses the role that this exact forced-flow instance will commit when deciding whether a field
+	 * may be shown and edited. The persisted player role deliberately remains unchanged until the
+	 * flow completes.
+	 */
+	public static boolean playerMayEditFieldInFlow(
+		final FieldDefinition field,
+		final PlayerRecord player,
+		final ForcedFlowInstance instance,
+		final PredicateEvaluator predicateEvaluator,
+		final PredicateContext predicateContext
+	) {
+		Objects.requireNonNull(field, "field");
+		Objects.requireNonNull(player, "player");
+		Objects.requireNonNull(instance, "instance");
+		Objects.requireNonNull(predicateEvaluator, "predicateEvaluator");
+		Objects.requireNonNull(predicateContext, "predicateContext");
+		return (
+			field.editableBy() == EditPolicy.PLAYER
+				|| field.editableBy() == EditPolicy.BOTH
+		)
+			&& applicableInFlow(field, player, instance)
+			&& visible(field, predicateEvaluator, predicateContext);
+	}
+
+	/**
 	 * Resolves and revalidates the exact locked target set without mutating world state.
 	 */
 	public static TargetResult resolveTargets(
@@ -951,6 +1526,347 @@ public final class ForcedFlowAuthority {
 		} catch (RuntimeException error) {
 			return TargetResult.failed(OperationCode.INTERNAL_ERROR, safeMessage(error));
 		}
+	}
+
+	private static ExclusivePreparation prepareExclusiveSubmission(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final Submission submission,
+		final ExclusiveContext context
+	) {
+		if (state.validated().result().isEmpty()) {
+			return ExclusivePreparation.failed(
+				OperationCode.SCHEMA_BLOCKED,
+				"world state is not writable",
+				Optional.empty()
+			);
+		}
+		Map<Identifier, String> submitted = new LinkedHashMap<>();
+		for (FieldInput input : submission.fieldValues()) {
+			if (input == null) {
+				return ExclusivePreparation.failed(
+					OperationCode.TARGET_INVALID,
+					"field submission contains a null field",
+					Optional.empty()
+				);
+			}
+			FieldDefinition field = definitions.fields().get(input.fieldId());
+			if (field == null || field.type() != FieldType.EXCLUSIVE_CHOICE) {
+				continue;
+			}
+			if (submitted.containsKey(field.id())) {
+				return ExclusivePreparation.failed(
+					OperationCode.TARGET_INVALID,
+					"field submission contains a duplicate exclusive field",
+					Optional.empty()
+				);
+			}
+			try {
+				submitted.put(field.id(), parseExclusiveValue(field, input));
+			} catch (ActionValidationException error) {
+				return ExclusivePreparation.failed(
+					error.code,
+					error.getMessage(),
+					Optional.empty()
+				);
+			}
+		}
+
+		WorldStateV3 candidate = state;
+		Set<UUID> reservationIds = new LinkedHashSet<>();
+		for (Map.Entry<Identifier, String> entry : submitted.entrySet()) {
+			FieldDefinition field = definitions.fields().get(entry.getKey());
+			UUID reservationId;
+			try {
+				reservationId = context.nextReservationId();
+			} catch (RuntimeException error) {
+				return ExclusivePreparation.failed(
+					OperationCode.INTERNAL_ERROR,
+					"exclusive reservation ID allocation failed: " + safeMessage(error),
+					Optional.empty()
+				);
+			}
+			if (
+				!reservationIds.add(reservationId)
+					|| candidate.exclusiveReservations()
+						.stream()
+						.anyMatch(value -> value.reservationId().equals(reservationId))
+			) {
+				return ExclusivePreparation.failed(
+					OperationCode.INTERNAL_ERROR,
+					"exclusive reservation ID is not unique",
+					Optional.empty()
+				);
+			}
+			ExclusiveChoiceAuthority.Result held = ExclusiveChoiceAuthority.hold(
+				candidate,
+				new ExclusiveChoiceAuthority.Selection(
+					field.game(),
+					field.id(),
+					context.scopeId(),
+					submission.playerId(),
+					submission.flowInstanceId(),
+					entry.getValue()
+				),
+				Set.copyOf(field.exclusiveChoice().orElseThrow().values()),
+				reservationId,
+				context.serverTick()
+			);
+			if (!held.accepted()) {
+				return ExclusivePreparation.failed(
+					held.code(),
+					held.message(),
+					held.conflict()
+				);
+			}
+			candidate = held.nextState().orElse(candidate);
+		}
+		return ExclusivePreparation.succeeded(
+			candidate,
+			new ExclusiveInputAuthorization(
+				candidate,
+				context.scopeId(),
+				submission.playerId(),
+				submission.flowInstanceId(),
+				submitted
+			)
+		);
+	}
+
+	private static ExclusiveCompletion completeExclusiveFields(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final UUID playerId,
+		final UUID flowInstanceId,
+		final ExclusiveContext context
+	) {
+		ForcedFlowInstance instance = state.core().activeForcedFlow()
+			.filter(value -> value.identity().instanceId().equals(flowInstanceId))
+			.orElse(null);
+		PlayerRecord player = state.core().players().get(playerId);
+		if (instance == null || player == null) {
+			return ExclusiveCompletion.failed(
+				OperationCode.SNAPSHOT_INVALID,
+				"completed flow lost its instance or player record"
+			);
+		}
+		FlowDefinition flow = definitions.flows().get(instance.identity().flowId());
+		if (flow == null || flow.version() != instance.identity().flowVersion()) {
+			return ExclusiveCompletion.failed(
+				OperationCode.SNAPSHOT_INVALID,
+				"completed flow definition is unavailable"
+			);
+		}
+
+		WorldStateV3 candidate = state;
+		Map<Identifier, PersistentFieldValue> persistent = new LinkedHashMap<>(
+			player.persistentFields()
+		);
+		for (FieldDefinition field : exclusiveFields(definitions, flow)) {
+			Set<String> values = Set.copyOf(field.exclusiveChoice().orElseThrow().values());
+			ExclusiveReservation held = candidate.exclusiveReservations()
+				.stream()
+				.filter(reservation ->
+					reservation.gameId().equals(field.game())
+						&& reservation.fieldId().equals(field.id())
+						&& reservation.scopeId().equals(context.scopeId())
+						&& reservation.ownerId().equals(playerId)
+						&& reservation.status() == ReservationStatus.HELD
+						&& reservation.flowInstanceId().filter(flowInstanceId::equals).isPresent()
+				)
+				.findFirst()
+				.orElse(null);
+			if (held != null) {
+				ExclusiveChoiceAuthority.Result locked = ExclusiveChoiceAuthority.lock(
+					candidate,
+					new ExclusiveChoiceAuthority.Selection(
+						field.game(),
+						field.id(),
+						context.scopeId(),
+						playerId,
+						flowInstanceId,
+						held.value()
+					),
+					values,
+					context.serverTick()
+				);
+				if (!locked.accepted()) {
+					return ExclusiveCompletion.failed(locked.code(), locked.message());
+				}
+				candidate = locked.nextState().orElse(candidate);
+			}
+			Optional<String> lockedValue = ExclusiveChoiceAuthority.lockedValue(
+				candidate,
+				new ExclusiveChoiceAuthority.ReservationOwner(
+					field.game(),
+					field.id(),
+					context.scopeId(),
+					playerId
+				)
+			);
+			if (lockedValue.filter(values::contains).isEmpty()) {
+				if (field.required() && applicableInFlow(field, player, instance)) {
+					return ExclusiveCompletion.failed(
+						OperationCode.EXCLUSIVE_REQUIREMENT_INCOMPLETE,
+						"required exclusive field is not locked: " + field.id()
+					);
+				}
+				continue;
+			}
+			persistent.put(
+				field.id(),
+				new PersistentFieldValue(
+					field.version(),
+					StoredValue.singleChoice(lockedValue.orElseThrow())
+				)
+			);
+		}
+		Map<UUID, PlayerRecord> players = new LinkedHashMap<>(candidate.core().players());
+		players.put(
+			playerId,
+			copyPlayer(
+				players.get(playerId),
+				players.get(playerId).roleId(),
+				persistent,
+				players.get(playerId).pendingRoleChange(),
+				players.get(playerId).activeFlowParticipation(),
+				players.get(playerId).completionSummary(),
+				players.get(playerId).lastKnownName(),
+				players.get(playerId).lastSeenAtEpochMillis()
+			)
+		);
+		candidate = candidate.withCore(candidate.core().withPlayers(players));
+		return candidate.validated().result().isPresent()
+			? ExclusiveCompletion.succeeded(candidate)
+			: ExclusiveCompletion.failed(
+				OperationCode.INTERNAL_ERROR,
+				"exclusive completion failed state validation"
+			);
+	}
+
+	static CapacityFailure exclusiveCapacityFailure(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final UUID scopeId
+	) {
+		ForcedFlowInstance instance = state.core().activeForcedFlow().orElse(null);
+		if (instance == null) {
+			return new CapacityFailure(
+				OperationCode.SNAPSHOT_INVALID,
+				"started flow instance is unavailable"
+			);
+		}
+		FlowDefinition flow = definitions.flows().get(instance.identity().flowId());
+		if (flow == null || flow.version() != instance.identity().flowVersion()) {
+			return new CapacityFailure(
+				OperationCode.SNAPSHOT_INVALID,
+				"started flow definition is unavailable"
+			);
+		}
+		for (FieldDefinition field : exclusiveFields(definitions, flow)) {
+			Set<UUID> targets = new LinkedHashSet<>();
+			for (FlowMemberState member : instance.runtime().members().values()) {
+				if (member.status() != FlowMemberStatus.IN_PROGRESS) {
+					continue;
+				}
+				PlayerRecord player = state.core().players().get(member.playerId());
+				if (player == null) {
+					return new CapacityFailure(
+						OperationCode.SNAPSHOT_INVALID,
+						"started flow member lost its player record"
+					);
+				}
+				if (applicableInFlow(field, player, instance)) {
+					targets.add(player.playerId());
+				}
+			}
+			ExclusiveChoiceAuthority.Capacity capacity = ExclusiveChoiceAuthority.capacity(
+				state,
+				field.game(),
+				field.id(),
+				scopeId,
+				Set.copyOf(field.exclusiveChoice().orElseThrow().values()),
+				targets
+			);
+			if (!capacity.sufficient()) {
+				return new CapacityFailure(
+					OperationCode.EXCLUSIVE_REQUIREMENT_INCOMPLETE,
+					"当前无法发起『"
+						+ flow.name().plainText()
+						+ "』：『"
+						+ field.name().plainText()
+						+ "』当前剩余 "
+						+ capacity.available()
+						+ " 个可用位置，无法为 "
+						+ capacity.required()
+						+ " 名玩家分配。"
+				);
+			}
+		}
+		return null;
+	}
+
+	private static List<FieldDefinition> exclusiveFields(
+		final DefinitionSnapshot definitions,
+		final FlowDefinition flow
+	) {
+		Set<Identifier> fieldIds = new LinkedHashSet<>();
+		for (FlowNode node : flow.nodes().values()) {
+			if (node instanceof ChoiceNode choice) {
+				fieldIds.add(choice.field());
+			}
+			Identifier pageId = switch (node) {
+				case PageNode page -> page.page();
+				case ChoiceNode choice -> choice.page();
+				case ConfirmNode confirm -> confirm.page();
+				default -> null;
+			};
+			if (pageId != null) {
+				PageDefinition page = definitions.pages().get(pageId);
+				if (page != null) {
+					collectPageFields(page.root(), fieldIds);
+				}
+			}
+		}
+		return fieldIds.stream()
+			.map(definitions.fields()::get)
+			.filter(Objects::nonNull)
+			.filter(field -> field.type() == FieldType.EXCLUSIVE_CHOICE)
+			.sorted(Comparator.comparing(FieldDefinition::id))
+			.toList();
+	}
+
+	private static String parseExclusiveValue(
+		final FieldDefinition field,
+		final FieldInput input
+	) {
+		if (!"exclusive_choice".equals(input.type())) {
+			throw invalidField(field, "declared type does not match exclusive_choice");
+		}
+		if (
+			input.canonicalJson().isBlank()
+				|| input.canonicalJson().getBytes(StandardCharsets.UTF_8).length
+					> MAX_FIELD_INPUT_BYTES
+		) {
+			throw invalidField(field, "value is blank or exceeds the payload bound");
+		}
+		final JsonElement json;
+		try {
+			json = JsonParser.parseString(input.canonicalJson());
+		} catch (JsonParseException error) {
+			throw invalidField(field, "value is not valid JSON");
+		}
+		JsonPrimitive primitive = primitive(json, field, "exclusive choice");
+		String value = primitive.isString() ? primitive.getAsString() : "";
+		if (
+			value.isEmpty()
+				|| field.exclusiveChoice()
+					.filter(definition -> definition.values().contains(value))
+					.isEmpty()
+		) {
+			throw invalidField(field, "exclusive choice is not a registered option");
+		}
+		return value;
 	}
 
 	private static FlowPlan flowPlan(
@@ -1326,7 +2242,8 @@ public final class ForcedFlowAuthority {
 		final PlayerRecord player,
 		final Identifier pageId,
 		final PredicateEvaluator predicateEvaluator,
-		final List<FieldInput> inputs
+		final List<FieldInput> inputs,
+		final Optional<ExclusiveInputAuthorization> exclusiveAuthorization
 	) {
 		PageDefinition page = definitions.pages().get(pageId);
 		if (page == null) {
@@ -1362,7 +2279,7 @@ public final class ForcedFlowAuthority {
 					"current page field definition is unavailable"
 				);
 			}
-			if (!applicable(field, player, instance.identity().phaseIdAtCreation())) {
+			if (!applicableInFlow(field, player, instance)) {
 				throw new ActionValidationException(
 					OperationCode.TARGET_INVALID,
 					"field is not applicable to this player or phase: " + field.id()
@@ -1377,8 +2294,11 @@ public final class ForcedFlowAuthority {
 					"field is not player-editable: " + field.id()
 				);
 			}
-			StoredValue value = parseFieldValue(field, input);
+			StoredValue value = parseFieldValue(field, input, exclusiveAuthorization);
 			submitted.put(field.id(), value);
+			if (field.type() == FieldType.EXCLUSIVE_CHOICE) {
+				continue;
+			}
 			if (field.scope() == FieldScope.FLOW) {
 				flowFields.put(field.id(), value);
 			} else {
@@ -1410,9 +2330,15 @@ public final class ForcedFlowAuthority {
 			}
 			if (
 				field.required()
-					&& applicable(field, player, instance.identity().phaseIdAtCreation())
+					&& applicableInFlow(field, player, instance)
 					&& visible(field, predicateEvaluator, predicateContext)
-					&& !hasCurrentValue(field, flowFields, playerFields)
+					&& !hasCurrentValue(
+						field,
+						flowFields,
+						playerFields,
+						submitted,
+						exclusiveAuthorization
+					)
 			) {
 				throw new ActionValidationException(
 					OperationCode.TARGET_INVALID,
@@ -1472,11 +2398,53 @@ public final class ForcedFlowAuthority {
 			&& (field.phases().isEmpty() || field.phases().contains(phaseId));
 	}
 
+	private static boolean applicableInFlow(
+		final FieldDefinition field,
+		final PlayerRecord player,
+		final ForcedFlowInstance instance
+	) {
+		Identifier effectiveRole = player.pendingRoleChange()
+			.filter(change ->
+				change.status() == PendingRoleChangeStatus.PENDING
+					&& change.flowInstanceId().equals(instance.identity().instanceId())
+			)
+			.map(PendingRoleChange::targetRoleId)
+			.orElse(player.roleId());
+		return (field.roles().isEmpty() || field.roles().contains(effectiveRole))
+			&& (
+				field.phases().isEmpty()
+					|| field.phases().contains(instance.identity().phaseIdAtCreation())
+			);
+	}
+
 	private static boolean hasCurrentValue(
 		final FieldDefinition field,
 		final Map<Identifier, StoredValue> flowFields,
-		final Map<Identifier, PersistentFieldValue> playerFields
+		final Map<Identifier, PersistentFieldValue> playerFields,
+		final Map<Identifier, StoredValue> submitted,
+		final Optional<ExclusiveInputAuthorization> exclusiveAuthorization
 	) {
+		if (field.type() == FieldType.EXCLUSIVE_CHOICE) {
+			if (
+				Optional.ofNullable(submitted.get(field.id()))
+					.filter(value -> matchesType(field.type(), value))
+					.isPresent()
+			) {
+				return true;
+			}
+			if (
+				Optional.ofNullable(playerFields.get(field.id()))
+					.filter(value -> value.fieldVersion() == field.version())
+					.map(PersistentFieldValue::value)
+					.filter(value -> matchesType(field.type(), value))
+					.isPresent()
+			) {
+				return true;
+			}
+			return exclusiveAuthorization
+				.flatMap(value -> value.currentValue(field.id()))
+				.isPresent();
+		}
 		if (field.scope() == FieldScope.FLOW) {
 			return Optional.ofNullable(flowFields.get(field.id()))
 				.filter(value -> matchesType(field.type(), value))
@@ -1491,7 +2459,8 @@ public final class ForcedFlowAuthority {
 
 	private static StoredValue parseFieldValue(
 		final FieldDefinition field,
-		final FieldInput input
+		final FieldInput input,
+		final Optional<ExclusiveInputAuthorization> exclusiveAuthorization
 	) {
 		String expectedType = field.type().name().toLowerCase(Locale.ROOT);
 		if (!expectedType.equals(input.type())) {
@@ -1585,6 +2554,31 @@ public final class ForcedFlowAuthority {
 				}
 				yield StoredValue.singleChoice(primitive.getAsString());
 			}
+			case EXCLUSIVE_CHOICE -> {
+				JsonPrimitive primitive = primitive(json, field, "exclusive choice");
+				String value = primitive.isString() ? primitive.getAsString() : "";
+				if (
+					value.isEmpty()
+						|| field.exclusiveChoice()
+							.filter(definition -> definition.values().contains(value))
+							.isEmpty()
+				) {
+					throw invalidField(field, "exclusive choice is not a registered option");
+				}
+				if (
+					exclusiveAuthorization
+						.filter(authorization -> authorization.authorized(field.id(), value))
+						.isEmpty()
+				) {
+					throw invalidField(
+						field,
+						"exclusive choice requires an authoritative reservation transaction"
+					);
+				}
+				// ponytail: the field definition carries exclusivity; the persisted scalar reuses the
+				// existing single-choice payload instead of expanding the schema-v2 value union.
+				yield StoredValue.singleChoice(value);
+			}
 			case MULTI_CHOICE -> parseMultiChoice(field, json);
 		};
 	}
@@ -1639,6 +2633,9 @@ public final class ForcedFlowAuthority {
 		final FieldType type,
 		final StoredValue value
 	) {
+		if (type == FieldType.EXCLUSIVE_CHOICE) {
+			return value.type() == WorldStateV2.FieldValueType.SINGLE_CHOICE;
+		}
 		return value.type().getSerializedName().equals(type.name().toLowerCase(Locale.ROOT));
 	}
 
@@ -1842,6 +2839,136 @@ public final class ForcedFlowAuthority {
 		return error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
 	}
 
+	private record ExclusiveInputAuthorization(
+		WorldStateV3 state,
+		UUID scopeId,
+		UUID playerId,
+		UUID flowInstanceId,
+		Map<Identifier, String> submitted
+	) {
+		private ExclusiveInputAuthorization {
+			state = Objects.requireNonNull(state, "state");
+			scopeId = Objects.requireNonNull(scopeId, "scopeId");
+			playerId = Objects.requireNonNull(playerId, "playerId");
+			flowInstanceId = Objects.requireNonNull(flowInstanceId, "flowInstanceId");
+			submitted = Map.copyOf(submitted);
+		}
+
+		private boolean authorized(final Identifier fieldId, final String value) {
+			return this.submitted.getOrDefault(fieldId, "").equals(value)
+				&& currentValue(fieldId).filter(value::equals).isPresent();
+		}
+
+		private Optional<String> currentValue(final Identifier fieldId) {
+			String submittedValue = this.submitted.get(fieldId);
+			if (submittedValue != null) {
+				return Optional.of(submittedValue);
+			}
+			return this.state.exclusiveReservations()
+				.stream()
+				.filter(reservation ->
+					reservation.fieldId().equals(fieldId)
+						&& reservation.scopeId().equals(this.scopeId)
+						&& reservation.ownerId().equals(this.playerId)
+						&& (
+							reservation.status() == ReservationStatus.LOCKED
+								|| (
+									reservation.status() == ReservationStatus.HELD
+										&& reservation.flowInstanceId()
+											.filter(this.flowInstanceId::equals)
+											.isPresent()
+								)
+						)
+				)
+				.sorted(
+					Comparator.comparing(
+						reservation -> reservation.status() == ReservationStatus.HELD ? 0 : 1
+					)
+				)
+				.map(ExclusiveReservation::value)
+				.findFirst();
+		}
+	}
+
+	private record ExclusivePreparation(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState,
+		Optional<ExclusiveInputAuthorization> authorization,
+		Optional<ExclusiveChoiceAuthority.Conflict> conflict
+	) {
+		private ExclusivePreparation {
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nextState = Objects.requireNonNull(nextState, "nextState");
+			authorization = Objects.requireNonNull(authorization, "authorization");
+			conflict = Objects.requireNonNull(conflict, "conflict");
+		}
+
+		private boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private static ExclusivePreparation succeeded(
+			final WorldStateV3 state,
+			final ExclusiveInputAuthorization authorization
+		) {
+			return new ExclusivePreparation(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state),
+				Optional.of(authorization),
+				Optional.empty()
+			);
+		}
+
+		private static ExclusivePreparation failed(
+			final OperationCode code,
+			final String message,
+			final Optional<ExclusiveChoiceAuthority.Conflict> conflict
+		) {
+			return new ExclusivePreparation(
+				code,
+				message,
+				Optional.empty(),
+				Optional.empty(),
+				conflict
+			);
+		}
+	}
+
+	private record ExclusiveCompletion(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState
+	) {
+		private boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private WorldStateV3 state() {
+			return this.nextState.orElseThrow();
+		}
+
+		private static ExclusiveCompletion succeeded(final WorldStateV3 state) {
+			return new ExclusiveCompletion(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state)
+			);
+		}
+
+		private static ExclusiveCompletion failed(
+			final OperationCode code,
+			final String message
+		) {
+			return new ExclusiveCompletion(code, message, Optional.empty());
+		}
+	}
+
+	record CapacityFailure(OperationCode code, String message) {
+	}
+
 	private record FlowPlan(
 		FlowDefinition flow,
 		WorldStateV2.CompletionPolicy completionPolicy,
@@ -1888,6 +3015,27 @@ public final class ForcedFlowAuthority {
 	@FunctionalInterface
 	public interface PredicateEvaluator {
 		boolean evaluate(Identifier predicateId, PredicateContext context);
+	}
+
+	/**
+	 * Explicit game-instance scope and server clock used by schema-v3 exclusive transactions.
+	 */
+	public record ExclusiveContext(
+		UUID scopeId,
+		long serverTick,
+		Supplier<UUID> reservationIds
+	) {
+		public ExclusiveContext {
+			scopeId = Objects.requireNonNull(scopeId, "scopeId");
+			reservationIds = Objects.requireNonNull(reservationIds, "reservationIds");
+			if (serverTick < 0L) {
+				throw new IllegalArgumentException("exclusive server tick cannot be negative");
+			}
+		}
+
+		private UUID nextReservationId() {
+			return Objects.requireNonNull(this.reservationIds.get(), "reservation ID");
+		}
 	}
 
 	public record PanelActionAuthorization(
@@ -1978,6 +3126,55 @@ public final class ForcedFlowAuthority {
 		}
 	}
 
+	public enum ExclusiveChoiceMutationOperation {
+		HOLD,
+		RELEASE
+	}
+
+	public record ExclusiveChoiceMutation(
+		UUID playerId,
+		UUID flowInstanceId,
+		UUID pageInstanceId,
+		Identifier flowId,
+		int flowVersion,
+		String nodeId,
+		long instanceRevision,
+		long memberRevision,
+		long requestSequence,
+		Identifier fieldId,
+		ExclusiveChoiceMutationOperation operation,
+		Optional<String> value
+	) {
+		public ExclusiveChoiceMutation {
+			playerId = Objects.requireNonNull(playerId, "playerId");
+			flowInstanceId = Objects.requireNonNull(flowInstanceId, "flowInstanceId");
+			pageInstanceId = Objects.requireNonNull(pageInstanceId, "pageInstanceId");
+			flowId = Objects.requireNonNull(flowId, "flowId");
+			nodeId = Objects.requireNonNull(nodeId, "nodeId");
+			fieldId = Objects.requireNonNull(fieldId, "fieldId");
+			operation = Objects.requireNonNull(operation, "operation");
+			value = Objects.requireNonNull(value, "value");
+			if (flowVersion <= 0) {
+				throw new IllegalArgumentException("flowVersion must be positive");
+			}
+			if (
+				instanceRevision < 0L
+					|| memberRevision < 0L
+					|| requestSequence < 0L
+			) {
+				throw new IllegalArgumentException("exclusive mutation revisions must be non-negative");
+			}
+			if (
+				(operation == ExclusiveChoiceMutationOperation.HOLD) != value.isPresent()
+					|| value.filter(String::isBlank).isPresent()
+			) {
+				throw new IllegalArgumentException(
+					"hold requires one value and release must omit it"
+				);
+			}
+		}
+	}
+
 	public record StartResult(
 		OperationCode code,
 		String message,
@@ -2035,6 +3232,65 @@ public final class ForcedFlowAuthority {
 		}
 	}
 
+	public record V3StartResult(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState,
+		Optional<UUID> instanceId,
+		boolean completedImmediately
+	) {
+		public V3StartResult {
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nextState = Objects.requireNonNull(nextState, "nextState");
+			instanceId = Objects.requireNonNull(instanceId, "instanceId");
+			if (
+				(code == OperationCode.SUCCESS) != (nextState.isPresent() || completedImmediately)
+					|| nextState.isPresent() != instanceId.isPresent()
+					|| (completedImmediately && nextState.isPresent())
+			) {
+				throw new IllegalArgumentException("schema-v3 start result is inconsistent");
+			}
+		}
+
+		public boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private static V3StartResult succeeded(
+			final WorldStateV3 state,
+			final UUID instanceId
+		) {
+			return new V3StartResult(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state),
+				Optional.of(instanceId),
+				false
+			);
+		}
+
+		private static V3StartResult completedWithoutChange(final String message) {
+			return new V3StartResult(
+				OperationCode.SUCCESS,
+				message,
+				Optional.empty(),
+				Optional.empty(),
+				true
+			);
+		}
+
+		private static V3StartResult failed(final OperationCode code, final String message) {
+			return new V3StartResult(
+				code,
+				message,
+				Optional.empty(),
+				Optional.empty(),
+				false
+			);
+		}
+	}
+
 	public record ActionResult(
 		OperationCode code,
 		String message,
@@ -2074,6 +3330,112 @@ public final class ForcedFlowAuthority {
 
 		private static ActionResult failed(final OperationCode code, final String message) {
 			return new ActionResult(code, message, Optional.empty(), false, false);
+		}
+	}
+
+	public record V3ActionResult(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState,
+		boolean memberCompleted,
+		boolean flowCompleted,
+		Optional<ExclusiveChoiceAuthority.Conflict> conflict
+	) {
+		public V3ActionResult {
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nextState = Objects.requireNonNull(nextState, "nextState");
+			conflict = Objects.requireNonNull(conflict, "conflict");
+			if (
+				(code == OperationCode.SUCCESS) != nextState.isPresent()
+					|| (flowCompleted && !memberCompleted)
+					|| (conflict.isPresent() != (code == OperationCode.EXCLUSIVE_OPTION_TAKEN))
+			) {
+				throw new IllegalArgumentException("schema-v3 action result is inconsistent");
+			}
+		}
+
+		public boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private static V3ActionResult succeeded(
+			final WorldStateV3 state,
+			final boolean memberCompleted,
+			final boolean flowCompleted
+		) {
+			return new V3ActionResult(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state),
+				memberCompleted,
+				flowCompleted,
+				Optional.empty()
+			);
+		}
+
+		private static V3ActionResult failed(
+			final OperationCode code,
+			final String message,
+			final Optional<ExclusiveChoiceAuthority.Conflict> conflict
+		) {
+			return new V3ActionResult(
+				code,
+				message,
+				Optional.empty(),
+				false,
+				false,
+				conflict
+			);
+		}
+	}
+
+	public record ExclusiveChoiceMutationResult(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState,
+		Optional<ExclusiveChoiceAuthority.Conflict> conflict
+	) {
+		public ExclusiveChoiceMutationResult {
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nextState = Objects.requireNonNull(nextState, "nextState");
+			conflict = Objects.requireNonNull(conflict, "conflict");
+			if (
+				(code == OperationCode.SUCCESS) != nextState.isPresent()
+					|| (conflict.isPresent() != (code == OperationCode.EXCLUSIVE_OPTION_TAKEN))
+			) {
+				throw new IllegalArgumentException("exclusive mutation result is inconsistent");
+			}
+		}
+
+		public boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private static ExclusiveChoiceMutationResult succeeded(
+			final WorldStateV3 state,
+			final String message
+		) {
+			return new ExclusiveChoiceMutationResult(
+				OperationCode.SUCCESS,
+				message,
+				Optional.of(state),
+				Optional.empty()
+			);
+		}
+
+		private static ExclusiveChoiceMutationResult failed(
+			final OperationCode code,
+			final String message,
+			final Optional<ExclusiveChoiceAuthority.Conflict> conflict
+		) {
+			return new ExclusiveChoiceMutationResult(
+				code,
+				message,
+				Optional.empty(),
+				conflict
+			);
 		}
 	}
 

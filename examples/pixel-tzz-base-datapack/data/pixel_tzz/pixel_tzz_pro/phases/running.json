@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "name": {
+    "text": "任务验收"
+  },
+  "on_enter": "pixel_tzz:acceptance_2d/phase/running_enter",
+  "transitions": [
+    "pixel_tzz:ended"
+  ]
+}

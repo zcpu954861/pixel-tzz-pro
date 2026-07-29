@@ -128,14 +128,14 @@
                   "type": "text",
                   "style": "status_label",
                   "text": {
-                    "text": "内容定义"
+                    "text": "内容版本"
                   }
                 },
                 {
                   "type": "text",
                   "style": "status_success",
                   "text": {
-                    "text": "◆  已同步"
+                    "text": "◆  本局规则"
                   }
                 }
               ]

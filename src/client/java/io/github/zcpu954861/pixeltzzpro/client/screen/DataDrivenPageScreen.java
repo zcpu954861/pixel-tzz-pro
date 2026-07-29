@@ -38,8 +38,10 @@ import com.mojang.blaze3d.platform.NativeImage;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ExclusiveMutationSubmission;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.FlowSubmission;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.PageStatus;
+import io.github.zcpu954861.pixeltzzpro.client.OperationFeedbackText;
 import io.github.zcpu954861.pixeltzzpro.client.ui.ClientResourcePreflight.Diagnostic;
 import io.github.zcpu954861.pixeltzzpro.client.ui.page.PageRenderPlanBuilder;
 import io.github.zcpu954861.pixeltzzpro.client.ui.page.PageRenderPlanBuilder.RenderNode;
@@ -74,12 +76,15 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.TextOverflow;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiAction;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiEvent;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload.FieldValue;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload.Operation;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.ExclusiveOptionState;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.PlacedNode;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageRenderProjection;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TextLineWrapper;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime;
@@ -155,6 +160,8 @@ public final class DataDrivenPageScreen extends Screen {
 	private final BindingRuntime bindings = new BindingRuntime(DataDrivenPageScreen::translate);
 	private final Map<String, Integer> scrollOffsets = new LinkedHashMap<>();
 	private final Map<String, WidgetBinding> pageWidgets = new LinkedHashMap<>();
+	private final Map<AbstractWidget, ExclusiveChoicePresentation> exclusiveChoicePresentations =
+		new IdentityHashMap<>();
 	private final Map<String, PlacedNode> placedNodes = new LinkedHashMap<>();
 	private final Map<String, JsonElement> localUiValues = new LinkedHashMap<>();
 	private final Map<StyleCacheKey, Map<String, StyleValue>> resolvedStyles = new HashMap<>();
@@ -178,12 +185,17 @@ public final class DataDrivenPageScreen extends Screen {
 	private long requestSequence;
 	private long motionSequence;
 	private long observedRevision = Long.MIN_VALUE;
+	private PageRenderProjection<ActivePage, PageStatus> observedPageProjection =
+		currentPageProjection();
 	private boolean pendingPlanRefresh;
 	private boolean closing;
 	private boolean serverReleased;
 	private boolean safetyDiagnosticsExpanded;
 	private long pendingActionSequence = -1L;
 	private String pendingActionNodeKey = "";
+	private long pendingExclusiveMutationSequence = -1L;
+	private Identifier pendingExclusiveMutationField;
+	private String pendingExclusiveMutationOption = "";
 	private int toolbarHeight;
 	private int viewportX;
 	private int viewportY;
@@ -292,13 +304,14 @@ public final class DataDrivenPageScreen extends Screen {
 			.orElse(null);
 		this.clearWidgets();
 		this.pageWidgets.clear();
+		this.exclusiveChoicePresentations.clear();
 		this.placedNodes.clear();
 		this.resolvedStyles.clear();
 		this.bindingContextCache.clear();
 		this.renderFailure = "";
 		this.active = ClientPageState.activePage().orElse(null);
 		resetMotionStateIfInstanceChanged();
-		this.observedRevision = ClientPageState.revision();
+		rememberPageProjection();
 
 		if (isSafetyPage()) {
 			this.plan = null;
@@ -724,11 +737,7 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private boolean actionEnabled(final RenderNode node, final ButtonContent content) {
-		return evaluateEnabled(node, content)
-			&& (
-				content.action().type() == ActionType.LOCAL
-					|| !ClientPageState.flowActionPending()
-			);
+		return evaluateEnabled(node, content);
 	}
 
 	private void updateButtonTooltip(
@@ -758,8 +767,39 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 		String nodeId = node.definition().id().orElseThrow();
 		JsonElement existing = this.session.uiValue(nodeId);
-		if (existing == null) {
+		if (field.type().equals("exclusive_choice") && !this.session.previewChrome()) {
+			JsonElement authoritative = field.exclusiveOptions()
+				.stream()
+				.filter(option ->
+					option.state().equals("held_by_self")
+						|| option.state().equals("locked_by_self")
+				)
+				.findFirst()
+				.<JsonElement>map(option -> new JsonPrimitive(option.value()))
+				.orElse(JsonNull.INSTANCE);
+			boolean preservePendingDraft =
+				ClientPageState.exclusiveChoiceMutationPending(input.field())
+					&& existing != null;
+			if (!preservePendingDraft) {
+				existing = authoritative;
+				this.session.setUiValue(nodeId, authoritative);
+			}
+		} else if (existing == null) {
 			existing = this.session.initialFieldValue(this.active, input.field());
+			if (
+				existing == null
+					&& field.type().equals("exclusive_choice")
+			) {
+				existing = field.exclusiveOptions()
+					.stream()
+					.filter(option ->
+						option.state().equals("held_by_self")
+							|| option.state().equals("locked_by_self")
+					)
+					.findFirst()
+					.<JsonElement>map(option -> new JsonPrimitive(option.value()))
+					.orElse(null);
+			}
 			if (existing != null) {
 				this.session.setUiValue(nodeId, existing);
 			}
@@ -772,6 +812,8 @@ public final class DataDrivenPageScreen extends Screen {
 			case "boolean" -> addBooleanField(node, placed, field, nodeId, area);
 			case "single_choice", "multi_choice" ->
 				addChoiceField(node, placed, field, nodeId, area);
+			case "exclusive_choice" ->
+				addExclusiveChoiceField(node, placed, field, nodeId, area);
 			case "integer", "string", "identifier" ->
 				addTextField(node, placed, field, nodeId, area);
 			default -> {
@@ -837,7 +879,7 @@ public final class DataDrivenPageScreen extends Screen {
 		if (options.isEmpty()) {
 			return;
 		}
-		int columns = Math.min(3, options.size());
+		int columns = PageRenderPlanBuilder.fieldChoiceColumns(field, area.width());
 		int rows = Math.ceilDiv(options.size(), columns);
 		int gap = 4;
 		int buttonWidth = Math.max(28, (area.width() - gap * (columns - 1)) / columns);
@@ -892,6 +934,150 @@ public final class DataDrivenPageScreen extends Screen {
 				)
 			);
 			addPageWidget(node.key() + "/field-choice-" + index, button, placed, node);
+		}
+	}
+
+	private void addExclusiveChoiceField(
+		final RenderNode node,
+		final PlacedNode placed,
+		final FieldSchema field,
+		final String nodeId,
+		final Rect area
+	) {
+		if (field.exclusiveOptions().isEmpty()) {
+			return;
+		}
+		boolean interactionPending = ClientPageState.exclusiveChoiceMutationPending()
+			|| ClientPageState.flowActionPending();
+		int columns = PageRenderPlanBuilder.fieldChoiceColumns(field, area.width());
+		int rows = Math.ceilDiv(field.exclusiveOptions().size(), columns);
+		int gap = 6;
+		int buttonWidth = Math.max(80, (area.width() - gap * (columns - 1)) / columns);
+		int buttonHeight = Math.max(
+			36,
+			Math.min(48, (area.height() - gap * (rows - 1)) / rows)
+		);
+		Optional<String> localValue = primitiveString(this.localUiValues.get(nodeId));
+		for (int index = 0; index < field.exclusiveOptions().size(); index++) {
+			ExclusiveOptionState option = field.exclusiveOptions().get(index);
+			boolean selected = localValue.filter(option.value()::equals).isPresent();
+			boolean selectable = switch (option.state()) {
+				case "available", "held_by_self", "locked_by_self" -> true;
+				default -> false;
+			} && !interactionPending;
+			int column = index % columns;
+			int row = index / columns;
+			Component name = ConsoleText.parse(option.nameJson(), option.value());
+			Component description = option.descriptionJson().isBlank()
+				? Component.empty()
+				: ConsoleText.parse(option.descriptionJson(), "");
+			String status = exclusiveStatusLabel(option.state(), selected);
+			String narration = name.getString()
+				+ "，"
+				+ status
+				+ (description.getString().isBlank() ? "" : "。" + description.getString());
+			ConsoleButton button = new ConsoleButton(
+				screenX(area.x() + column * (buttonWidth + gap)),
+				screenY(area.y() + row * (buttonHeight + gap)),
+				buttonWidth,
+				buttonHeight,
+				Component.literal(narration),
+				pressed -> {
+					if (
+						ClientPageState.exclusiveChoiceMutationPending()
+							|| ClientPageState.flowActionPending()
+					) {
+						this.lastRequestEnvelope = "上一项选择仍在等待服务端确认。";
+						return;
+					}
+					triggerUiEvent(node, UiEvent.PRESS, node.key() + "/choice-" + option.value());
+					if (this.session.previewChrome()) {
+						setUiValue(
+							nodeId,
+							selected ? JsonNull.INSTANCE : new JsonPrimitive(option.value())
+						);
+						triggerUiEvent(
+							node,
+							UiEvent.VALUE_CHANGE,
+							node.key() + "/choice-" + option.value()
+						);
+						rebuild();
+						return;
+					}
+					if (selected && option.state().equals("locked_by_self")) {
+						this.lastRequestEnvelope =
+							"已锁定的旧值不会被普通点击释放；请选择其他位置进行原子改选。";
+						return;
+					}
+					Operation operation =
+						selected && option.state().equals("held_by_self")
+							? Operation.RELEASE
+							: Operation.HOLD;
+					Optional<String> value = operation == Operation.HOLD
+						? Optional.of(option.value())
+						: Optional.empty();
+					ExclusiveMutationSubmission submission =
+						ClientPageState.mutateExclusiveChoice(field.id(), operation, value);
+					if (!submission.sent()) {
+						this.lastRequestEnvelope =
+							"选择未发送: " + submission.message();
+						return;
+					}
+					setUiValue(
+						nodeId,
+						operation == Operation.HOLD
+							? new JsonPrimitive(option.value())
+							: JsonNull.INSTANCE
+					);
+					this.pendingExclusiveMutationSequence = submission.requestSequence();
+					this.pendingExclusiveMutationField = field.id();
+					this.pendingExclusiveMutationOption = option.value();
+					this.lastRequestEnvelope = operation == Operation.HOLD
+						? "正在向服务端预约该位置…"
+						: "正在释放该临时预约…";
+					triggerUiEvent(
+						node,
+						UiEvent.VALUE_CHANGE,
+						node.key() + "/choice-" + option.value()
+					);
+					rebuild();
+				},
+				selected ? Variant.PRIMARY : Variant.NORMAL,
+				eventSound(node, UiEvent.VALUE_CHANGE).isEmpty(),
+				(state, fallback) -> buttonAppearance(node, state, fallback)
+			);
+			button.active = selectable;
+			button.setRenderLabel(false);
+			button.setTooltip(
+				Tooltip.create(
+					Component.literal(
+						name.getString()
+							+ (description.getString().isBlank()
+								? ""
+								: "\n" + description.getString())
+							+ "\n状态：" + status
+							+ option.occupantName()
+								.map(occupant -> "\n占用者：" + occupant)
+								.orElse("")
+					)
+				)
+			);
+			this.exclusiveChoicePresentations.put(
+				button,
+				new ExclusiveChoicePresentation(
+					field.id(),
+					option,
+					name,
+					description,
+					selected
+				)
+			);
+			addPageWidget(
+				node.key() + "/field-exclusive-choice-" + index,
+				button,
+				placed,
+				node
+			);
 		}
 	}
 
@@ -1171,9 +1357,13 @@ public final class DataDrivenPageScreen extends Screen {
 		long now = Util.getMillis();
 		playPendingSounds(now);
 		consumeActionResult();
+		consumeExclusiveMutationResult();
 		if (this.observedRevision != ClientPageState.revision()) {
-			rebuild();
-			return;
+			if (pageProjectionChanged()) {
+				rebuild();
+				return;
+			}
+			this.observedRevision = ClientPageState.revision();
 		}
 		if (this.plan == null) {
 			return;
@@ -1204,13 +1394,34 @@ public final class DataDrivenPageScreen extends Screen {
 					: this.plan.nodes().get(this.pendingActionNodeKey);
 				this.pendingActionSequence = -1L;
 				this.pendingActionNodeKey = "";
-				this.lastRequestEnvelope = result.message().isEmpty()
-					? "服务端返回: " + result.code().serializedName()
-					: result.message();
+				this.lastRequestEnvelope = OperationFeedbackText.resolve(
+					result.code(),
+					result.message()
+				);
 				if (node != null) {
 					triggerActionOutcome(node, result.success());
 				}
 			});
+	}
+
+	private void consumeExclusiveMutationResult() {
+		if (this.pendingExclusiveMutationSequence < 0L) {
+			return;
+		}
+		ClientPageState.consumeExclusiveChoiceMutationResult(
+			this.pendingExclusiveMutationSequence
+		).ifPresent(result -> {
+			this.pendingExclusiveMutationSequence = -1L;
+			this.pendingExclusiveMutationField = null;
+			this.pendingExclusiveMutationOption = "";
+			this.lastRequestEnvelope = OperationFeedbackText.resolve(
+				result.code(),
+				result.message()
+			);
+			// Recoverable failures are followed by an authoritative page bundle. Waiting for that
+			// bundle avoids rebuilding the stale projection once here and once again a packet later.
+			// Fatal failures already change pageStatus and are rebuilt by pageProjectionChanged().
+		});
 	}
 
 	private void refreshButtonStates() {
@@ -1475,6 +1686,14 @@ public final class DataDrivenPageScreen extends Screen {
 			styleColor(rootNode, "border_color", SURFACE_BORDER),
 			opacity
 		);
+		int background = withOpacity(
+			styleColor(
+				rootNode,
+				"background_color",
+				this.session.highContrast() ? 0xFF020406 : SURFACE
+			),
+			opacity
+		);
 		int brand = withOpacity(
 			parseHexColor(this.motionColorTokens.get("brand")).orElse(BRAND_GOLD),
 			opacity
@@ -1490,6 +1709,7 @@ public final class DataDrivenPageScreen extends Screen {
 		if (right <= x || bottom <= y) {
 			return;
 		}
+		graphics.fill(x, y, right, bottom, background);
 		graphics.outline(x, y, right - x, bottom - y, border);
 		graphics.fill(x, y, Math.min(right, x + 4), bottom, info);
 		graphics.fill(Math.min(right, x + 4), y, right, Math.min(bottom, y + 2), brand);
@@ -2327,9 +2547,18 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 		int y = content.y();
 		if (input.showLabel()) {
+			boolean showRequirement = field.required();
+			boolean satisfied = !showRequirement || fieldInputSatisfied(node, field);
+			String requirement = satisfied ? "已选择" : "必选";
+			int requirementColor = satisfied ? SUCCESS : WARNING;
+			int requirementWidth = showRequirement ? this.font.width(requirement) + 12 : 0;
+			int labelWidth = Math.max(
+				1,
+				content.width() - (showRequirement ? requirementWidth + 7 : 0)
+			);
 			graphics.text(
 				this.font,
-				styledText(node, field.name() + (field.required() ? "  *" : "")),
+				styledText(node, this.font.plainSubstrByWidth(field.name(), labelWidth)),
 				content.x(),
 				y,
 				withOpacity(
@@ -2338,6 +2567,31 @@ public final class DataDrivenPageScreen extends Screen {
 				),
 				false
 			);
+			if (showRequirement) {
+				int badgeX = content.right() - requirementWidth;
+				graphics.fill(
+					badgeX,
+					y - 2,
+					content.right(),
+					y + 11,
+					withOpacity(withAlpha(requirementColor, 22), opacity)
+				);
+				graphics.outline(
+					badgeX,
+					y - 2,
+					requirementWidth,
+					13,
+					withOpacity(withAlpha(requirementColor, 138), opacity)
+				);
+				graphics.text(
+					this.font,
+					Component.literal(requirement),
+					badgeX + 6,
+					y + 2,
+					withOpacity(requirementColor, opacity),
+					false
+				);
+			}
 			y += 14;
 		}
 		if (input.showDescription() && !field.description().isEmpty()) {
@@ -2464,10 +2718,191 @@ public final class DataDrivenPageScreen extends Screen {
 			graphics.enableScissor(clip.x(), clip.y(), clip.right(), clip.bottom());
 			try {
 				widget.extractRenderState(graphics, mouseX, mouseY, tickProgress);
+				ExclusiveChoicePresentation choice = this.exclusiveChoicePresentations.get(widget);
+				if (choice != null) {
+					drawExclusiveChoiceContent(graphics, widget, choice);
+				}
 			} finally {
 				graphics.disableScissor();
 			}
 		}
+	}
+
+	/**
+	 * Network pending/result changes share the state revision but do not alter the rendered page.
+	 * Keeping this projection separate prevents a short request from replaying every widget's show
+	 * animation. A new page bundle, occupancy update, resource state, or safety error still rebuilds.
+	 */
+	private boolean pageProjectionChanged() {
+		return this.observedPageProjection.differsFrom(currentPageProjection());
+	}
+
+	private void rememberPageProjection() {
+		this.observedRevision = ClientPageState.revision();
+		this.observedPageProjection = currentPageProjection();
+	}
+
+	private static PageRenderProjection<ActivePage, PageStatus> currentPageProjection() {
+		return new PageRenderProjection<>(
+			ClientPageState.activePage().orElse(null),
+			ClientPageState.pageStatus(),
+			ClientPageState.pageMessage()
+		);
+	}
+
+	private boolean fieldInputSatisfied(
+		final RenderNode node,
+		final FieldSchema field
+	) {
+		String nodeId = node.definition().id().orElse(node.key());
+		JsonElement value = this.localUiValues.get(nodeId);
+		if (value == null || value.isJsonNull()) {
+			return false;
+		}
+		return switch (field.type()) {
+			case "boolean" -> primitiveBoolean(value).isPresent();
+			case "multi_choice" -> selectionCount(value)
+				>= Math.max(1, field.minimumSelections().orElse(1));
+			case "single_choice", "exclusive_choice" ->
+				primitiveString(value).filter(candidate -> !candidate.isBlank()).isPresent();
+			case "integer", "string", "identifier" ->
+				primitiveInputText(value).filter(candidate -> !candidate.isBlank()).isPresent();
+			default -> false;
+		};
+	}
+
+	private void drawExclusiveChoiceContent(
+		final GuiGraphicsExtractor graphics,
+		final AbstractWidget widget,
+		final ExclusiveChoicePresentation presentation
+	) {
+		ExclusiveOptionState option = presentation.option();
+		int left = widget.getX() + 9;
+		int right = widget.getRight() - 8;
+		int height = widget.getHeight();
+		boolean pending = presentation.fieldId().equals(this.pendingExclusiveMutationField)
+			&& option.value().equals(this.pendingExclusiveMutationOption);
+		int avatarSize = option.occupantId().isPresent() && height >= 36
+			? Math.clamp(height - 18, 16, 22)
+			: 0;
+		int detailRight = right;
+		if (avatarSize > 0) {
+			int avatarX = right - avatarSize;
+			PlayerIdentityRenderer.drawHead(
+				graphics,
+				option.occupantId().orElseThrow(),
+				option.occupantOnline(),
+				avatarX,
+				widget.getY() + height - avatarSize - 5,
+				avatarSize,
+				false
+			);
+			detailRight = avatarX - 7;
+		}
+
+		String status = pending
+			? "同步中"
+			: exclusiveStatusLabel(option.state(), presentation.selected());
+		int statusColor = pending
+			? INFO_CYAN
+			: exclusiveStatusColor(option.state(), presentation.selected());
+		int statusWidth = this.font.width(status) + 8;
+		boolean showBadge = right - left >= statusWidth + 64;
+		int titleRight = right;
+		if (showBadge) {
+			int statusX = right - statusWidth;
+			graphics.fill(
+				statusX,
+				widget.getY() + 5,
+				right,
+				widget.getY() + 16,
+				withAlpha(statusColor, 46)
+			);
+			graphics.outline(
+				statusX,
+				widget.getY() + 5,
+				statusWidth,
+				11,
+				withAlpha(statusColor, 150)
+			);
+			graphics.text(
+				this.font,
+				status,
+				statusX + 4,
+				widget.getY() + 6,
+				statusColor,
+				false
+			);
+			titleRight = statusX - 5;
+		}
+
+		int titleWidth = Math.max(1, titleRight - left);
+		FormattedText title = this.font.substrByWidth(presentation.name(), titleWidth);
+		graphics.text(
+			this.font,
+			Language.getInstance().getVisualOrder(title),
+			left,
+			widget.getY() + 6,
+			widget.active ? MAIN_TEXT : MUTED_TEXT,
+			true
+		);
+
+		String detail = pending ? "正在确认服务端占用状态…" : exclusiveChoiceDetail(presentation);
+		if (!showBadge && detail.isBlank()) {
+			detail = status;
+		}
+		graphics.text(
+			this.font,
+			this.font.plainSubstrByWidth(detail, Math.max(1, detailRight - left)),
+			left,
+			widget.getY() + Math.max(20, height - 15),
+			widget.active ? SECONDARY_TEXT : MUTED_TEXT,
+			false
+		);
+	}
+
+	private static String exclusiveChoiceDetail(
+		final ExclusiveChoicePresentation presentation
+	) {
+		ExclusiveOptionState option = presentation.option();
+		if (
+			option.state().equals("held_by_other")
+				|| option.state().equals("locked_by_other")
+		) {
+			return option.occupantName()
+				.map(name -> name + (option.occupantOnline() ? " · 在线" : " · 离线"))
+				.orElse("其他玩家已选择");
+		}
+		if (!presentation.description().getString().isBlank()) {
+			return presentation.description().getString();
+		}
+		return exclusiveStatusLabel(option.state(), presentation.selected());
+	}
+
+	private static String exclusiveStatusLabel(final String state, final boolean selected) {
+		if (selected && !state.equals("locked_by_self")) {
+			return "已选择";
+		}
+		return switch (state) {
+			case "held_by_self" -> "已预留";
+			case "locked_by_self" -> "已锁定";
+			case "held_by_other" -> "暂占";
+			case "locked_by_other" -> "已占用";
+			default -> "可选";
+		};
+	}
+
+	private static int exclusiveStatusColor(final String state, final boolean selected) {
+		if (selected) {
+			return BRAND_GOLD;
+		}
+		return switch (state) {
+			case "held_by_self" -> WARNING;
+			case "locked_by_self" -> SUCCESS;
+			case "held_by_other" -> WARNING;
+			case "locked_by_other" -> DANGER;
+			default -> INFO_CYAN;
+		};
 	}
 
 	private void synchronizeWidgetBounds(final MotionLayout motionLayout) {
@@ -3346,6 +3781,9 @@ public final class DataDrivenPageScreen extends Screen {
 			}
 			return true;
 		}
+		if (ClientPageState.flowActionPending()) {
+			return true;
+		}
 		if (super.keyPressed(event)) {
 			return true;
 		}
@@ -3451,7 +3889,7 @@ public final class DataDrivenPageScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(final MouseButtonEvent event, final boolean doubleClick) {
-		if (this.closing) {
+		if (this.closing || ClientPageState.flowActionPending()) {
 			return true;
 		}
 		MotionLayout motionLayout = this.plan == null
@@ -3710,6 +4148,15 @@ public final class DataDrivenPageScreen extends Screen {
 		PlacedNode placed,
 		RenderNode node,
 		Rect layoutBounds
+	) {
+	}
+
+	private record ExclusiveChoicePresentation(
+		Identifier fieldId,
+		ExclusiveOptionState option,
+		Component name,
+		Component description,
+		boolean selected
 	) {
 	}
 

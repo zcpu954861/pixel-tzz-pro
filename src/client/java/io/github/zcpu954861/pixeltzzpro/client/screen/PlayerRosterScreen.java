@@ -22,6 +22,7 @@ import io.github.zcpu954861.pixeltzzpro.client.ui.widget.PlayerIdentityRenderer;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -42,6 +43,7 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 	private int visibleRows;
 	private String filter = "";
 	private boolean filterDirty;
+	private ConsoleButton refreshButton;
 
 	PlayerRosterScreen(final Screen parent) {
 		super(Component.literal("玩家名单"), parent, Motion.PUSH_ENTER);
@@ -64,7 +66,11 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 		int height = panelHeight();
 		int listTop = y + 82;
 		int listBottom = y + height - 46;
-		this.visibleRows = Math.max(1, (listBottom - listTop) / (ROW_HEIGHT + ROW_GAP));
+		this.visibleRows = RepeatVirtualization.fullyVisibleRows(
+			listBottom - listTop,
+			ROW_HEIGHT,
+			ROW_GAP
+		);
 		List<Target> players = visiblePlayers();
 		this.firstVisible = Math.clamp(
 			this.firstVisible,
@@ -96,7 +102,7 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 		this.addRenderableWidget(search);
 
 		int footerY = y + height - 35;
-		ConsoleButton refresh = new ConsoleButton(
+		this.refreshButton = new ConsoleButton(
 			x + 18,
 			footerY,
 			94,
@@ -105,8 +111,8 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 			button -> ClientConsoleState.requestConsole(),
 			Variant.NORMAL
 		);
-		refresh.active = !ClientConsoleState.pending();
-		this.addRenderableWidget(refresh);
+		this.refreshButton.active = true;
+		this.addRenderableWidget(this.refreshButton);
 		ConsoleButton back = new ConsoleButton(
 			x + width - 94,
 			footerY,
@@ -119,6 +125,7 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 		this.addRenderableWidget(back);
 		this.setInitialFocus(this.filterDirty ? search : back);
 		this.filterDirty = false;
+		this.observedRevision = ClientConsoleState.revision();
 	}
 
 	@Override
@@ -128,9 +135,18 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 			return;
 		}
 		long revision = ClientConsoleState.revision();
-		if (this.filterDirty || revision != this.observedRevision) {
-			this.observedRevision = revision;
+		if (this.filterDirty) {
 			rebuildWidgets();
+			return;
+		}
+		if (revision != this.observedRevision) {
+			this.observedRevision = revision;
+			this.firstVisible = Math.clamp(
+				this.firstVisible,
+				0,
+				Math.max(0, visiblePlayers().size() - this.visibleRows)
+			);
+			this.refreshButton.active = true;
 		}
 	}
 
@@ -144,6 +160,18 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 		if (navigationLocked() || verticalAmount == 0.0) {
 			return navigationLocked()
 				|| super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+		}
+		int x = panelX();
+		int y = panelY();
+		int listTop = y + 82;
+		int listBottom = y + panelHeight() - 46;
+		if (
+			mouseX < x + 12
+				|| mouseX >= x + panelWidth() - 12
+				|| mouseY < listTop - 5
+				|| mouseY >= listBottom
+		) {
+			return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
 		}
 		int next = Math.clamp(
 			this.firstVisible + (verticalAmount > 0.0 ? -1 : 1),
@@ -188,9 +216,16 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 			graphics.fill(x + 4, y, x + width, y + 2, BRAND_GOLD);
 			graphics.text(this.font, "PLAYER ROSTER // 玩家权威名单", x + 18, y + 12, INFO_CYAN, false);
 			drawServerSyncBadge(graphics, x + width - 14, y + 10);
+			UUID hostId = ClientConsoleState.snapshot()
+				.flatMap(ConsoleSnapshotS2CPayload::host)
+				.map(ConsoleSnapshotS2CPayload.HostInfo::playerId)
+				.orElse(null);
 			List<Target> allPlayers = ClientConsoleState.snapshot()
 				.map(ConsoleSnapshotS2CPayload::players)
-				.orElseGet(List::of);
+				.orElseGet(List::of)
+				.stream()
+				.filter(player -> !player.playerId().equals(hostId))
+				.toList();
 			long online = allPlayers.stream().filter(Target::online).count();
 			graphics.text(
 				this.font,
@@ -243,11 +278,13 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 			.flatMap(ConsoleSnapshotS2CPayload::host)
 			.map(ConsoleSnapshotS2CPayload.HostInfo::playerId)
 			.orElse(null);
-		for (
-			int index = this.firstVisible;
-			index < Math.min(players.size(), this.firstVisible + this.visibleRows);
-			index++
-		) {
+		int cardWidth = Math.max(1, panelWidth() - 36);
+		int firstPlayer = this.firstVisible;
+		int lastPlayer = Math.min(
+			players.size(),
+			firstPlayer + this.visibleRows
+		);
+		for (int index = firstPlayer; index < lastPlayer; index++) {
 			Target player = players.get(index);
 			boolean host = player.playerId().equals(hostId);
 			PlayerIdentityRenderer.drawTargetRow(
@@ -255,8 +292,8 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 				this.font,
 				player,
 				panelX + 18,
-				listTop + (index - this.firstVisible) * (ROW_HEIGHT + ROW_GAP),
-				panelWidth() - 36,
+				listTop + (index - firstPlayer) * (ROW_HEIGHT + ROW_GAP),
+				cardWidth,
 				ROW_HEIGHT,
 				false,
 				playerDetail(player, host),
@@ -294,11 +331,13 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 			.map(ConsoleSnapshotS2CPayload::players)
 			.orElseGet(List::of)
 			.stream()
+			.filter(player -> !player.playerId().equals(hostId))
 			.filter(player -> needle.isEmpty() || searchableText(player).contains(needle))
 			.sorted(
-				Comparator.<Target>comparingInt(player ->
-					player.playerId().equals(hostId) ? 0 : player.online() ? 1 : 2
-				).thenComparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+				Comparator.<Target>comparingInt(player -> player.eligible() ? 0 : 1)
+					.thenComparingInt(player -> player.online() ? 0 : 1)
+					.thenComparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+					.thenComparing(Target::playerId)
 			)
 			.toList();
 	}

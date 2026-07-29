@@ -17,7 +17,7 @@
       },
       "gap": 10,
       "padding": {
-        "vertical": 16,
+        "vertical": 18,
         "horizontal": 18
       }
     },
@@ -223,6 +223,69 @@
           },
           {
             "type": "card",
+            "style": "stage_complete",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "content"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "✓  02  出生点"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "SPAWN"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "divider",
+            "style": "stage_connector_complete",
+            "direction": "horizontal",
+            "thickness": 2,
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 22
+              },
+              "height": {
+                "mode": "fixed",
+                "value": 2
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "fixed",
+                    "value": 1
+                  }
+                }
+              }
+            }
+          },
+          {
+            "type": "card",
             "style": "stage_current",
             "layout": {
               "width": {
@@ -242,7 +305,7 @@
                   "type": "text",
                   "style": "hunter_title",
                   "text": {
-                    "text": "◆  02  确认"
+                    "text": "◆  03  确认"
                   }
                 },
                 {
@@ -334,47 +397,64 @@
                 }
               },
               "text": {
-                "text": "重复规则 · REPEAT"
+                "text": "已选择出生点 · SELECTED SPAWN"
               }
             },
             {
               "type": "text",
               "style": "hunter_title",
+              "visible_when": {
+                "eq": [
+                  {
+                    "bind": "flow/fields/pixel_tzz:hunter_spawn"
+                  },
+                  {
+                    "literal": "north_gate"
+                  }
+                ]
+              },
               "text": {
-                "text": "每次都需确认"
+                "text": "北门"
+              },
+              "text_align": "right"
+            },
+            {
+              "type": "text",
+              "style": "hunter_title",
+              "visible_when": {
+                "eq": [
+                  {
+                    "bind": "flow/fields/pixel_tzz:hunter_spawn"
+                  },
+                  {
+                    "literal": "central_station"
+                  }
+                ]
+              },
+              "text": {
+                "text": "中央站"
+              },
+              "text_align": "right"
+            },
+            {
+              "type": "text",
+              "style": "hunter_title",
+              "visible_when": {
+                "eq": [
+                  {
+                    "bind": "flow/fields/pixel_tzz:hunter_spawn"
+                  },
+                  {
+                    "literal": "south_yard"
+                  }
+                ]
+              },
+              "text": {
+                "text": "南侧场地"
               },
               "text_align": "right"
             }
           ]
-        }
-      },
-      {
-        "type": "card",
-        "style": "broadcast_panel",
-        "layout": {
-          "width": {
-            "mode": "fill"
-          },
-          "height": {
-            "mode": "content"
-          }
-        },
-        "child": {
-          "type": "text",
-          "style": "rule_body",
-          "layout": {
-            "padding": {
-              "vertical": 7,
-              "horizontal": 9
-            }
-          },
-          "text": {
-            "text": "即使你当前已经是猎人，主持人再次发起身份说明时仍需要重新确认。"
-          },
-          "wrap": true,
-          "max_lines": 3,
-          "overflow": "ellipsis",
-          "text_align": "left"
         }
       },
       {
@@ -415,7 +495,40 @@
               }
             },
             "text": {
-              "text": "第 2 步 / 共 2 步  ·  APPLY"
+              "text": "第 3 步 / 共 3 步  ·  APPLY"
+            }
+          },
+          {
+            "type": "button",
+            "id": "back_to_hunter_spawn",
+            "style": "navigation_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 142
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "返回重新选择"
+            },
+            "action": {
+              "type": "flow",
+              "name": "back"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
             }
           },
           {

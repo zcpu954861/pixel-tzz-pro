@@ -25,7 +25,11 @@ import net.minecraft.resources.Identifier;
  * {@link #clear()} at the corresponding boundary.
  */
 public final class ConfirmationTokens {
-	public static final long LIFETIME_NANOS = 30_000_000_000L;
+	/**
+	 * Compatibility value carried by protocol v8. It is no longer a user-visible deadline:
+	 * confirmations remain usable until their bound operation context changes or a lifecycle event
+	 * explicitly clears them.
+	 */
 	public static final long LIFETIME_MILLISECONDS = 30_000L;
 	public static final int MAX_TARGETS = 64;
 	public static final int MAX_CONSEQUENCES = 64;
@@ -77,13 +81,11 @@ public final class ConfirmationTokens {
 			this.pendingByToken.containsKey(tokenId)
 				|| this.consumedOperatorByToken.containsKey(tokenId)
 		);
-		long issuedAtNanos = this.nanoClock.getAsLong();
 		PendingConfirmation pending = new PendingConfirmation(
 			tokenId,
 			operatorId,
 			binding,
-			prompt,
-			issuedAtNanos
+			prompt
 		);
 		this.tokenByOperator.put(operatorId, tokenId);
 		this.pendingByToken.put(tokenId, pending);
@@ -96,7 +98,7 @@ public final class ConfirmationTokens {
 	}
 
 	/**
-	 * Consumes a matching token before checking expiry or mutable operation context.
+	 * Consumes a matching token before checking mutable operation context.
 	 *
 	 * <p>Looking up by the unguessable token first prevents a stale, replaced confirmation from
 	 * deleting the operator's newer confirmation.
@@ -124,9 +126,6 @@ public final class ConfirmationTokens {
 		this.pendingByToken.remove(tokenId);
 		this.tokenByOperator.remove(operatorId, tokenId);
 		rememberConsumed(tokenId, operatorId);
-		if (expired(pending.issuedAtNanos(), this.nanoClock.getAsLong())) {
-			return new Rejected(Rejection.EXPIRED);
-		}
 		if (!pending.binding().equals(currentBinding)) {
 			return new Rejected(Rejection.CONTEXT_CHANGED);
 		}
@@ -265,16 +264,11 @@ public final class ConfirmationTokens {
 		}
 	}
 
-	private static boolean expired(final long issuedAtNanos, final long nowNanos) {
-		return nowNanos - issuedAtNanos >= LIFETIME_NANOS;
-	}
-
 	private record PendingConfirmation(
 		UUID tokenId,
 		UUID operatorId,
 		Binding binding,
-		Prompt prompt,
-		long issuedAtNanos
+		Prompt prompt
 	) {
 	}
 

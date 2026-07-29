@@ -36,6 +36,7 @@ import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.LayoutResult;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime.Diagnostic;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.ChoiceCardGrid;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization.Window;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime.Evaluation;
@@ -278,10 +279,11 @@ public final class PageRenderPlanBuilder {
 			case FieldInputContent input -> {
 				FieldSchema field = this.active.fields().get(input.field());
 				text = field == null ? input.field().toString() : field.name();
-				int options = field == null ? 0 : field.options().size();
 				intrinsicWidth = Math.min(360, Math.max(180, this.viewportWidth - 64));
-				intrinsicHeight = 22 + (input.showDescription() && field != null && !field.description().isEmpty() ? 20 : 0)
-					+ Math.max(26, Math.ceilDiv(Math.max(1, options), 3) * 26);
+				intrinsicHeight = field == null
+					? 26
+					: fieldHeaderHeight(input, field)
+						+ fieldControlHeight(field, intrinsicWidth);
 			}
 			case RepeatContent repeat -> {
 				layout = ensureRepeatLayout(layout);
@@ -819,6 +821,21 @@ public final class PageRenderPlanBuilder {
 				intrinsicHeight = measuredHeight;
 				changed = true;
 			}
+		} else if (
+			node != null
+				&& node.definition() != null
+				&& node.definition().content() instanceof FieldInputContent input
+		) {
+			FieldSchema field = this.active.fields().get(input.field());
+			if (field != null) {
+				int width = Math.max(1, contentWidths.getOrDefault(item.key(), this.viewportWidth));
+				int measuredHeight = fieldHeaderHeight(input, field)
+					+ fieldControlHeight(field, width);
+				if (measuredHeight != intrinsicHeight) {
+					intrinsicHeight = measuredHeight;
+					changed = true;
+				}
+			}
 		}
 
 		return changed
@@ -833,6 +850,26 @@ public final class PageRenderPlanBuilder {
 				item.scrollOffset()
 			)
 			: item;
+	}
+
+	public static int fieldChoiceColumns(final FieldSchema field, final int width) {
+		return ChoiceCardGrid.columns(field.type(), field.options().size(), width);
+	}
+
+	public static int fieldControlHeight(final FieldSchema field, final int width) {
+		return ChoiceCardGrid.controlHeight(field.type(), field.options().size(), width);
+	}
+
+	private static int fieldHeaderHeight(
+		final FieldInputContent input,
+		final FieldSchema field
+	) {
+		return (input.showLabel() ? 14 : 0)
+			+ (
+				input.showDescription() && !field.description().isEmpty()
+					? 20
+					: 0
+			);
 	}
 
 	private int wrappedTextHeight(

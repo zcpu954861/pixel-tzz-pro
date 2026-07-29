@@ -1,0 +1,159 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "kind": "main",
+  "name": {
+    "text": "2D 验收 · 分支任务"
+  },
+  "description": {
+    "text": "可提前结算，也可等待超时；用于验收事件、统计、逐猎人字段回调与结果分支。"
+  },
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": false
+  },
+  "completion_policy": "early_or_timeout",
+  "duration_ticks": 6000,
+  "counts_toward_game_time": true,
+  "live_visibility": {
+    "future": "teaser",
+    "history": "hidden",
+    "candidate_visibility": "names_only"
+  },
+  "recap_visibility": "participants",
+  "callbacks": {
+    "on_start": "pixel_tzz:acceptance_2d/timeline/start_branch_task",
+    "on_timeout": "pixel_tzz:acceptance_2d/timeline/timeout_branch_task",
+    "on_settled": "pixel_tzz:acceptance_2d/timeline/capture_result"
+  },
+  "on_start_players": {
+    "function": "pixel_tzz:acceptance_2d/timeline/deploy_hunter",
+    "audience": {
+      "role_tags": [
+        "pixel_tzz:hunter"
+      ],
+      "exclude_host": true,
+      "online_only": false
+    },
+    "fields": {
+      "spawn_point": "pixel_tzz:hunter_spawn"
+    }
+  },
+  "results": [
+    {
+      "id": "success",
+      "name": {
+        "text": "进入超时任务验收"
+      },
+      "semantic": "success",
+      "recap": {
+        "text": "数据包提前提交成功结果，路线进入仅超时任务。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "route": {
+        "next_task": "pixel_tzz:acceptance/timeout_only",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "成功路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_pause": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_resume": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    },
+    {
+      "id": "failure",
+      "name": {
+        "text": "提前失败并结束"
+      },
+      "semantic": "failure",
+      "recap": {
+        "text": "数据包提前提交失败结果，路线不进入仅超时任务。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "allow_host_fallback": true,
+      "route": {
+        "end_phase": "pixel_tzz:ended",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "失败路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    },
+    {
+      "id": "timeout",
+      "name": {
+        "text": "分支任务超时"
+      },
+      "semantic": "neutral",
+      "recap": {
+        "text": "分支任务到时后由任务超时回调提交超时结果。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "allow_host_fallback": true,
+      "route": {
+        "end_phase": "pixel_tzz:ended",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "超时路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "terminal_activated",
+      "name": {
+        "text": "验收终端已触发"
+      },
+      "policy": "repeatable",
+      "max_records": 8,
+      "allowed_states": [
+        "running"
+      ],
+      "recap_visibility": "participants"
+    },
+    {
+      "id": "deadline_reached",
+      "name": {
+        "text": "分支任务到达时限"
+      },
+      "policy": "once",
+      "allowed_states": [
+        "settling"
+      ],
+      "recap_visibility": "participants"
+    }
+  ],
+  "statistics": [
+    {
+      "id": "activated_terminals",
+      "name": {
+        "text": "验收终端触发次数"
+      },
+      "type": "integer",
+      "min": 0,
+      "max": 64,
+      "write": "increment",
+      "recap_visibility": "participants"
+    }
+  ]
+}

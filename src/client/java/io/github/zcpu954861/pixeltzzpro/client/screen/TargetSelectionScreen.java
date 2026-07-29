@@ -24,6 +24,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayloa
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -421,21 +422,27 @@ final class TargetSelectionScreen extends TransitioningConsoleScreen {
 
 	private List<Target> filteredTargets() {
 		String needle = this.filter.strip().toLowerCase(java.util.Locale.ROOT);
-		if (needle.isEmpty()) {
-			return this.snapshot.targets();
-		}
 		return this.snapshot.targets()
 			.stream()
-			.filter(target -> (
-				target.name()
-					+ "\n"
-					+ ConsoleText.parse(
-						target.roleNameJson(),
-						target.roleId().toString()
-					).getString()
-					+ "\n"
-					+ target.flowStatus()
-			).toLowerCase(java.util.Locale.ROOT).contains(needle))
+			.filter(target ->
+				needle.isEmpty()
+					|| (
+						target.name()
+							+ "\n"
+							+ ConsoleText.parse(
+								target.roleNameJson(),
+								target.roleId().toString()
+							).getString()
+							+ "\n"
+							+ target.flowStatus()
+					).toLowerCase(java.util.Locale.ROOT).contains(needle)
+			)
+			.sorted(
+				Comparator.<Target>comparingInt(target -> target.eligible() ? 0 : 1)
+					.thenComparingInt(target -> target.online() ? 0 : 1)
+					.thenComparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+					.thenComparing(Target::playerId)
+			)
 			.toList();
 	}
 

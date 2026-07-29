@@ -12,8 +12,9 @@
   ],
   "tab": {
     "prefix": {
-      "text": "[旁观]"
+      "text": "[旁观] "
     },
-    "color": "#A7ADB7"
+    "color": "#A7ADB7",
+    "sort_order": 300
   }
 }

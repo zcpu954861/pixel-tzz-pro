@@ -20,7 +20,6 @@ import java.util.Optional;
 import java.util.UUID;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.resources.Identifier;
-import net.minecraft.util.Util;
 
 /**
  * Client projection and request sequencer for the authoritative administrator console.
@@ -104,7 +103,21 @@ public final class ClientConsoleState {
 		final ActionEntry action,
 		final List<UUID> targetIds
 	) {
-		return prepareOperation(action, targetIds, true);
+		return prepareOperation(action, renewalTargetIds(action, targetIds), true);
+	}
+
+	/**
+	 * A no-target confirmation may still display server-authored affected-player labels. Those
+	 * labels are explanatory only and must never become authority-bearing target IDs when the
+	 * review is refreshed.
+	 */
+	private static List<UUID> renewalTargetIds(
+		final ActionEntry action,
+		final List<UUID> reviewedTargetIds
+	) {
+		Objects.requireNonNull(action, "action");
+		Objects.requireNonNull(reviewedTargetIds, "reviewedTargetIds");
+		return action.targetMode().equals("none") ? List.of() : List.copyOf(reviewedTargetIds);
 	}
 
 	private static boolean prepareOperation(
@@ -269,7 +282,7 @@ public final class ClientConsoleState {
 			fail("服务端返回了不匹配的二次确认");
 			return;
 		}
-		confirmation = new TimedConfirmation(payload, Util.getMillis());
+		confirmation = new TimedConfirmation(payload);
 		lastResult = null;
 		pending = null;
 		revision++;
@@ -298,9 +311,7 @@ public final class ClientConsoleState {
 		if (!retryableExpiry) {
 			confirmation = null;
 		}
-		feedback = payload.message().isEmpty()
-			? payload.code().serializedName()
-			: payload.message();
+		feedback = OperationFeedbackText.resolve(payload.code(), payload.message());
 		feedbackError = !payload.success()
 			&& payload.code() != OperationCode.NO_ELIGIBLE_TARGETS;
 		lastResult = new OperationResultContext(
@@ -321,6 +332,16 @@ public final class ClientConsoleState {
 		final SessionSnapshotS2CPayload payload
 	) {
 		if (confirmation == null) {
+			return;
+		}
+		/*
+		 * A committed operation normally changes the world revision before its operation-result
+		 * packet reaches the client. Session snapshots are pushed from that same authoritative
+		 * transaction, so invalidating the confirmation here would clear the pending COMMIT and
+		 * misreport our own successful mutation as an external conflict. While a commit is in
+		 * flight, its correlated result is the only source allowed to close or reject the review.
+		 */
+		if (pending != null && pending.kind == RequestKind.COMMIT) {
 			return;
 		}
 		ConfirmationS2CPayload value = confirmation.payload;
@@ -363,11 +384,11 @@ public final class ClientConsoleState {
 	}
 
 	public static synchronized long confirmationRemainingMillis() {
-		return confirmation == null ? 0L : confirmation.remaining(Util.getMillis());
+		return confirmation == null ? 0L : Long.MAX_VALUE;
 	}
 
 	public static synchronized boolean confirmationExpired() {
-		return confirmation != null && confirmation.expired(Util.getMillis());
+		return false;
 	}
 
 	public static synchronized boolean pending() {
@@ -520,16 +541,6 @@ public final class ClientConsoleState {
 		}
 	}
 
-	private record TimedConfirmation(
-		ConfirmationS2CPayload payload,
-		long receivedAtMillis
-	) {
-		private long remaining(final long now) {
-			return Math.max(0L, this.payload.validForMilliseconds() - (now - this.receivedAtMillis));
-		}
-
-		private boolean expired(final long now) {
-			return remaining(now) == 0L;
-		}
+	private record TimedConfirmation(ConfirmationS2CPayload payload) {
 	}
 }

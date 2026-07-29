@@ -18,18 +18,22 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import net.minecraft.server.MinecraftServer;
 
 /**
- * Definition-aware, startup-only schema-v1 migration.
+ * Startup-only migration into the current schema-v3 envelope.
  *
  * <p>The original compressed SavedData file is copied and verified before the in-memory wrapper is
- * atomically changed. Callers must not invoke this from a normal data-pack reload.
+ * atomically changed. Schema v2 migration is purely additive and definition-independent; schema v1
+ * still needs the existing conservative game binding. Callers must not invoke this from a normal
+ * data-pack reload.
  */
 public final class PixelTzzWorldStateMigration {
 	private PixelTzzWorldStateMigration() {
@@ -64,10 +68,13 @@ public final class PixelTzzWorldStateMigration {
 		if (nowEpochMillis < 0L) {
 			return failed(state, "migration time cannot be negative");
 		}
-		if (state.loadKind() == PixelTzzWorldState.LoadKind.CURRENT_V2) {
-			return new MigrationResult(MigrationStatus.NOT_NEEDED, "world state already uses schema v2", Optional.empty());
+		if (state.loadKind() == PixelTzzWorldState.LoadKind.CURRENT_V3) {
+			return new MigrationResult(MigrationStatus.NOT_NEEDED, "world state already uses schema v3", Optional.empty());
 		}
-		if (state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V1) {
+		if (
+			state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V1
+				&& state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V2
+		) {
 			return new MigrationResult(
 				MigrationStatus.BLOCKED,
 				"opaque or unreadable world state cannot be migrated automatically",
@@ -75,35 +82,43 @@ public final class PixelTzzWorldStateMigration {
 			);
 		}
 
-		LegacyWorldStateV1 legacy = state.legacyV1().orElseThrow();
-		if (legacy.phase() != GamePhase.IDLE) {
-			return blocked(state, "schema v1 phase is not IDLE");
-		}
-		if (!definitions.healthy()) {
-			return blocked(state, "current data-pack definitions are not healthy");
-		}
-		if (definitions.active().games().size() != 1) {
-			return blocked(state, "automatic migration requires exactly one healthy game definition");
-		}
-
-		DefinitionSnapshot snapshot = definitions.active();
-		GameDefinition game = snapshot.games().values().iterator().next();
-		String definitionError = validateMigrationGame(snapshot, game);
-		if (definitionError != null) {
-			return blocked(state, definitionError);
+		LegacyWorldStateV1 legacyV1 = state.legacyV1().orElse(null);
+		WorldStateV2 legacyV2 = state.legacyV2().orElse(null);
+		GameDefinition game = null;
+		if (legacyV1 != null) {
+			if (legacyV1.phase() != GamePhase.IDLE) {
+				return blocked(state, "schema v1 phase is not IDLE");
+			}
+			if (!definitions.healthy()) {
+				return blocked(state, "current data-pack definitions are not healthy");
+			}
+			if (definitions.active().games().size() != 1) {
+				return blocked(state, "automatic migration requires exactly one healthy game definition");
+			}
+			DefinitionSnapshot snapshot = definitions.active();
+			game = snapshot.games().values().iterator().next();
+			String definitionError = validateMigrationGame(snapshot, game);
+			if (definitionError != null) {
+				return blocked(state, definitionError);
+			}
 		}
 
 		final long nextRevision;
 		try {
-			nextRevision = Math.incrementExact(legacy.stateRevision());
+			nextRevision = Math.incrementExact(
+				legacyV2 == null ? legacyV1.stateRevision() : legacyV2.stateRevision()
+			);
 		} catch (ArithmeticException error) {
-			return blocked(state, "schema v1 state revision cannot be incremented");
+			return blocked(state, "legacy state revision cannot be incremented");
 		}
 		if (!Files.isRegularFile(stateFile)) {
-			return failed(state, "schema v1 source file is missing");
+			return failed(state, "legacy source file is missing");
 		}
 
-		String backupFileName = "world_state-v1-to-v2-" + nowEpochMillis + ".dat";
+		int sourceSchema = legacyV2 == null
+			? LegacyWorldStateV1.SCHEMA_VERSION
+			: WorldStateV2.SCHEMA_VERSION;
+		String backupFileName = "world_state-v" + sourceSchema + "-to-v3-" + nowEpochMillis + ".dat";
 		Path backupFile = recoveryDirectory.resolve(backupFileName);
 		final long sourceSize;
 		final String sourceSha256;
@@ -111,20 +126,22 @@ public final class PixelTzzWorldStateMigration {
 			sourceSize = Files.size(stateFile);
 			sourceSha256 = sha256(stateFile);
 		} catch (IOException error) {
-			return failed(state, "could not inspect schema v1 source file: " + safeMessage(error));
+			return failed(state, "could not inspect legacy source file: " + safeMessage(error));
 		}
 
 		RecoverySnapshotMetadata metadata = new RecoverySnapshotMetadata(
 			backupFileName,
 			nowEpochMillis,
-			LegacyWorldStateV1.SCHEMA_VERSION,
+			sourceSchema,
 			sourceSize,
 			sourceSha256
 		);
-		WorldStateV2 candidate = candidate(legacy, game, metadata, nextRevision, nowEpochMillis);
+		WorldStateV3 candidate = legacyV2 == null
+			? candidate(legacyV1, game, metadata, nextRevision, nowEpochMillis)
+			: candidate(legacyV2, metadata, nextRevision);
 		String candidateError = roundTripError(candidate);
 		if (candidateError != null) {
-			return failed(state, "schema v2 migration candidate is invalid: " + candidateError);
+			return failed(state, "schema v3 migration candidate is invalid: " + candidateError);
 		}
 
 		try {
@@ -137,13 +154,15 @@ public final class PixelTzzWorldStateMigration {
 			return failed(state, "could not create verified recovery copy: " + safeMessage(error));
 		}
 
-		PixelTzzWorldState.MigrationCommitResult committed = state.commitLegacyMigration(legacy, candidate);
+		PixelTzzWorldState.MigrationCommitResult committed = legacyV2 == null
+			? state.commitLegacyV1Migration(legacyV1, candidate)
+			: state.commitLegacyV2Migration(legacyV2, candidate);
 		if (!committed.committed()) {
 			return failed(state, "migration commit rejected: " + committed.reason());
 		}
 		return new MigrationResult(
 			MigrationStatus.MIGRATED,
-			"schema v1 migrated to v2",
+			"schema v" + sourceSchema + " migrated to v3",
 			Optional.of(metadata)
 		);
 	}
@@ -166,7 +185,7 @@ public final class PixelTzzWorldStateMigration {
 			: null;
 	}
 
-	private static WorldStateV2 candidate(
+	private static WorldStateV3 candidate(
 		final LegacyWorldStateV1 legacy,
 		final GameDefinition game,
 		final RecoverySnapshotMetadata metadata,
@@ -193,11 +212,11 @@ public final class PixelTzzWorldStateMigration {
 					Optional.empty(),
 					Optional.empty(),
 					Optional.empty(),
-					"Migrated world state from schema v1 to v2"
+					"Migrated world state from schema v1 to v3"
 				)
 			)
 		);
-		return new WorldStateV2(
+		WorldStateV2 core = new WorldStateV2(
 			WorldStateV2.SCHEMA_VERSION,
 			revision,
 			Optional.of(game.id()),
@@ -209,18 +228,44 @@ public final class PixelTzzWorldStateMigration {
 			audit,
 			Optional.of(metadata)
 		);
+		return new WorldStateV3(
+			WorldStateV3.SCHEMA_VERSION,
+			core,
+			Optional.of(UUID.randomUUID()),
+			Optional.empty(),
+			List.of(),
+			List.of(metadata)
+		);
 	}
 
-	private static String roundTripError(final WorldStateV2 candidate) {
-		DataResult<WorldStateV2> validated = candidate.validated();
+	private static WorldStateV3 candidate(
+		final WorldStateV2 legacy,
+		final RecoverySnapshotMetadata metadata,
+		final long revision
+	) {
+		List<RecoverySnapshotMetadata> recoverySnapshots = new ArrayList<>();
+		legacy.recoverySnapshotMetadata().ifPresent(recoverySnapshots::add);
+		recoverySnapshots.add(metadata);
+		return new WorldStateV3(
+			WorldStateV3.SCHEMA_VERSION,
+			legacy.withStateRevision(revision),
+			legacy.activeGameId().map(ignored -> UUID.randomUUID()),
+			Optional.empty(),
+			List.of(),
+			recoverySnapshots
+		);
+	}
+
+	private static String roundTripError(final WorldStateV3 candidate) {
+		DataResult<WorldStateV3> validated = candidate.validated();
 		if (validated.error().isPresent()) {
 			return validated.error().orElseThrow().message();
 		}
-		DataResult<com.google.gson.JsonElement> encoded = WorldStateV2.CODEC.encodeStart(JsonOps.INSTANCE, candidate);
+		DataResult<com.google.gson.JsonElement> encoded = WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, candidate);
 		if (encoded.error().isPresent()) {
 			return encoded.error().orElseThrow().message();
 		}
-		DataResult<WorldStateV2> decoded = encoded.flatMap(value -> WorldStateV2.CODEC.parse(JsonOps.INSTANCE, value));
+		DataResult<WorldStateV3> decoded = encoded.flatMap(value -> WorldStateV3.CODEC.parse(JsonOps.INSTANCE, value));
 		if (decoded.error().isPresent()) {
 			return decoded.error().orElseThrow().message();
 		}

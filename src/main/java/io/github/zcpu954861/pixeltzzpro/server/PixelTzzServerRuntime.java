@@ -18,16 +18,23 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChangeStateNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompleteNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ExclusiveChoiceOption;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FlowDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FlowNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FunctionNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.SelectionMode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
+import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetReference;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
@@ -36,7 +43,6 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.RepeatContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
-import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
@@ -48,13 +54,17 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayloa
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActiveFlowSummary;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.Diagnostic;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.HostInfo;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.MemberFieldSummary;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.MemberSummary;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.PhaseEntry;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.ExclusiveOptionState;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageCloseC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.OperationResultS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PrepareOperationC2SPayload;
@@ -68,6 +78,8 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2S
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.FlowCompletionStatus;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Accepted;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Binding;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.ConsumeResult;
@@ -81,11 +93,14 @@ import io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthority.PrepareResu
 import io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthority.PreparedInvocation;
 import io.github.zcpu954861.pixeltzzpro.server.FlowRosterAuthority.OnlineMember;
 import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.ConnectedPlayer;
+import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.ExclusiveChoiceMutation;
+import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.ExclusiveChoiceMutationOperation;
+import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.ExclusiveChoiceMutationResult;
 import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.PanelActionAuthorization;
 import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.PredicateContext;
-import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.StartResult;
 import io.github.zcpu954861.pixeltzzpro.server.HostAuthority.Actor;
 import io.github.zcpu954861.pixeltzzpro.server.HostAuthority.OnlineTarget;
+import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.ApprovalContext;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
@@ -102,11 +117,16 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.ForcedFlowInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerFlowParticipation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.StoredValue;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReadinessInstance;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -145,6 +165,7 @@ public final class PixelTzzServerRuntime {
 	private static final Set<UUID> VERIFIED_PLAYERS = new HashSet<>();
 	private static final Map<UUID, Integer> HANDSHAKE_TICKS_REMAINING = new HashMap<>();
 	private static final Map<UUID, Boolean> LAST_ADMIN_ELIGIBILITY = new HashMap<>();
+	private static final Map<UUID, Integer> LAST_TIMELINE_VIEW_REQUEST_TICK = new HashMap<>();
 	// ponytail: 2B permits one preview per player; replace this map with a page stack when real nested flows arrive.
 	private static final Map<UUID, PreviewPageInstance> PREVIEW_INSTANCES = new HashMap<>();
 	private static final ConfirmationTokens CONFIRMATIONS = new ConfirmationTokens();
@@ -154,15 +175,47 @@ public final class PixelTzzServerRuntime {
 	private static final ResourceReportGate RESOURCE_REPORT_GATE = new ResourceReportGate();
 	private static final HostFlowBossBar HOST_FLOW_BOSS_BAR = new HostFlowBossBar();
 	private static boolean hostConsoleRefreshPending;
+	private static boolean serverStopping;
 	private static final Identifier CLAIM_HOST_OPERATION = PixelTzzPro.id("host/claim");
 	private static final Identifier TRANSFER_HOST_OPERATION = PixelTzzPro.id("host/transfer");
 	private static final Identifier TAKEOVER_HOST_OPERATION = PixelTzzPro.id("host/takeover");
 	private static final Identifier ADD_FLOW_MEMBERS_OPERATION = PixelTzzPro.id("flow/add_members");
 	private static final Identifier REMOVE_FLOW_MEMBERS_OPERATION = PixelTzzPro.id("flow/remove_members");
 	private static final Identifier CANCEL_FLOW_OPERATION = PixelTzzPro.id("flow/cancel");
+	private static final Identifier APPROVE_TIMELINE_OPERATION =
+		PixelTzzPro.id("timeline/approve");
+	private static final Identifier RESET_GAME_PROGRESS_OPERATION =
+		PixelTzzPro.id("reset/game_progress");
+	private static final Identifier CLEAR_ALL_STATE_OPERATION =
+		PixelTzzPro.id("reset/all");
+	private static final Identifier PAUSE_TIMELINE_OPERATION =
+		PixelTzzPro.id("timeline/pause");
+	private static final Identifier RESUME_TIMELINE_OPERATION =
+		PixelTzzPro.id("timeline/resume");
+	private static final Identifier EXTEND_INTERMISSION_OPERATION =
+		PixelTzzPro.id("timeline/intermission/extend");
+	private static final Identifier FINISH_INTERMISSION_OPERATION =
+		PixelTzzPro.id("timeline/intermission/finish");
+	private static final Identifier INTERRUPT_TIMELINE_OPERATION =
+		PixelTzzPro.id("timeline/interrupt");
 	private static final String ADD_FLOW_MEMBERS = "add_flow_members";
 	private static final String REMOVE_FLOW_MEMBERS = "remove_flow_members";
 	private static final String CANCEL_FLOW = "cancel_flow";
+	private static final String APPROVE_TIMELINE = "approve_timeline";
+	private static final String RESET_GAME_PROGRESS = "reset_game_progress";
+	private static final String CLEAR_ALL_STATE = "clear_all_state";
+	private static final String PAUSE_TIMELINE = "pause_timeline";
+	private static final String RESUME_TIMELINE = "resume_timeline";
+	private static final String EXTEND_INTERMISSION = "extend_intermission";
+	private static final String FINISH_INTERMISSION = "finish_intermission";
+	private static final String INTERRUPT_TIMELINE = "interrupt_timeline";
+	private static final String RETRY_TIMELINE_CALLBACK = "retry_timeline_callback";
+	private static final String HOST_FALLBACK_RESULT = "host_fallback_result";
+	private static final String TIMELINE_CALLBACK_RETRY_PATH_PREFIX =
+		"timeline/callback/retry/";
+	private static final String TIMELINE_RESULT_PATH_PREFIX = "timeline/result/";
+	private static final long INTERMISSION_EXTENSION_TICKS = 1_200L;
+	private static final String HOST_PAUSE_REASON = "pixel_tzz:host_control";
 	private static final String MEMBER_REMOVAL_REASON = "主持人通过控制台移除";
 	private static final String FLOW_CANCELLATION_REASON = "主持人通过控制台取消";
 	private static final String RETRY_CALLBACK_OPERATION = "retry_callback";
@@ -176,8 +229,16 @@ public final class PixelTzzServerRuntime {
 	private PixelTzzServerRuntime() {
 	}
 
+	static void timelineStateChanged(final MinecraftServer server) {
+		hostConsoleRefreshPending = true;
+		sendSnapshots(server, false);
+		pushTimelineViews(server);
+		refreshTabListDisplay(server);
+	}
+
 	public static void register() {
 		ServerLifecycleEvents.SERVER_STARTED.register(PixelTzzServerRuntime::onServerStarted);
+		ServerLifecycleEvents.SERVER_STOPPING.register(server -> serverStopping = true);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
 			clearConnections();
 			CONFIRMATIONS.clear();
@@ -229,13 +290,22 @@ public final class PixelTzzServerRuntime {
 			PixelTzzServerRuntime::onFlowAction
 		);
 		ServerPlayNetworking.registerGlobalReceiver(
+			ExclusiveChoiceMutationC2SPayload.TYPE,
+			PixelTzzServerRuntime::onExclusiveChoiceMutation
+		);
+		ServerPlayNetworking.registerGlobalReceiver(
 			HostUiStateC2SPayload.TYPE,
 			(payload, context) ->
 				HOST_FLOW_BOSS_BAR.setViewerInConsole(context.player().getUUID(), payload.visible())
 		);
+		ServerPlayNetworking.registerGlobalReceiver(
+			TimelineViewRequestC2SPayload.TYPE,
+			PixelTzzServerRuntime::onTimelineViewRequest
+		);
 	}
 
 	private static void onServerStarted(final MinecraftServer server) {
+		serverStopping = false;
 		clearConnections();
 		CONFIRMATIONS.clear();
 		HOST_FLOW_BOSS_BAR.reset();
@@ -247,6 +317,7 @@ public final class PixelTzzServerRuntime {
 				definitionLoad.status().serializedName()
 			);
 		}
+		repairMissingTimelineSnapshot(server, DefinitionRegistry.INSTANCE.view());
 		PixelTzzWorldStateMigration.migrateOnServerStart(
 			server,
 			DefinitionRegistry.INSTANCE.view()
@@ -278,6 +349,54 @@ public final class PixelTzzServerRuntime {
 			);
 		}
 		refreshFlowProjection(server, false);
+	}
+
+	private static void repairMissingTimelineSnapshot(
+		final MinecraftServer server,
+		final View definitions
+	) {
+		PixelTzzWorldState state = PixelTzzWorldState.get(server);
+		if (!state.needsTimelineSnapshotRepair()) {
+			return;
+		}
+		WorldStateV3 root = state.currentV3().orElseThrow();
+		WorldStateV3.TimelineInstance timeline = root.timeline().orElseThrow();
+		GameDefinitions.GameDefinition game = definitions.active().games().get(timeline.gameId());
+		if (!definitions.healthy() || game == null) {
+			PixelTzzPro.LOGGER.error(
+				"Protected timeline snapshot cannot be rebuilt because game definitions are unavailable: game={}, definitions={}",
+				timeline.gameId(),
+				definitions.diagnosticSummary()
+			);
+			return;
+		}
+		TimelineSnapshotCompiler.FreezeResult frozen = TimelineSnapshotCompiler.freeze(
+			definitions.active(),
+			game
+		);
+		if (!frozen.success()) {
+			PixelTzzPro.LOGGER.error(
+				"Protected timeline snapshot could not be rebuilt: {} ({})",
+				frozen.message(),
+				frozen.code()
+			);
+			return;
+		}
+		PixelTzzWorldState.TimelineSnapshotRepairResult repaired = state
+			.repairMissingTimelineSnapshot(frozen.frozen().orElseThrow());
+		if (!repaired.committed()) {
+			PixelTzzPro.LOGGER.error(
+				"Protected timeline snapshot did not pass exact SHA-256 recovery: {}",
+				repaired.reason()
+			);
+			return;
+		}
+		PixelTzzPro.LOGGER.warn(
+			"Recovered a timeline snapshot blanked by the legacy NBT UTF limit: game={}, timeline={}, sha256={}",
+			timeline.gameId(),
+			timeline.instanceId(),
+			frozen.frozen().orElseThrow().sha256()
+		);
 	}
 
 	private static void onPlayerJoined(
@@ -323,6 +442,8 @@ public final class PixelTzzServerRuntime {
 		VERIFIED_PLAYERS.add(playerId);
 		long previousRevision = PixelTzzWorldState.get(context.server()).stateRevision();
 		ensurePlayerRegistered(context.server(), context.player());
+		ensureReadinessSession(context.server());
+		updateReadinessConnection(context.server(), context.player(), true);
 		restoreMemberOnline(context.server(), context.player());
 		resumePendingCallbacks(context.server());
 		WorldStateV2 currentState = PixelTzzWorldState.get(context.server())
@@ -342,7 +463,10 @@ public final class PixelTzzServerRuntime {
 		sendSnapshot(
 			context.server(),
 			context.player(),
-			currentState == null || !hasCurrentForcedPage(currentState, playerId)
+			PixelTzzWorldState.get(context.server())
+				.currentV3()
+				.map(value -> !hasCurrentForcedPage(value, playerId))
+				.orElse(true)
 		);
 		pushHostConsoleSnapshot(context.server());
 		refreshTabListDisplay(context.server());
@@ -369,9 +493,13 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		var game = definitions.active().games().values().iterator().next();
-		PixelTzzWorldState.CommitResult result = wrapper.commit(
+		PixelTzzWorldState.CommitV3Result result = wrapper.commitV3(
 			state.stateRevision(),
-			current -> current.withActivity(game.id(), game.initialPhase())
+			current -> current.beginGameInstance(
+				game.id(),
+				game.initialPhase(),
+				UUID.randomUUID()
+			)
 		);
 		if (!result.committed()) {
 			PixelTzzPro.LOGGER.warn(
@@ -387,6 +515,91 @@ public final class PixelTzzServerRuntime {
 			&& state.players().isEmpty()
 			&& state.activeForcedFlow().isEmpty()
 			&& state.completionHistory().isEmpty();
+	}
+
+	private static ReadinessAuthority.OpenResult openReadinessIfRequired(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final UUID initiatedBy,
+		final Set<UUID> onlinePlayerIds,
+		final long occurredAtEpochMillis
+	) {
+		Identifier gameId = state.core().activeGameId().orElse(null);
+		Identifier phaseId = state.core().activePhaseId().orElse(null);
+		var game = gameId == null ? null : definitions.games().get(gameId);
+		var readiness = game == null ? null : game.readiness().orElse(null);
+		if (readiness == null || !readiness.phase().equals(phaseId)) {
+			return new ReadinessAuthority.OpenResult(
+				OperationCode.SUCCESS,
+				"",
+				Optional.empty()
+			);
+		}
+		if (state.readiness().isPresent()) {
+			return new ReadinessAuthority.OpenResult(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state)
+			);
+		}
+		return ReadinessAuthority.open(
+			state,
+			definitions,
+			initiatedBy,
+			onlinePlayerIds,
+			UUID.randomUUID(),
+			UUID::randomUUID,
+			occurredAtEpochMillis
+		);
+	}
+
+	/**
+	 * One-time semantic recovery for worlds that were already in the ready phase before readiness
+	 * became a persisted schema-v3 session.
+	 */
+	private static void ensureReadinessSession(final MinecraftServer server) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV3 state = wrapper.currentV3().orElse(null);
+		View view = DefinitionRegistry.INSTANCE.view();
+		if (
+			state == null
+				|| state.readiness().isPresent()
+				|| state.timeline().isPresent()
+				|| !view.healthy()
+				|| state.core().host().isEmpty()
+		) {
+			return;
+		}
+		ReadinessAuthority.OpenResult opened = openReadinessIfRequired(
+			state,
+			view.active(),
+			state.core().host().orElseThrow().playerId(),
+			onlinePlayerIds(server),
+			System.currentTimeMillis()
+		);
+		if (!opened.successful() || opened.nextState().isEmpty()) {
+			if (!opened.successful()) {
+				PixelTzzPro.LOGGER.warn(
+					"Could not recover readiness session: {} ({})",
+					opened.message(),
+					opened.code().serializedName()
+				);
+			}
+			return;
+		}
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			state.stateRevision(),
+			ignored -> opened.nextState().orElseThrow()
+		);
+		if (!committed.committed()) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not persist recovered readiness session: {}",
+				committed.reason()
+			);
+			return;
+		}
+		refreshFlowProjection(server, false);
+		sendForcedPages(server);
 	}
 
 	private static void onConsoleRequest(
@@ -412,6 +625,63 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		sendConsoleSnapshot(context.server(), context.player(), payload.request().requestSequence());
+	}
+
+	private static void onTimelineViewRequest(
+		final TimelineViewRequestC2SPayload payload,
+		final ServerPlayNetworking.Context context
+	) {
+		ServerPlayer player = context.player();
+		if (!verified(player) || !NetworkProtocol.isCompatible(payload.protocolVersion())) {
+			return;
+		}
+		int currentTick = context.server().getTickCount();
+		Integer previousTick = LAST_TIMELINE_VIEW_REQUEST_TICK.put(player.getUUID(), currentTick);
+		if (previousTick != null && currentTick - previousTick < 2) {
+			return;
+		}
+		sendTimelineView(context.server(), player, payload.requestSequence());
+	}
+
+	private static void sendTimelineView(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final long requestSequence
+	) {
+		if (!ServerPlayNetworking.canSend(player, TimelineViewS2CPayload.TYPE)) {
+			return;
+		}
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		boolean host = wrapper.hostId().filter(player.getUUID()::equals).isPresent();
+		TimelineViewS2CPayload payload = root == null
+			? TimelineViewS2CPayload.error(
+				NetworkProtocol.CURRENT_VERSION,
+				requestSequence,
+				"世界状态当前不可读取。"
+			)
+			: root.timeline().isEmpty() && host && DefinitionRegistry.INSTANCE.view().healthy()
+				? TimelineViewBuilder.preview(
+					root,
+					DefinitionRegistry.INSTANCE.view().active(),
+					requestSequence
+				)
+			: TimelineViewBuilder.build(
+				root,
+				player.getUUID(),
+				host,
+				requestSequence,
+				playerId -> server.getPlayerList().getPlayer(playerId) != null
+			);
+		ServerPlayNetworking.send(player, payload);
+	}
+
+	private static void pushTimelineViews(final MinecraftServer server) {
+		for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+			if (verified(player)) {
+				sendTimelineView(server, player, 0L);
+			}
+		}
 	}
 
 	private static void onTargetSnapshotRequest(
@@ -493,10 +763,24 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
+		OperationKey operation = new OperationKey(
+			payload.operationType(),
+			payload.operationId()
+		);
+		if (immediateTimelineOperation(operation)) {
+			executeImmediateTimelineOperation(
+				context.server(),
+				player,
+				payload.request().requestSequence(),
+				operation,
+				payload.targetIds()
+			);
+			return;
+		}
 		PreparedOperation prepared = prepareOperation(
 			context.server(),
 			player,
-			new OperationKey(payload.operationType(), payload.operationId()),
+			operation,
 			payload.targetIds()
 		);
 		if (!prepared.successful()) {
@@ -582,12 +866,85 @@ public final class PixelTzzServerRuntime {
 				binding.operation().id(),
 				issued.prompt().title().json(),
 				issued.prompt().consequences().stream().map(RichText::json).toList(),
-				audited.targets(),
+				sortedTargets(audited.targets()),
 				audited.contextSummary(),
 				issued.validForMilliseconds(),
 				binding.stateRevision(),
 				binding.definitionGeneration()
 			)
+		);
+	}
+
+	private static void executeImmediateTimelineOperation(
+		final MinecraftServer server,
+		final ServerPlayer actor,
+		final long requestSequence,
+		final OperationKey operation,
+		final List<UUID> targets
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV2 state = wrapper.currentV2().orElse(null);
+		OperationCode rejection = state == null
+			? OperationCode.SCHEMA_BLOCKED
+			: state.host()
+				.filter(host -> host.playerId().equals(actor.getUUID()))
+				.isEmpty()
+					? OperationCode.NOT_HOST
+					: !targets.isEmpty()
+						? OperationCode.TARGET_COUNT_INVALID
+						: OperationCode.SUCCESS;
+		if (rejection != OperationCode.SUCCESS) {
+			sendOperationResult(
+				actor,
+				requestSequence,
+				rejection,
+				rejection == OperationCode.NOT_HOST
+					? "只有当前主持人可以控制任务时间线。"
+					: rejection == OperationCode.TARGET_COUNT_INVALID
+						? "暂停与继续不接受目标玩家。"
+						: "世界状态当前不可写。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				true
+			);
+			return;
+		}
+		if (
+			!persistConfirmationAudit(
+				wrapper,
+				AuditEventType.TIMELINE_CONTROL,
+				Optional.of(actor.getUUID()),
+				Optional.empty(),
+				"requested " + operation.type() + "/" + operation.id(),
+				System.currentTimeMillis()
+			)
+		) {
+			sendOperationResult(
+				actor,
+				requestSequence,
+				OperationCode.INTERNAL_ERROR,
+				"无法写入时间线控制审计，操作未执行。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				true
+			);
+			return;
+		}
+		TimelineServerRuntime.RuntimeResult result = operation.type().equals(PAUSE_TIMELINE)
+			? TimelineServerRuntime.hostPause(server, HOST_PAUSE_REASON)
+			: TimelineServerRuntime.hostResume(server);
+		sendOperationResult(
+			actor,
+			requestSequence,
+			result.code(),
+			result.successful()
+				? operation.type().equals(PAUSE_TIMELINE)
+					? "任务时间线已暂停。"
+					: "任务时间线已继续。"
+				: timelineControlFailure(result),
+			wrapper.stateRevision(),
+			DefinitionRegistry.INSTANCE.view().active().generation(),
+			true
 		);
 	}
 
@@ -751,8 +1108,9 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
-		WorldStateV2 state = wrapper.currentV2().orElse(null);
-		if (state == null) {
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		WorldStateV2 state = root == null ? null : root.core();
+		if (state == null || root.activeGameInstanceId().isEmpty()) {
 			sendOperationResult(
 				player,
 				request.requestSequence(),
@@ -762,6 +1120,14 @@ public final class PixelTzzServerRuntime {
 				DefinitionRegistry.INSTANCE.view().active().generation(),
 				false
 			);
+			return;
+		}
+		if (
+			request.flowInstanceId()
+				.filter(instanceId -> ReadinessAuthority.matchesInstance(root, instanceId))
+				.isPresent()
+		) {
+			onReadinessAction(payload, context, wrapper, root);
 			return;
 		}
 		ForcedFlowInstance instance = state.activeForcedFlow().orElse(null);
@@ -843,8 +1209,8 @@ public final class PixelTzzServerRuntime {
 				)
 				.toList()
 		);
-		ForcedFlowAuthority.ActionResult advanced = ForcedFlowAuthority.advance(
-			state,
+		ForcedFlowAuthority.V3ActionResult advanced = ForcedFlowAuthority.advance(
+			root,
 			restored.snapshot().orElseThrow(),
 			submission,
 			new FrozenPredicateEvaluator(
@@ -852,7 +1218,8 @@ public final class PixelTzzServerRuntime {
 				instance.runtime().executionSnapshot()
 			),
 			UUID.randomUUID(),
-			System.currentTimeMillis()
+			System.currentTimeMillis(),
+			exclusiveContext(root, context.server())
 		);
 		if (!advanced.successful()) {
 			WorldStateV2 responseState = fatalFlowFailure(advanced.code())
@@ -874,11 +1241,62 @@ public final class PixelTzzServerRuntime {
 				instance.identity().definitionGeneration(),
 				false
 			);
+			if (advanced.code() == OperationCode.EXCLUSIVE_OPTION_TAKEN) {
+				sendForcedPages(context.server());
+			}
 			return;
 		}
-		PixelTzzWorldState.CommitResult committed = wrapper.commit(
-			state.stateRevision(),
-			ignored -> advanced.nextState().orElseThrow()
+		WorldStateV3 advancedCandidate = advanced.nextState().orElseThrow();
+		PlayerRecord beforePlayer = state.players().get(player.getUUID());
+		PlayerRecord afterPlayer = advancedCandidate.core().players().get(player.getUUID());
+		boolean identityChanged = beforePlayer != null
+			&& afterPlayer != null
+			&& (
+				!beforePlayer.roleId().equals(afterPlayer.roleId())
+					|| !beforePlayer.teamId().equals(afterPlayer.teamId())
+			);
+		boolean invalidatingFieldChanged = payload.fieldValues().stream().anyMatch(value ->
+			Optional.ofNullable(restored.snapshot().orElseThrow().fields().get(value.fieldId()))
+				.map(FieldDefinition::invalidatesReady)
+				.orElse(false)
+				&& beforePlayer != null
+				&& afterPlayer != null
+				&& !Objects.equals(
+					beforePlayer.persistentFields().get(value.fieldId()),
+					afterPlayer.persistentFields().get(value.fieldId())
+				)
+		);
+		if (identityChanged || invalidatingFieldChanged) {
+			ReadinessAuthority.MutationResult reconciled = ReadinessAuthority.reconcilePlayer(
+				advancedCandidate,
+				player.getUUID(),
+				true,
+				UUID.randomUUID(),
+				System.currentTimeMillis(),
+				identityChanged
+					? "Identity changed during readiness"
+					: "A readiness-sensitive field changed"
+			);
+			if (!reconciled.successful()) {
+				sendOperationResult(
+					player,
+					request.requestSequence(),
+					reconciled.code(),
+					reconciled.message(),
+					root.stateRevision(),
+					instance.identity().definitionGeneration(),
+					false
+				);
+				return;
+			}
+			advancedCandidate = reconciled.state();
+		}
+		WorldStateV3 committedCandidate = advancedCandidate;
+		boolean exclusiveReservationsChanged = !root.exclusiveReservations()
+			.equals(committedCandidate.exclusiveReservations());
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			root.stateRevision(),
+			ignored -> committedCandidate
 		);
 		if (!committed.committed()) {
 			sendOperationResult(
@@ -893,7 +1311,7 @@ public final class PixelTzzServerRuntime {
 			sendCurrentForcedPage(context.server(), player);
 			return;
 		}
-		WorldStateV2 next = committed.state().orElseThrow();
+		WorldStateV2 next = committed.state().orElseThrow().core();
 		if (advanced.flowCompleted()) {
 			FlowDefinition completedFlow = restored.snapshot()
 				.orElseThrow()
@@ -945,14 +1363,347 @@ public final class PixelTzzServerRuntime {
 					)
 				);
 			}
-		} else {
+		} else if (!exclusiveReservationsChanged) {
+			sendCurrentForcedPage(context.server(), player);
+		}
+		if (exclusiveReservationsChanged) {
+			// A final lock or atomic replacement changes the availability projected to every
+			// player currently viewing the same exclusive field, not only to the submitter.
+			sendForcedPages(context.server());
+		}
+		if (identityChanged || invalidatingFieldChanged) {
 			sendCurrentForcedPage(context.server(), player);
 		}
 		if (!advanced.flowCompleted()) {
 			refreshFlowProjection(context.server(), false);
+		} else if (
+			wrapper.currentV3()
+				.flatMap(WorldStateV3::readiness)
+				.map(ReadinessInstance::flow)
+				.map(ForcedFlowInstance::runtime)
+				.map(ForcedFlowRuntime::status)
+				.filter(FlowInstanceStatus.ACTIVE::equals)
+				.isPresent()
+		) {
+			refreshFlowProjection(context.server(), false);
 		} else {
 			pushHostConsoleSnapshot(context.server());
 		}
+		sendSnapshots(context.server(), false);
+	}
+
+	private static void onExclusiveChoiceMutation(
+		final ExclusiveChoiceMutationC2SPayload payload,
+		final ServerPlayNetworking.Context context
+	) {
+		ServerPlayer player = context.player();
+		StatefulRequest request = payload.request();
+		if (!verified(player) || !NetworkProtocol.isCompatible(request.protocolVersion())) {
+			return;
+		}
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		ForcedFlowInstance instance = root == null
+			? null
+			: root.core().activeForcedFlow().orElse(null);
+		if (
+			root == null
+				|| root.activeGameInstanceId().isEmpty()
+				|| instance == null
+				|| request.stateRevision() > root.stateRevision()
+				|| request.gameId().filter(instance.identity().gameId()::equals).isEmpty()
+				|| request.flowInstanceId()
+					.filter(instance.identity().instanceId()::equals)
+					.isEmpty()
+				|| request.pageInstanceId().isEmpty()
+				|| request.definitionGeneration() != instance.identity().definitionGeneration()
+		) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.STATE_REVISION_STALE,
+				"出生点选择页面已经变化，请以服务端恢复后的页面为准。",
+				wrapper.stateRevision(),
+				instance == null
+					? DefinitionRegistry.INSTANCE.view().active().generation()
+					: instance.identity().definitionGeneration(),
+				false
+			);
+			sendCurrentForcedPage(context.server(), player);
+			return;
+		}
+		if (
+			!admitFlowActionRequest(
+				context.server(),
+				player,
+				instance.identity().instanceId(),
+				request.requestSequence()
+			)
+		) {
+			return;
+		}
+
+		var restored = ExecutionSnapshotCompiler.restore(
+			instance.identity().flowId(),
+			instance.runtime().executionSnapshot()
+		);
+		if (!restored.success()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.SNAPSHOT_INVALID,
+				"当前流程的冻结页面定义无法恢复。",
+				root.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			return;
+		}
+		DefinitionSnapshot frozen = restored.snapshot().orElseThrow();
+		FlowDefinition flow = frozen.flows().get(instance.identity().flowId());
+		FlowNode node = flow == null ? null : flow.nodes().get(payload.nodeId());
+		PageDefinition page = node instanceof ChoiceNode choice
+			? frozen.pages().get(choice.page())
+			: null;
+		Set<Identifier> exposedFields = new LinkedHashSet<>();
+		if (page != null) {
+			collectFieldIds(page.root(), exposedFields);
+		}
+		if (
+			!(node instanceof ChoiceNode choice)
+				|| !choice.field().equals(payload.fieldId())
+				|| !exposedFields.contains(payload.fieldId())
+		) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.SNAPSHOT_INVALID,
+				"当前页面没有公开这个独占选择字段。",
+				root.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			sendCurrentForcedPage(context.server(), player);
+			return;
+		}
+
+		ExclusiveChoiceMutation mutation = new ExclusiveChoiceMutation(
+			player.getUUID(),
+			request.flowInstanceId().orElseThrow(),
+			request.pageInstanceId().orElseThrow(),
+			payload.flowId(),
+			payload.flowVersion(),
+			payload.nodeId(),
+			payload.instanceRevision(),
+			payload.memberRevision(),
+			request.requestSequence(),
+			payload.fieldId(),
+			payload.operation() == ExclusiveChoiceMutationC2SPayload.Operation.HOLD
+				? ExclusiveChoiceMutationOperation.HOLD
+				: ExclusiveChoiceMutationOperation.RELEASE,
+			payload.value()
+		);
+		ExclusiveChoiceMutationResult mutated = ForcedFlowAuthority.mutateExclusiveChoice(
+			root,
+			frozen,
+			mutation,
+			System.currentTimeMillis(),
+			exclusiveContext(root, context.server())
+		);
+		if (!mutated.successful()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				mutated.code(),
+				mutated.message(),
+				root.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			sendForcedPages(context.server());
+			return;
+		}
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			root.stateRevision(),
+			ignored -> mutated.nextState().orElseThrow()
+		);
+		if (!committed.committed()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.STATE_REVISION_STALE,
+				"选择状态已经变化，请在刷新后的页面中重试。",
+				wrapper.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			sendForcedPages(context.server());
+			return;
+		}
+		WorldStateV3 finalRoot = committed.state().orElseThrow();
+		sendOperationResult(
+			player,
+			request.requestSequence(),
+			OperationCode.SUCCESS,
+			payload.operation() == ExclusiveChoiceMutationC2SPayload.Operation.HOLD
+				? "出生点已暂时预约。"
+				: "出生点预约已释放。",
+			finalRoot.stateRevision(),
+			instance.identity().definitionGeneration(),
+			false
+		);
+		sendForcedPages(context.server());
+		refreshFlowProjection(context.server(), false);
+		sendSnapshots(context.server(), false);
+	}
+
+	private static void onReadinessAction(
+		final FlowActionC2SPayload payload,
+		final ServerPlayNetworking.Context context,
+		final PixelTzzWorldState wrapper,
+		final WorldStateV3 root
+	) {
+		ServerPlayer player = context.player();
+		StatefulRequest request = payload.request();
+		ReadinessInstance readiness = root.readiness().orElse(null);
+		ForcedFlowInstance instance = readiness == null ? null : readiness.flow();
+		if (
+			instance == null
+				|| request.stateRevision() > root.stateRevision()
+				|| request.flowInstanceId().filter(instance.identity().instanceId()::equals).isEmpty()
+				|| request.pageInstanceId().isEmpty()
+				|| request.gameId().filter(instance.identity().gameId()::equals).isEmpty()
+				|| request.definitionGeneration() != instance.identity().definitionGeneration()
+		) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.STATE_REVISION_STALE,
+				"准备页面已经变化，请等待服务端恢复当前页面。",
+				root.stateRevision(),
+				instance == null
+					? DefinitionRegistry.INSTANCE.view().active().generation()
+					: instance.identity().definitionGeneration(),
+				false
+			);
+			sendCurrentForcedPage(context.server(), player);
+			return;
+		}
+		if (
+			!admitFlowActionRequest(
+				context.server(),
+				player,
+				instance.identity().instanceId(),
+				request.requestSequence()
+			)
+		) {
+			return;
+		}
+		var restored = ExecutionSnapshotCompiler.restore(
+			instance.identity().flowId(),
+			instance.runtime().executionSnapshot()
+		);
+		if (!restored.success()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.SNAPSHOT_INVALID,
+				restored.message(),
+				root.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			return;
+		}
+		ForcedFlowAuthority.Submission submission = new ForcedFlowAuthority.Submission(
+			player.getUUID(),
+			request.flowInstanceId().orElseThrow(),
+			request.pageInstanceId().orElseThrow(),
+			payload.flowId(),
+			payload.flowVersion(),
+			payload.nodeId(),
+			payload.instanceRevision(),
+			payload.memberRevision(),
+			request.requestSequence(),
+			payload.actionId(),
+			payload.fieldValues()
+				.stream()
+				.map(value -> new ForcedFlowAuthority.FieldInput(
+					value.fieldId(),
+					value.type(),
+					value.canonicalJson()
+				))
+				.toList()
+		);
+		ReadinessAuthority.SubmitResult advanced = ReadinessAuthority.submit(
+			root,
+			restored.snapshot().orElseThrow(),
+			submission,
+			new FrozenPredicateEvaluator(
+				context.server(),
+				instance.runtime().executionSnapshot()
+			),
+			UUID.randomUUID(),
+			System.currentTimeMillis()
+		);
+		if (!advanced.successful()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				advanced.code(),
+				advanced.message(),
+				root.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			sendCurrentForcedPage(context.server(), player);
+			return;
+		}
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			root.stateRevision(),
+			ignored -> advanced.nextState().orElseThrow()
+		);
+		if (!committed.committed()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.STATE_REVISION_STALE,
+				committed.reason(),
+				wrapper.stateRevision(),
+				instance.identity().definitionGeneration(),
+				false
+			);
+			sendCurrentForcedPage(context.server(), player);
+			return;
+		}
+		WorldStateV3 finalRoot = committed.state().orElseThrow();
+		sendOperationResult(
+			player,
+			request.requestSequence(),
+			OperationCode.SUCCESS,
+			advanced.message(),
+			finalRoot.stateRevision(),
+			instance.identity().definitionGeneration(),
+			false
+		);
+		if (
+			advanced.memberCompleted()
+				&& ServerPlayNetworking.canSend(player, ForcedPageReleaseS2CPayload.TYPE)
+		) {
+			ServerPlayNetworking.send(
+				player,
+				new ForcedPageReleaseS2CPayload(
+					NetworkProtocol.CURRENT_VERSION,
+					instance.identity().instanceId(),
+					request.pageInstanceId().orElseThrow(),
+					advanced.allCompleted() ? "readiness_completed" : "member_ready",
+					finalRoot.stateRevision()
+				)
+			);
+		} else {
+			sendCurrentForcedPage(context.server(), player);
+		}
+		refreshFlowProjection(context.server(), advanced.allCompleted());
 		sendSnapshots(context.server(), false);
 	}
 
@@ -1007,12 +1758,27 @@ public final class PixelTzzServerRuntime {
 		final List<UUID> requestedTargets
 	) {
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
-		WorldStateV2 state = wrapper.currentV2().orElse(null);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		WorldStateV2 state = root == null ? null : root.core();
 		View view = DefinitionRegistry.INSTANCE.view();
 		if (state == null) {
 			return PreparedOperation.failed(OperationCode.SCHEMA_BLOCKED, "世界状态当前不可写。");
 		}
 		Optional<CallbackRetryKey> callbackRetry = callbackRetryKey(operation);
+		Optional<TimelineCallbackRetryKey> timelineCallbackRetry =
+			timelineCallbackRetryKey(root, operation);
+		Optional<String> fallbackResult = timelineFallbackResult(operation);
+		if (
+			timelineOperation(operation)
+				&& state.host()
+					.filter(host -> host.playerId().equals(actor.getUUID()))
+					.isEmpty()
+		) {
+			return PreparedOperation.failed(
+				OperationCode.NOT_HOST,
+				"只有当前主持人可以控制任务时间线。"
+			);
+		}
 		if (
 			callbackRetry.isEmpty()
 				&& !hostOperation(operation)
@@ -1027,6 +1793,7 @@ public final class PixelTzzServerRuntime {
 		List<UUID> targets = requestedTargets.stream().sorted().toList();
 		Prompt prompt;
 		List<Target> targetLabels;
+		List<RichText> runtimeConsequences = List.of();
 		Optional<PanelActionDefinition> panelAction = Optional.empty();
 		if (
 			operation.type().equals("claim_host")
@@ -1123,6 +1890,384 @@ public final class PixelTzzServerRuntime {
 				)
 			);
 			targetLabels = List.of();
+		} else if (
+			operation.type().equals(EXTEND_INTERMISSION)
+				&& operation.id().equals(EXTEND_INTERMISSION_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"延长间隔不接受目标玩家。"
+				);
+			}
+			WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+			if (timeline == null || timeline.currentTask().isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TIMELINE_NOT_ACTIVE,
+					"当前没有活动任务时间线。"
+				);
+			}
+			var preview = TimelineAuthority.extendIntermission(
+				timeline,
+				timelineActionContext(timeline),
+				INTERMISSION_EXTENSION_TICKS
+			);
+			if (!preview.successful()) {
+				return PreparedOperation.failed(
+					preview.code(),
+					timelineControlFailure(
+						new TimelineServerRuntime.RuntimeResult(
+							preview.code(),
+							preview.message(),
+							false
+						)
+					)
+				);
+			}
+			prompt = new Prompt(
+				richText("确认延长任务间隔"),
+				List.of(
+					richText("当前间隔将延长 60 秒，已经流逝的时间不会回退。"),
+					richText("下一任务不会改变；数据包已冻结的结果和路线也不会改变。"),
+					richText("操作会立即写入本局状态，/reload 与重启后继续保留。"),
+					richText(timelinePromptContext(root, timeline))
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			operation.type().equals(FINISH_INTERMISSION)
+				&& operation.id().equals(FINISH_INTERMISSION_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"提前结束间隔不接受目标玩家。"
+				);
+			}
+			WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+			if (timeline == null || timeline.currentTask().isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TIMELINE_NOT_ACTIVE,
+					"当前没有活动任务时间线。"
+				);
+			}
+			var preview = TimelineAuthority.finishIntermissionEarly(
+				timeline,
+				timelineActionContext(timeline)
+			);
+			if (!preview.successful()) {
+				return PreparedOperation.failed(
+					preview.code(),
+					timelineControlFailure(
+						new TimelineServerRuntime.RuntimeResult(
+							preview.code(),
+							preview.message(),
+							false
+						)
+					)
+				);
+			}
+			prompt = new Prompt(
+				richText("确认提前结束任务间隔"),
+				List.of(
+					richText("当前间隔会立即归零，并执行数据包注册的间隔结束回调。"),
+					richText("回调成功后才会进入已冻结的下一任务或结束阶段。"),
+					richText("该操作不会跳过任务，也不会更改已经冻结的结果。"),
+					richText(timelinePromptContext(root, timeline))
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			operation.type().equals(INTERRUPT_TIMELINE)
+				&& operation.id().equals(INTERRUPT_TIMELINE_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"紧急终止不接受目标玩家。"
+				);
+			}
+			WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+			if (timeline == null || timeline.currentTask().isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TIMELINE_NOT_ACTIVE,
+					"当前没有可终止的任务时间线。"
+				);
+			}
+			var preview = TimelineAuthority.interrupt(
+				timeline,
+				timelineActionContext(timeline),
+				server.getTickCount()
+			);
+			if (!preview.successful()) {
+				return PreparedOperation.failed(
+					preview.code(),
+					timelineControlFailure(
+						new TimelineServerRuntime.RuntimeResult(
+							preview.code(),
+							preview.message(),
+							false
+						)
+					)
+				);
+			}
+			prompt = new Prompt(
+				richText("确认紧急终止整局"),
+				List.of(
+					richText("当前任务会记录为「已中断」，不会伪造成功或失败结果。"),
+					richText("任务时间线立即停止，且不会启动任何后续任务。"),
+					richText("已成功的数据包回调和世界效果不会自动撤销。"),
+					richText("赛后回顾仍可查看；之后只能显式重置本局进程。")
+				)
+			);
+			targetLabels = timeline.currentTask()
+				.orElseThrow()
+				.participants()
+				.stream()
+				.map(playerId -> {
+					PlayerRecord record = state.players().get(playerId);
+					return confirmationTarget(
+						server,
+						state,
+						view.active(),
+						playerId,
+						record == null ? playerId.toString() : record.lastKnownName(),
+						Set.of()
+					);
+				})
+				.toList();
+		} else if (operation.type().equals(RETRY_TIMELINE_CALLBACK)) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"回调重试不接受手动选择玩家。"
+				);
+			}
+			TimelineCallbackRetryKey retry = timelineCallbackRetry.orElse(null);
+			WorldStateV3.CallbackStep step = retry == null
+				? null
+				: timelineCallbackStep(root, retry).orElse(null);
+			if (
+				retry == null
+					|| step == null
+					|| root.timeline()
+						.filter(timeline -> timeline.status() == WorldStateV3.TimelineStatus.BLOCKED)
+						.isEmpty()
+			) {
+				return PreparedOperation.failed(
+					OperationCode.ACTION_UNAVAILABLE,
+					"对应的时间线回调已经不可重试。"
+				);
+			}
+			if (
+				retry.playerId()
+					.map(server.getPlayerList()::getPlayer)
+					.filter(Objects::nonNull)
+					.isEmpty()
+					&& retry.playerId().isPresent()
+			) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_OFFLINE,
+					"玩家回调只能在对应玩家在线时重试。"
+				);
+			}
+			prompt = new Prompt(
+				richText("确认重试任务回调"),
+				List.of(
+					richText("将重新执行数据包函数 " + step.functionId() + "。"),
+					richText("失败步骤：" + step.stepKey() + "；已尝试 " + step.attemptCount() + " 次。"),
+					richText("已经成功的回调不会重放，任务结果和路线也不会更改。"),
+					richText(
+						step.lastError().map(error -> "上次失败：" + truncate(error, 256))
+							.orElse("上次执行结果未能确认。")
+					)
+				)
+			);
+			targetLabels = retry.playerId()
+				.map(playerId -> {
+					PlayerRecord record = state.players().get(playerId);
+					return List.of(
+						confirmationTarget(
+							server,
+							state,
+							view.active(),
+							playerId,
+							record == null ? playerId.toString() : record.lastKnownName(),
+							Set.of()
+						)
+					);
+				})
+				.orElseGet(List::of);
+		} else if (operation.type().equals(HOST_FALLBACK_RESULT)) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"人工指定结果不接受目标玩家。"
+				);
+			}
+			String resultId = fallbackResult.orElse(null);
+			WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+			TaskDefinition task = frozenCurrentTask(root).orElse(null);
+			TaskResult result = task == null || resultId == null
+				? null
+				: task.results().get(resultId);
+			if (
+				timeline == null
+					|| task == null
+					|| !TimelineServerRuntime.hostFallbackEligible(timeline, result)
+			) {
+				return PreparedOperation.failed(
+					OperationCode.ACTION_UNAVAILABLE,
+					"当前结算异常不允许人工指定该结果。"
+				);
+			}
+			prompt = new Prompt(
+				richText("确认人工指定任务结果"),
+				List.of(
+					richText("将把当前任务结果冻结为「" + result.name().plainText() + "」。"),
+					richText("只允许数据包显式开放的兜底结果；冻结后不能更换或覆盖。"),
+					richText("随后仍会执行该结果的结算回调、间隔与已注册路线。"),
+					richText(timelinePromptContext(root, timeline))
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			operation.type().equals(APPROVE_TIMELINE)
+				&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"批准开局不接受手动选择玩家。"
+				);
+			}
+			if (root == null || root.activeGameInstanceId().isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.SCHEMA_BLOCKED,
+					"当前游戏实例不可用。"
+				);
+			}
+			var approval = TimelineApprovalAuthority.approve(
+				root,
+				view.active(),
+				new ApprovalContext(
+					actor.getUUID(),
+					root.activeGameInstanceId().orElseThrow(),
+					root.stateRevision(),
+					view.active().generation(),
+					new UUID(0L, 1L),
+					new UUID(0L, 2L),
+					server.getTickCount(),
+					onlinePlayerIds(server)
+				)
+			);
+			if (!approval.successful()) {
+				return PreparedOperation.failed(approval.code(), approval.message());
+			}
+			targetLabels = approval.frozenParticipants()
+				.stream()
+				.map(playerId -> {
+					PlayerRecord record = state.players().get(playerId);
+					return confirmationTarget(
+						server,
+						state,
+						view.active(),
+						playerId,
+						record == null ? playerId.toString() : record.lastKnownName(),
+						Set.of()
+					);
+				})
+				.toList();
+			String firstTask = root.core()
+				.activeGameId()
+				.map(view.active().games()::get)
+				.flatMap(game -> game.taskTimeline())
+				.map(timeline -> view.active().tasks().get(timeline.initialTask()))
+				.map(task -> task.name().plainText())
+				.orElse("首个任务");
+			prompt = new Prompt(
+				richText("确认批准开局"),
+				List.of(
+					richText("将冻结当前任务计划并创建唯一时间线实例。"),
+					richText("阶段将切换到数据包注册的开局阶段，随后启动「" + firstTask + "」。"),
+					richText("本局参与者共 " + approval.frozenParticipants().size() + " 人；/reload 不会替换本局快照。"),
+					richText("批准后不能跳过任务；若需停止，只能使用紧急终止。")
+				)
+			);
+		} else if (
+			operation.type().equals(RESET_GAME_PROGRESS)
+				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"重置本局进程不接受手动选择玩家。"
+				);
+			}
+			boolean terminal = root != null
+				&& root.timeline()
+					.map(timeline ->
+						timeline.status() == WorldStateV3.TimelineStatus.COMPLETED
+							|| timeline.status() == WorldStateV3.TimelineStatus.INTERRUPTED
+					)
+					.orElse(true);
+			boolean activeForcedFlow = state.activeForcedFlow()
+				.map(flow -> unfinishedFlow(flow.runtime().status()))
+				.orElse(false);
+			if (root == null || !terminal || activeForcedFlow) {
+				return PreparedOperation.failed(
+					OperationCode.ACTION_UNAVAILABLE,
+					"仍有执行中的任务或强制流程，当前不是安全重置点。"
+				);
+			}
+			var reset = WorldResetAuthority.resetGameProgress(
+				root,
+				view.active(),
+				actor.getUUID(),
+				new UUID(0L, 3L)
+			);
+			if (!reset.successful()) {
+				return PreparedOperation.failed(reset.code(), reset.message());
+			}
+			targetLabels = resetTargets(server, state, view.active());
+			prompt = new Prompt(
+				richText("确认重置本局进程"),
+				List.of(
+					richText("将清除任务时间线、回顾、猎人出生点等独占选择、强制流程和完成记录。"),
+					richText("玩家身份、队伍、生存状态和持久字段将恢复默认；已准备状态也会全部清除。"),
+					richText("当前主持人与玩家注册名单会保留，并返回游戏初始阶段。"),
+					richText("该操作不会通过 /reload 自动发生，执行后不可撤销。")
+				)
+			);
+		} else if (
+			operation.type().equals(CLEAR_ALL_STATE)
+				&& operation.id().equals(CLEAR_ALL_STATE_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"清空全部数据不接受手动选择玩家。"
+				);
+			}
+			var clear = root == null
+				? null
+				: WorldResetAuthority.clearAll(root, actor.getUUID());
+			if (clear == null || !clear.successful()) {
+				return PreparedOperation.failed(
+					clear == null ? OperationCode.SCHEMA_BLOCKED : clear.code(),
+					clear == null ? "世界状态当前不可写。" : clear.message()
+				);
+			}
+			targetLabels = resetTargets(server, state, view.active());
+			prompt = new Prompt(
+				richText("确认清空 Pixel TZZ 全部数据"),
+				List.of(
+					richText("将清除主持人、活动游戏、全部玩家、流程、任务、回顾、预约和审计状态。"),
+					richText("世界会回到未认领状态；/reload 与重启都不会恢复这些数据。"),
+					richText("不会删除原版物品、地图或世界文件，也不会删除数据包文件。"),
+					richText("这是最高风险操作；执行后当前控制台权限也会立即失效。")
+				)
+			);
 		} else if (addFlowMembersOperation(operation)) {
 			ActiveFlowDefinitions active = activeFlowDefinitions(state).orElse(null);
 			if (active == null) {
@@ -1151,8 +2296,9 @@ public final class PixelTzzServerRuntime {
 					return PreparedOperation.failed(eligibility.code(), eligibility.message());
 				}
 			}
-			FlowRosterAuthority.Result result = FlowRosterAuthority.addMembers(
-				state,
+			FlowRosterAuthority.V3Result result = FlowRosterAuthority.addMembers(
+				root,
+				active.definitions(),
 				actor.getUUID(),
 				active.instance().identity().instanceId(),
 				active.instance().runtime().instanceRevision(),
@@ -1160,7 +2306,8 @@ public final class PixelTzzServerRuntime {
 					.map(player -> new OnlineMember(player.playerId(), player.name(), true))
 					.toList(),
 				UUID::randomUUID,
-				System.currentTimeMillis()
+				System.currentTimeMillis(),
+				root.activeGameInstanceId().orElseThrow()
 			);
 			if (!result.successful()) {
 				return PreparedOperation.failed(result.code(), result.message());
@@ -1191,14 +2338,15 @@ public final class PixelTzzServerRuntime {
 					"当前没有可以调整的强制流程。"
 				);
 			}
-			FlowRosterAuthority.Result result = FlowRosterAuthority.removeMembers(
-				state,
+			FlowRosterAuthority.V3Result result = FlowRosterAuthority.removeMembers(
+				root,
 				actor.getUUID(),
 				instance.identity().instanceId(),
 				instance.runtime().instanceRevision(),
 				targets,
 				MEMBER_REMOVAL_REASON,
-				System.currentTimeMillis()
+				System.currentTimeMillis(),
+				server.getTickCount()
 			);
 			if (!result.successful()) {
 				return PreparedOperation.failed(result.code(), result.message());
@@ -1239,13 +2387,14 @@ public final class PixelTzzServerRuntime {
 					"当前没有可以取消的强制流程。"
 				);
 			}
-			FlowRosterAuthority.Result result = FlowRosterAuthority.cancelFlow(
-				state,
+			FlowRosterAuthority.V3Result result = FlowRosterAuthority.cancelFlow(
+				root,
 				actor.getUUID(),
 				instance.identity().instanceId(),
 				instance.runtime().instanceRevision(),
 				FLOW_CANCELLATION_REASON,
-				System.currentTimeMillis()
+				System.currentTimeMillis(),
+				server.getTickCount()
 			);
 			if (!result.successful()) {
 				return PreparedOperation.failed(result.code(), result.message());
@@ -1328,6 +2477,11 @@ public final class PixelTzzServerRuntime {
 			PanelActionDefinition action = view.active().panelActions().get(operation.id());
 			if (
 				action == null
+					|| state.activeGameId()
+						.map(view.active().games()::get)
+						.flatMap(game -> game == null ? Optional.empty() : game.readiness())
+						.map(readiness -> readiness.action().equals(operation.id()))
+						.orElse(false)
 					|| !operationType(action).equals(operation.type())
 					|| state.host().map(host -> host.playerId().equals(actor.getUUID())).orElse(false)
 						== false
@@ -1348,6 +2502,13 @@ public final class PixelTzzServerRuntime {
 					"该操作尚未接入当前服务端执行切片。"
 				);
 			}
+			Optional<String> blockingFlow = panelActionFlowBlockReason(root);
+			if (blockingFlow.isPresent()) {
+				return PreparedOperation.failed(
+					OperationCode.ACTIVE_FLOW_EXISTS,
+					blockingFlow.orElseThrow()
+				);
+			}
 			PanelActionAvailability availability = panelActionAvailability(
 				server,
 				state,
@@ -1361,73 +2522,152 @@ public final class PixelTzzServerRuntime {
 					availability.message()
 				);
 			}
-			List<UUID> explicit = action.target().mode() == SelectionMode.NONE
-				? List.of()
-				: targets;
-			boolean immediateRole = immediateRoleAction(action);
-			var resolved = immediateRole
-				? resolveImmediateTargets(
-					state,
+			if (action.operation() instanceof TransitionPhaseOperation) {
+				if (action.target().mode() != SelectionMode.NONE || !targets.isEmpty()) {
+					return PreparedOperation.failed(
+						OperationCode.TARGET_COUNT_INVALID,
+						"阶段迁移不接受目标玩家。"
+					);
+				}
+				PhaseTransitionAuthority.Result validation = PhaseTransitionAuthority.transition(
+					root,
 					view.active(),
 					action,
-					actor.getUUID(),
-					connectedPlayers(server),
-					explicit,
-					System.currentTimeMillis()
-				)
-				: ForcedFlowAuthority.resolveTargets(
-					state,
-					view.active(),
-					action,
-					actor.getUUID(),
-					connectedPlayers(server),
-					explicit,
-					System.currentTimeMillis()
-				);
-			if (!resolved.successful() || resolved.targets().isEmpty()) {
-				boolean noEligibleTargets = resolved.code() == OperationCode.NO_ELIGIBLE_TARGETS
-					|| resolved.successful() && resolved.targets().isEmpty();
-				return PreparedOperation.failed(
-					noEligibleTargets ? OperationCode.NO_ELIGIBLE_TARGETS : resolved.code(),
-					noEligibleTargets ? "当前没有符合条件的目标玩家。" : resolved.message()
-				);
-			}
-			targets = resolved.targets().stream().map(ConnectedPlayer::playerId).toList();
-			if (immediateRole) {
-				AssignRoleOperation assign = (AssignRoleOperation) action.operation();
-				FlowRosterAuthority.Result roleResult = FlowRosterAuthority.assignRoleImmediate(
-					state,
-					view.active(),
 					actor.getUUID(),
 					state.stateRevision(),
-					assign.role(),
-					targets,
 					System.currentTimeMillis()
 				);
-				if (!roleResult.successful()) {
-					return PreparedOperation.failed(roleResult.code(), roleResult.message());
+				if (!validation.successful()) {
+					return PreparedOperation.failed(validation.code(), validation.message());
 				}
-			}
-			targetLabels = resolved.targets()
-				.stream()
-				.map(
-					target -> confirmationTarget(
-						server,
+				targets = List.of();
+				ReadinessAuthority.OpenResult readinessPreview = openReadinessIfRequired(
+					validation.nextState().orElseThrow(),
+					view.active(),
+					actor.getUUID(),
+					onlinePlayerIds(server),
+					System.currentTimeMillis()
+				);
+				if (!readinessPreview.successful()) {
+					return PreparedOperation.failed(
+						readinessPreview.code(),
+						readinessPreview.message()
+					);
+				}
+				ReadinessInstance preview = readinessPreview.nextState()
+					.flatMap(WorldStateV3::readiness)
+					.orElse(null);
+				if (preview == null) {
+					targetLabels = List.of();
+				} else {
+					targetLabels = preview.flow()
+						.runtime()
+						.members()
+						.values()
+						.stream()
+						.map(member ->
+							confirmationTarget(
+								server,
+								state,
+								view.active(),
+								member.playerId(),
+								member.lockedName(),
+								Set.of()
+							)
+						)
+						.toList();
+					runtimeConsequences = List.of(
+						richText("这些玩家将立即进入不可关闭的准备页。"),
+						richText("主持人不受影响，不会进入准备页，可继续查看准备进度。")
+					);
+				}
+			} else {
+				List<UUID> explicit = action.target().mode() == SelectionMode.NONE
+					? List.of()
+					: targets;
+				boolean immediateRole = immediateRoleAction(action);
+				var resolved = immediateRole
+					? resolveImmediateTargets(
 						state,
 						view.active(),
-						target.playerId(),
-						target.name(),
-						statusFlowIds(action)
+						action,
+						actor.getUUID(),
+						connectedPlayers(server),
+						explicit,
+						System.currentTimeMillis()
 					)
-				)
-				.toList();
+					: ForcedFlowAuthority.resolveTargets(
+						state,
+						view.active(),
+						action,
+						actor.getUUID(),
+						connectedPlayers(server),
+						explicit,
+						System.currentTimeMillis()
+					);
+				if (!resolved.successful() || resolved.targets().isEmpty()) {
+					boolean noEligibleTargets = resolved.code() == OperationCode.NO_ELIGIBLE_TARGETS
+						|| resolved.successful() && resolved.targets().isEmpty();
+					return PreparedOperation.failed(
+						noEligibleTargets ? OperationCode.NO_ELIGIBLE_TARGETS : resolved.code(),
+						noEligibleTargets ? "当前没有符合条件的目标玩家。" : resolved.message()
+					);
+				}
+				targets = resolved.targets().stream().map(ConnectedPlayer::playerId).toList();
+				if (immediateRole) {
+					AssignRoleOperation assign = (AssignRoleOperation) action.operation();
+					FlowRosterAuthority.V3Result roleResult = FlowRosterAuthority.assignRoleImmediate(
+						root,
+						view.active(),
+						actor.getUUID(),
+						state.stateRevision(),
+						assign.role(),
+						targets,
+						System.currentTimeMillis(),
+						root.activeGameInstanceId().orElseThrow(),
+						server.getTickCount()
+					);
+					if (!roleResult.successful()) {
+						return PreparedOperation.failed(roleResult.code(), roleResult.message());
+					}
+				}
+				targetLabels = resolved.targets()
+					.stream()
+					.map(
+						target -> confirmationTarget(
+							server,
+							state,
+							view.active(),
+							target.playerId(),
+							target.name(),
+							statusFlowIds(action)
+						)
+					)
+					.toList();
+			}
 			var confirmation = action.confirmation().orElse(null);
-			prompt = confirmation == null
+			Prompt authoredPrompt = confirmation == null
 				? new Prompt(
 					action.label(),
 					List.of(action.description())
 				)
 				: new Prompt(confirmation.title(), confirmation.consequences());
+			if (runtimeConsequences.isEmpty()) {
+				prompt = authoredPrompt;
+			} else {
+				if (
+					authoredPrompt.consequences().size() + runtimeConsequences.size()
+						> ConfirmationTokens.MAX_CONSEQUENCES
+				) {
+					return PreparedOperation.failed(
+						OperationCode.DEFINITION_UNAVAILABLE,
+						"确认后果条目过多，无法加入服务端准备影响说明。"
+					);
+				}
+				List<RichText> consequences = new ArrayList<>(authoredPrompt.consequences());
+				consequences.addAll(runtimeConsequences);
+				prompt = new Prompt(authoredPrompt.title(), consequences);
+			}
 			panelAction = Optional.of(action);
 		}
 		Binding binding = new Binding(
@@ -1437,7 +2677,7 @@ public final class PixelTzzServerRuntime {
 			state.activePhaseId(),
 			view.active().generation(),
 			state.stateRevision(),
-			relatedStateDigest(server, state, operation, targets)
+			relatedStateDigest(server, root, operation, targets)
 		);
 		String gameName = state.activeGameId()
 			.map(view.active().games()::get)
@@ -1448,7 +2688,11 @@ public final class PixelTzzServerRuntime {
 			.map(phase -> phase.name().plainText())
 			.orElse("未配置阶段");
 		String context = gameName + "  ·  " + phaseName + "  ·  "
-			+ (targets.isEmpty() ? "无需选择玩家" : targets.size() + " 名目标玩家");
+			+ (
+				targetLabels.isEmpty()
+					? targets.isEmpty() ? "无需选择玩家" : targets.size() + " 名目标玩家"
+					: targetLabels.size() + " 名受影响玩家"
+			);
 		return PreparedOperation.succeeded(
 			binding,
 			prompt,
@@ -1514,7 +2758,28 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
-		WorldStateV2 state = wrapper.currentV2().orElseThrow();
+		WorldStateV3 root = wrapper.currentV3().orElseThrow();
+		WorldStateV2 state = root.core();
+		Optional<TimelineServerRuntime.RuntimeResult> timelineControl =
+			executeConfirmedTimelineOperation(server, root, binding.operation());
+		if (timelineControl.isPresent()) {
+			TimelineServerRuntime.RuntimeResult result = timelineControl.orElseThrow();
+			sendOperationResult(
+				actor,
+				request.requestSequence(),
+				result.code(),
+				result.successful()
+					? timelineControlSuccess(binding.operation(), root)
+					: timelineControlFailure(result),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			if (!result.changed()) {
+				pushHostConsoleSnapshot(server);
+			}
+			return;
+		}
 		Optional<CallbackRetryKey> callbackRetry = callbackRetryKey(binding.operation());
 		if (callbackRetry.isPresent()) {
 			CallbackRetryKey retry = callbackRetry.orElseThrow();
@@ -1553,12 +2818,24 @@ public final class PixelTzzServerRuntime {
 		}
 		OperationCode code;
 		String message;
-		Optional<WorldStateV2> candidate;
+		Optional<WorldStateV3> candidate;
 		boolean startedFlow = false;
 		boolean rosterChanged = false;
 		boolean rosterCompletedFlow = false;
 		boolean canceledFlow = false;
 		boolean immediateRoleChanged = false;
+		boolean readinessOpened = false;
+		boolean readinessChanged = false;
+		boolean timelineChanged = false;
+		boolean worldReset = resetOperation(binding.operation());
+		Set<UUID> resetForcedPageMembers = worldReset
+			? state.activeForcedFlow()
+				.map(ForcedFlowInstance::runtime)
+				.map(ForcedFlowRuntime::members)
+				.map(Map::keySet)
+				.map(Set::copyOf)
+				.orElseGet(Set::of)
+			: Set.of();
 		ActiveFlowDefinitions activeBeforeCommit = activeFlowDefinitions(state).orElse(null);
 		if (
 			binding.operation().type().equals("claim_host")
@@ -1571,7 +2848,7 @@ public final class PixelTzzServerRuntime {
 			);
 			code = result.code();
 			message = hostFailureMessage(code);
-			candidate = result.nextState();
+			candidate = result.nextState().map(root::withCore);
 		} else if (
 			binding.operation().type().equals("transfer_host")
 				&& binding.operation().id().equals(TRANSFER_HOST_OPERATION)
@@ -1592,7 +2869,7 @@ public final class PixelTzzServerRuntime {
 				);
 				code = result.code();
 				message = hostFailureMessage(code);
-				candidate = result.nextState();
+				candidate = result.nextState().map(root::withCore);
 			}
 		} else if (
 			binding.operation().type().equals("takeover_host")
@@ -1605,7 +2882,73 @@ public final class PixelTzzServerRuntime {
 			);
 			code = result.code();
 			message = hostFailureMessage(code);
+			candidate = result.nextState().map(root::withCore);
+		} else if (
+			binding.operation().type().equals(APPROVE_TIMELINE)
+				&& binding.operation().id().equals(APPROVE_TIMELINE_OPERATION)
+		) {
+			if (root.activeGameInstanceId().isEmpty()) {
+				code = OperationCode.SCHEMA_BLOCKED;
+				message = "当前游戏实例不可用。";
+				candidate = Optional.empty();
+			} else {
+				var result = TimelineApprovalAuthority.approve(
+					root,
+					definitions.active(),
+					new ApprovalContext(
+						actor.getUUID(),
+						root.activeGameInstanceId().orElseThrow(),
+						root.stateRevision(),
+						definitions.active().generation(),
+						UUID.randomUUID(),
+						UUID.randomUUID(),
+						server.getTickCount(),
+						onlinePlayerIds(server)
+					)
+				);
+				code = result.code();
+				message = result.message();
+				candidate = result.nextState();
+				timelineChanged = result.successful();
+			}
+		} else if (
+			binding.operation().type().equals(RESET_GAME_PROGRESS)
+				&& binding.operation().id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) {
+			boolean terminal = root.timeline()
+				.map(timeline ->
+					timeline.status() == WorldStateV3.TimelineStatus.COMPLETED
+						|| timeline.status() == WorldStateV3.TimelineStatus.INTERRUPTED
+				)
+				.orElse(true);
+			boolean activeForcedFlow = state.activeForcedFlow()
+				.map(flow -> unfinishedFlow(flow.runtime().status()))
+				.orElse(false);
+			if (!terminal || activeForcedFlow) {
+				code = OperationCode.ACTION_UNAVAILABLE;
+				message = "仍有执行中的任务或强制流程，当前不是安全重置点。";
+				candidate = Optional.empty();
+			} else {
+				var result = WorldResetAuthority.resetGameProgress(
+					root,
+					definitions.active(),
+					actor.getUUID(),
+					UUID.randomUUID()
+				);
+				code = result.code();
+				message = result.message();
+				candidate = result.nextState();
+				timelineChanged = result.successful();
+			}
+		} else if (
+			binding.operation().type().equals(CLEAR_ALL_STATE)
+				&& binding.operation().id().equals(CLEAR_ALL_STATE_OPERATION)
+		) {
+			var result = WorldResetAuthority.clearAll(root, actor.getUUID());
+			code = result.code();
+			message = result.message();
 			candidate = result.nextState();
+			timelineChanged = result.successful();
 		} else if (addFlowMembersOperation(binding.operation())) {
 			ForcedFlowInstance instance = state.activeForcedFlow().orElse(null);
 			List<ConnectedPlayer> selected = connectedTargets(server, binding.targetIds());
@@ -1618,8 +2961,17 @@ public final class PixelTzzServerRuntime {
 					: "至少一名补充目标已经离线。";
 				candidate = Optional.empty();
 			} else {
-				FlowRosterAuthority.Result result = FlowRosterAuthority.addMembers(
-					state,
+				ActiveFlowDefinitions active = activeFlowDefinitions(state).orElse(null);
+				FlowRosterAuthority.V3Result result = active == null
+					? new FlowRosterAuthority.V3Result(
+						OperationCode.SNAPSHOT_INVALID,
+						"当前流程的冻结定义不可恢复。",
+						Optional.empty(),
+						false
+					)
+					: FlowRosterAuthority.addMembers(
+					root,
+					active.definitions(),
 					actor.getUUID(),
 					instance.identity().instanceId(),
 					instance.runtime().instanceRevision(),
@@ -1627,7 +2979,8 @@ public final class PixelTzzServerRuntime {
 						.map(player -> new OnlineMember(player.playerId(), player.name(), true))
 						.toList(),
 					UUID::randomUUID,
-					System.currentTimeMillis()
+					System.currentTimeMillis(),
+					root.activeGameInstanceId().orElseThrow()
 				);
 				code = result.code();
 				message = result.message();
@@ -1641,14 +2994,15 @@ public final class PixelTzzServerRuntime {
 				message = "当前没有可以移除成员的流程。";
 				candidate = Optional.empty();
 			} else {
-				FlowRosterAuthority.Result result = FlowRosterAuthority.removeMembers(
-					state,
+				FlowRosterAuthority.V3Result result = FlowRosterAuthority.removeMembers(
+					root,
 					actor.getUUID(),
 					instance.identity().instanceId(),
 					instance.runtime().instanceRevision(),
 					binding.targetIds(),
 					MEMBER_REMOVAL_REASON,
-					System.currentTimeMillis()
+					System.currentTimeMillis(),
+					server.getTickCount()
 				);
 				code = result.code();
 				message = result.message();
@@ -1656,6 +3010,7 @@ public final class PixelTzzServerRuntime {
 				rosterChanged = result.successful();
 				rosterCompletedFlow = result.becameCompleted();
 				canceledFlow = result.nextState()
+					.map(WorldStateV3::core)
 					.flatMap(WorldStateV2::activeForcedFlow)
 					.map(ForcedFlowInstance::runtime)
 					.map(ForcedFlowRuntime::status)
@@ -1669,13 +3024,14 @@ public final class PixelTzzServerRuntime {
 				message = "当前没有可以取消的流程。";
 				candidate = Optional.empty();
 			} else {
-				FlowRosterAuthority.Result result = FlowRosterAuthority.cancelFlow(
-					state,
+				FlowRosterAuthority.V3Result result = FlowRosterAuthority.cancelFlow(
+					root,
 					actor.getUUID(),
 					instance.identity().instanceId(),
 					instance.runtime().instanceRevision(),
 					FLOW_CANCELLATION_REASON,
-					System.currentTimeMillis()
+					System.currentTimeMillis(),
+					server.getTickCount()
 				);
 				code = result.code();
 				message = result.message();
@@ -1701,27 +3057,76 @@ public final class PixelTzzServerRuntime {
 					code = OperationCode.ACTION_UNAVAILABLE;
 					message = availability.message();
 					candidate = Optional.empty();
-				} else if (immediateRoleAction(action)) {
-					AssignRoleOperation assign = (AssignRoleOperation) action.operation();
-					FlowRosterAuthority.Result result = FlowRosterAuthority.assignRoleImmediate(
-						state,
+				} else if (action.operation() instanceof TransitionPhaseOperation) {
+					PhaseTransitionAuthority.Result result = PhaseTransitionAuthority.transition(
+						root,
 						definitions.active(),
+						action,
 						actor.getUUID(),
 						state.stateRevision(),
-						assign.role(),
-						binding.targetIds(),
 						System.currentTimeMillis()
 					);
 					code = result.code();
 					message = result.message();
 					candidate = result.nextState();
+					if (result.successful() && candidate.isPresent()) {
+						ReadinessAuthority.OpenResult opened = openReadinessIfRequired(
+							candidate.orElseThrow(),
+							definitions.active(),
+							actor.getUUID(),
+							onlinePlayerIds(server),
+							System.currentTimeMillis()
+						);
+						code = opened.code();
+						if (!opened.successful()) {
+							message = opened.message();
+							candidate = Optional.empty();
+						} else if (opened.nextState().isPresent()) {
+							message = result.message() + " 玩家准备已开放。";
+							candidate = opened.nextState();
+							readinessOpened = root.readiness().isEmpty()
+								&& candidate.orElseThrow().readiness().isPresent();
+						}
+					}
+				} else if (immediateRoleAction(action)) {
+					AssignRoleOperation assign = (AssignRoleOperation) action.operation();
+					FlowRosterAuthority.V3Result result = FlowRosterAuthority.assignRoleImmediate(
+						root,
+						definitions.active(),
+						actor.getUUID(),
+						state.stateRevision(),
+						assign.role(),
+						binding.targetIds(),
+						System.currentTimeMillis(),
+						root.activeGameInstanceId().orElseThrow(),
+						server.getTickCount()
+					);
+					code = result.code();
+					message = result.message();
+					candidate = result.nextState();
 					immediateRoleChanged = result.successful();
+					if (result.successful() && candidate.isPresent()) {
+						ReadinessAuthority.MutationResult reconciled =
+							reconcileReadinessPlayers(
+								candidate.orElseThrow(),
+								binding.targetIds(),
+								onlinePlayerIds(server),
+								System.currentTimeMillis(),
+								"Identity changed during readiness"
+							);
+						code = reconciled.code();
+						message = reconciled.successful() ? message : reconciled.message();
+						candidate = reconciled.successful()
+							? Optional.of(reconciled.state())
+							: Optional.empty();
+						readinessChanged = reconciled.successful() && reconciled.changed();
+					}
 				} else {
 					List<UUID> explicit = action.target().mode() == SelectionMode.NONE
 						? List.of()
 						: binding.targetIds();
-					StartResult result = ForcedFlowAuthority.start(
-						state,
+					ForcedFlowAuthority.V3StartResult result = ForcedFlowAuthority.start(
+						root,
 						definitions.active(),
 						action,
 						actor.getUUID(),
@@ -1737,7 +3142,8 @@ public final class PixelTzzServerRuntime {
 							actor.getUUID(),
 							availability.visible(),
 							availability.enabled()
-						)
+						),
+						exclusiveContext(root, server)
 					);
 					code = result.code();
 					message = result.message();
@@ -1778,9 +3184,10 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
-		PixelTzzWorldState.CommitResult committed = wrapper.commit(
-			state.stateRevision(),
-			ignored -> candidate.orElseThrow()
+		WorldStateV3 confirmedCandidate = candidate.orElseThrow();
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			root.stateRevision(),
+			ignored -> confirmedCandidate
 		);
 		if (!committed.committed()) {
 			persistConfirmationAudit(
@@ -1802,7 +3209,16 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
-		WorldStateV2 next = committed.state().orElseThrow();
+		WorldStateV2 next = committed.state().orElseThrow().core();
+		if (readinessChanged) {
+			refreshReadinessPages(
+				server,
+				root,
+				committed.state().orElseThrow(),
+				Set.copyOf(binding.targetIds()),
+				"readiness_changed"
+			);
+		}
 		if (rosterCompletedFlow && activeBeforeCommit != null) {
 			showFlowCompletion(
 				server,
@@ -1832,6 +3248,18 @@ public final class PixelTzzServerRuntime {
 			definitions.active().generation(),
 			true
 		);
+		if (worldReset) {
+			releaseForcedPages(
+				server,
+				state,
+				resetForcedPageMembers,
+				binding.operation().type().equals(CLEAR_ALL_STATE)
+					? "all_state_cleared"
+					: "world_reset"
+			);
+			HOST_FLOW_BOSS_BAR.clear();
+			CONFIRMATIONS.clear();
+		}
 		if (removeFlowMembersOperation(binding.operation())) {
 			releaseForcedPages(
 				server,
@@ -1854,14 +3282,121 @@ public final class PixelTzzServerRuntime {
 		}
 		sendSnapshots(server, false);
 		pushHostConsoleSnapshot(server);
-		if (startedFlow || rosterChanged) {
+		if (timelineChanged) {
+			timelineStateChanged(server);
+		}
+		if (startedFlow || rosterChanged || readinessOpened || readinessChanged) {
 			sendForcedPages(server);
 			if (canceledFlow) {
-				HOST_FLOW_BOSS_BAR.clear();
-			} else if (!rosterCompletedFlow) {
+				if (
+					wrapper.currentV3()
+						.flatMap(WorldStateV3::readiness)
+						.map(ReadinessInstance::flow)
+						.map(ForcedFlowInstance::runtime)
+						.map(ForcedFlowRuntime::status)
+						.filter(FlowInstanceStatus.ACTIVE::equals)
+						.isPresent()
+				) {
+					refreshFlowProjection(server, false);
+				} else {
+					HOST_FLOW_BOSS_BAR.clear();
+				}
+			} else if (
+				!rosterCompletedFlow
+					|| readinessOpened
+					|| wrapper.currentV3()
+						.flatMap(WorldStateV3::readiness)
+						.map(ReadinessInstance::flow)
+						.map(ForcedFlowInstance::runtime)
+						.map(ForcedFlowRuntime::status)
+						.filter(FlowInstanceStatus.ACTIVE::equals)
+						.isPresent()
+			) {
 				refreshFlowProjection(server, false);
 			}
 		}
+	}
+
+	private static Optional<TimelineServerRuntime.RuntimeResult> executeConfirmedTimelineOperation(
+		final MinecraftServer server,
+		final WorldStateV3 root,
+		final OperationKey operation
+	) {
+		if (
+			operation.type().equals(EXTEND_INTERMISSION)
+				&& operation.id().equals(EXTEND_INTERMISSION_OPERATION)
+		) {
+			return Optional.of(
+				TimelineServerRuntime.extendIntermission(server, INTERMISSION_EXTENSION_TICKS)
+			);
+		}
+		if (
+			operation.type().equals(FINISH_INTERMISSION)
+				&& operation.id().equals(FINISH_INTERMISSION_OPERATION)
+		) {
+			return Optional.of(TimelineServerRuntime.finishIntermissionEarly(server));
+		}
+		if (
+			operation.type().equals(INTERRUPT_TIMELINE)
+				&& operation.id().equals(INTERRUPT_TIMELINE_OPERATION)
+		) {
+			return Optional.of(TimelineServerRuntime.interrupt(server, server.getTickCount()));
+		}
+		if (operation.type().equals(RETRY_TIMELINE_CALLBACK)) {
+			TimelineCallbackRetryKey retry = timelineCallbackRetryKey(root, operation).orElse(null);
+			return Optional.of(
+				retry == null
+					? new TimelineServerRuntime.RuntimeResult(
+						OperationCode.ACTION_UNAVAILABLE,
+						"callback retry is no longer available",
+						false
+					)
+					: TimelineServerRuntime.retryCurrentCallback(
+						server,
+						retry.stepKey(),
+						retry.playerId()
+					)
+			);
+		}
+		if (operation.type().equals(HOST_FALLBACK_RESULT)) {
+			String resultId = timelineFallbackResult(operation).orElse(null);
+			return Optional.of(
+				resultId == null
+					? new TimelineServerRuntime.RuntimeResult(
+						OperationCode.ACTION_UNAVAILABLE,
+						"host fallback result is no longer available",
+						false
+					)
+					: TimelineServerRuntime.hostFallbackResult(server, resultId)
+			);
+		}
+		return Optional.empty();
+	}
+
+	private static String timelineControlSuccess(
+		final OperationKey operation,
+		final WorldStateV3 root
+	) {
+		if (operation.type().equals(EXTEND_INTERMISSION)) {
+			return root.timeline().filter(WorldStateV3.TimelineInstance::paused).isPresent()
+				? "任务间隔已延长 60 秒，并继续保持暂停。"
+				: "任务间隔已延长 60 秒。";
+		}
+		if (operation.type().equals(FINISH_INTERMISSION)) {
+			return root.timeline().filter(WorldStateV3.TimelineInstance::paused).isPresent()
+				? "任务间隔已标记结束；继续时间线后将执行间隔结束回调。"
+				: "任务间隔已提前结束，时间线正在继续。";
+		}
+		if (operation.type().equals(INTERRUPT_TIMELINE)) {
+			return "本局任务时间线已紧急终止。";
+		}
+		if (operation.type().equals(RETRY_TIMELINE_CALLBACK)) {
+			return "任务回调已重试，时间线状态已更新。";
+		}
+		if (operation.type().equals(HOST_FALLBACK_RESULT)) {
+			return "人工兜底结果已冻结，时间线正在继续结算。";
+		}
+		return "时间线操作已完成。";
 	}
 
 	private static Actor actor(final ServerPlayer player) {
@@ -1885,6 +3420,49 @@ public final class PixelTzzServerRuntime {
 				)
 			)
 			.sorted(Comparator.comparing(ConnectedPlayer::playerId))
+			.toList();
+	}
+
+	private static Set<UUID> onlinePlayerIds(final MinecraftServer server) {
+		return server.getPlayerList()
+			.getPlayers()
+			.stream()
+			.map(ServerPlayer::getUUID)
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
+	}
+
+	private static ForcedFlowAuthority.ExclusiveContext exclusiveContext(
+		final WorldStateV3 state,
+		final MinecraftServer server
+	) {
+		return new ForcedFlowAuthority.ExclusiveContext(
+			state.activeGameInstanceId().orElseThrow(
+				() -> new IllegalStateException("active game instance is unavailable")
+			),
+			server.getTickCount(),
+			UUID::randomUUID
+		);
+	}
+
+	private static List<Target> resetTargets(
+		final MinecraftServer server,
+		final WorldStateV2 state,
+		final DefinitionSnapshot definitions
+	) {
+		return state.players()
+			.values()
+			.stream()
+			.sorted(Comparator.comparing(PlayerRecord::playerId))
+			.map(player ->
+				confirmationTarget(
+					server,
+					state,
+					definitions,
+					player.playerId(),
+					player.lastKnownName(),
+					Set.of()
+				)
+			)
 			.toList();
 	}
 
@@ -1977,11 +3555,25 @@ public final class PixelTzzServerRuntime {
 
 	private static PanelActionAvailability panelCandidateAvailability(
 		final MinecraftServer server,
-		final WorldStateV2 state,
+		final WorldStateV3 root,
 		final DefinitionSnapshot definitions,
 		final ServerPlayer actor,
 		final PanelActionDefinition action
 	) {
+		WorldStateV2 state = root.core();
+		if (action.operation() instanceof TransitionPhaseOperation) {
+			PhaseTransitionAuthority.Result validation = PhaseTransitionAuthority.transition(
+				root,
+				definitions,
+				action,
+				actor.getUUID(),
+				state.stateRevision(),
+				0L
+			);
+			return validation.successful()
+				? PanelActionAvailability.available()
+				: PanelActionAvailability.disabled(validation.message());
+		}
 		List<ConnectedPlayer> connected = connectedPlayers(server);
 		long now = System.currentTimeMillis();
 		if (action.target().mode() == SelectionMode.NONE) {
@@ -2025,6 +3617,32 @@ public final class PixelTzzServerRuntime {
 		return eligible >= action.target().minimum()
 			? PanelActionAvailability.available()
 			: PanelActionAvailability.disabled("当前没有符合此操作条件的玩家。");
+	}
+
+	/**
+	 * The ordinary forced-flow slot and the readiness slot are mutually exclusive authoring
+	 * surfaces even though schema v3 stores them separately. Projecting both through one reason
+	 * keeps console availability and prepare-time validation consistent.
+	 */
+	private static Optional<String> panelActionFlowBlockReason(final WorldStateV3 root) {
+		boolean readinessActive = root.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::status)
+			.filter(PixelTzzServerRuntime::unfinishedFlow)
+			.isPresent();
+		if (readinessActive) {
+			return Optional.of("当前正在进行玩家准备；全部参与者完成或主持人终止该流程后才能发起新的强制流程。");
+		}
+		boolean ordinaryActive = root.core()
+			.activeForcedFlow()
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::status)
+			.filter(PixelTzzServerRuntime::unfinishedFlow)
+			.isPresent();
+		return ordinaryActive
+			? Optional.of("必须先结束当前强制流程。")
+			: Optional.empty();
 	}
 
 	private static List<TargetSnapshotS2CPayload.Target> eligibleActionTargets(
@@ -2075,8 +3693,9 @@ public final class PixelTzzServerRuntime {
 			: Optional.of(new ActiveFlowDefinitions(instance, definitions, flow, action));
 	}
 
-	private static boolean supportedPanelAction(final PanelActionDefinition action) {
+	static boolean supportedPanelAction(final PanelActionDefinition action) {
 		return action.operation() instanceof StartFlowOperation
+			|| action.operation() instanceof TransitionPhaseOperation
 			|| (
 				action.operation() instanceof AssignRoleOperation assign
 					&& (
@@ -2180,7 +3799,215 @@ public final class PixelTzzServerRuntime {
 		) || (
 			operation.type().equals("takeover_host")
 				&& operation.id().equals(TAKEOVER_HOST_OPERATION)
+		) || (
+			operation.type().equals(APPROVE_TIMELINE)
+				&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
+		) || (
+			operation.type().equals(RESET_GAME_PROGRESS)
+				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) || (
+			operation.type().equals(CLEAR_ALL_STATE)
+				&& operation.id().equals(CLEAR_ALL_STATE_OPERATION)
+		) || timelineOperation(operation);
+	}
+
+	static boolean timelineOperation(final OperationKey operation) {
+		return immediateTimelineOperation(operation)
+			|| (
+				operation.type().equals(EXTEND_INTERMISSION)
+					&& operation.id().equals(EXTEND_INTERMISSION_OPERATION)
+			)
+			|| (
+				operation.type().equals(FINISH_INTERMISSION)
+					&& operation.id().equals(FINISH_INTERMISSION_OPERATION)
+			)
+			|| (
+				operation.type().equals(INTERRUPT_TIMELINE)
+					&& operation.id().equals(INTERRUPT_TIMELINE_OPERATION)
+			)
+			|| operation.type().equals(RETRY_TIMELINE_CALLBACK)
+			|| operation.type().equals(HOST_FALLBACK_RESULT);
+	}
+
+	static boolean immediateTimelineOperation(final OperationKey operation) {
+		return (
+			operation.type().equals(PAUSE_TIMELINE)
+				&& operation.id().equals(PAUSE_TIMELINE_OPERATION)
+		) || (
+			operation.type().equals(RESUME_TIMELINE)
+				&& operation.id().equals(RESUME_TIMELINE_OPERATION)
 		);
+	}
+
+	private static boolean resetOperation(final OperationKey operation) {
+		return (
+			operation.type().equals(RESET_GAME_PROGRESS)
+				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) || (
+			operation.type().equals(CLEAR_ALL_STATE)
+				&& operation.id().equals(CLEAR_ALL_STATE_OPERATION)
+		);
+	}
+
+	private static Optional<TimelineCallbackRetryKey> timelineCallbackRetryKey(
+		final WorldStateV3 root,
+		final OperationKey operation
+	) {
+		if (root == null) {
+			return Optional.empty();
+		}
+		return decodeTimelineCallbackOperation(operation)
+			.filter(key -> timelineCallbackStep(root, key).isPresent());
+	}
+
+	static Optional<TimelineCallbackRetryKey> decodeTimelineCallbackOperation(
+		final OperationKey operation
+	) {
+		if (
+			!operation.type().equals(RETRY_TIMELINE_CALLBACK)
+				|| !operation.id().getNamespace().equals(PixelTzzPro.MOD_ID)
+				|| !operation.id().getPath().startsWith(TIMELINE_CALLBACK_RETRY_PATH_PREFIX)
+		) {
+			return Optional.empty();
+		}
+		String encoded = operation.id()
+			.getPath()
+			.substring(TIMELINE_CALLBACK_RETRY_PATH_PREFIX.length());
+		int separator = encoded.lastIndexOf('/');
+		if (separator <= 0 || separator == encoded.length() - 1) {
+			return Optional.empty();
+		}
+		String stepKey = encoded.substring(0, separator);
+		String playerKey = encoded.substring(separator + 1);
+		Optional<UUID> playerId;
+		if (playerKey.equals("global")) {
+			playerId = Optional.empty();
+		} else {
+			try {
+				playerId = Optional.of(UUID.fromString(playerKey));
+			} catch (IllegalArgumentException error) {
+				return Optional.empty();
+			}
+		}
+		return Optional.of(new TimelineCallbackRetryKey(stepKey, playerId));
+	}
+
+	private static Optional<WorldStateV3.CallbackStep> timelineCallbackStep(
+		final WorldStateV3 root,
+		final TimelineCallbackRetryKey key
+	) {
+		if (root == null || key == null) {
+			return Optional.empty();
+		}
+		List<WorldStateV3.CallbackStep> matches = root.timeline()
+			.stream()
+			.flatMap(timeline -> java.util.stream.Stream.concat(
+				timeline.currentTask().stream().flatMap(task -> task.callbackLedger().stream()),
+				timeline.callbackLedger().stream()
+			))
+			.filter(step ->
+				step.stepKey().equals(key.stepKey())
+					&& step.playerId().equals(key.playerId())
+			)
+			.limit(2)
+			.toList();
+		if (matches.size() != 1) {
+			return Optional.empty();
+		}
+		WorldStateV3.CallbackStep match = matches.getFirst();
+		return match.status() == WorldStateV3.CallbackStepStatus.FAILED
+				|| match.status() == WorldStateV3.CallbackStepStatus.OUTCOME_UNKNOWN
+			? Optional.of(match)
+			: Optional.empty();
+	}
+
+	static Optional<String> timelineFallbackResult(final OperationKey operation) {
+		if (
+			!operation.type().equals(HOST_FALLBACK_RESULT)
+				|| !operation.id().getNamespace().equals(PixelTzzPro.MOD_ID)
+				|| !operation.id().getPath().startsWith(TIMELINE_RESULT_PATH_PREFIX)
+		) {
+			return Optional.empty();
+		}
+		String resultId = operation.id()
+			.getPath()
+			.substring(TIMELINE_RESULT_PATH_PREFIX.length());
+		return resultId.isBlank() ? Optional.empty() : Optional.of(resultId);
+	}
+
+	private static Optional<TaskDefinition> frozenCurrentTask(final WorldStateV3 root) {
+		if (root == null) {
+			return Optional.empty();
+		}
+		return root.timeline().flatMap(timeline -> {
+			var restored = TimelineSnapshotCompiler.restore(timeline.gameId(), timeline.snapshot());
+			if (!restored.success() || timeline.currentTask().isEmpty()) {
+				return Optional.empty();
+			}
+			return Optional.ofNullable(
+				restored.snapshot()
+					.orElseThrow()
+					.tasks()
+					.get(timeline.currentTask().orElseThrow().taskId())
+			);
+		});
+	}
+
+	private static TimelineAuthority.ActionContext timelineActionContext(
+		final WorldStateV3.TimelineInstance timeline
+	) {
+		WorldStateV3.TaskInstance task = timeline.currentTask().orElseThrow();
+		return new TimelineAuthority.ActionContext(
+			timeline.instanceId(),
+			task.taskInstanceId(),
+			task.taskId(),
+			timeline.timelineRevision()
+		);
+	}
+
+	private static String timelinePromptContext(
+		final WorldStateV3 root,
+		final WorldStateV3.TimelineInstance timeline
+	) {
+		WorldStateV3.TaskInstance task = timeline.currentTask().orElseThrow();
+		String taskName = frozenCurrentTask(root)
+			.map(definition -> definition.name().plainText())
+			.filter(name -> !name.isBlank())
+			.orElse("当前任务");
+		return "当前任务：" + taskName + " · 当前状态：" + timelineStatusName(timeline);
+	}
+
+	private static String timelineStatusName(final WorldStateV3.TimelineInstance timeline) {
+		WorldStateV3.TimelineStatus status = timeline.status() == WorldStateV3.TimelineStatus.BLOCKED
+			? timeline.resumeStatus().orElse(WorldStateV3.TimelineStatus.BLOCKED)
+			: timeline.status();
+		String name = switch (status) {
+			case PRE_START -> "等待开始";
+			case STARTING -> "正在启动";
+			case RUNNING -> "任务进行中";
+			case SETTLING -> "正在结算";
+			case INTERMISSION -> "任务间隔";
+			case BLOCKED -> "异常阻塞";
+			case COMPLETED -> "整局完成";
+			case INTERRUPTED -> "整局已中断";
+		};
+		return timeline.status() == WorldStateV3.TimelineStatus.BLOCKED
+			? name + "（异常阻塞）"
+			: timeline.paused() ? name + "（已暂停）" : name;
+	}
+
+	private static String timelineControlFailure(
+		final TimelineServerRuntime.RuntimeResult result
+	) {
+		return switch (result.code()) {
+			case TIMELINE_NOT_ACTIVE -> "当前没有可控制的任务时间线。";
+			case TIMELINE_COMPLETED -> "任务时间线已经结束。";
+			case INTERMISSION_NOT_ACTIVE -> "当前不在任务间隔中。";
+			case CALLBACK_FAILED -> "数据包回调执行失败，请在控制台查看可重试步骤。";
+			case ACTION_UNAVAILABLE, TASK_STATE_MISMATCH -> "当前时间线状态不允许执行该操作。";
+			case STATE_REVISION_STALE, REVISION_MISMATCH -> "时间线状态已经变化，请刷新后重试。";
+			default -> "时间线操作未能完成，请刷新后重试；若持续出现请查看开发与诊断。";
+		};
 	}
 
 	private static boolean flowRosterOperation(final OperationKey operation) {
@@ -2211,16 +4038,25 @@ public final class PixelTzzServerRuntime {
 		};
 	}
 
+	private static boolean unfinishedFlow(final FlowInstanceStatus status) {
+		return status == FlowInstanceStatus.ACTIVE || status == FlowInstanceStatus.BLOCKED;
+	}
+
 	private static String relatedStateDigest(
 		final MinecraftServer server,
-		final WorldStateV2 state,
+		final WorldStateV3 root,
 		final OperationKey operation,
 		final List<UUID> targets
 	) {
+		WorldStateV2 state = root.core();
 		try {
 			MessageDigest digest = MessageDigest.getInstance("SHA-256");
 			digestPart(digest, operation.type());
 			digestPart(digest, operation.id().toString());
+			digestPart(
+				digest,
+				root.activeGameInstanceId().map(UUID::toString).orElse("")
+			);
 			digestPart(digest, state.activeGameId().map(Identifier::toString).orElse(""));
 			digestPart(digest, state.activePhaseId().map(Identifier::toString).orElse(""));
 			digestPart(
@@ -2237,6 +4073,60 @@ public final class PixelTzzServerRuntime {
 					digestPart(digest, failure.playerId().map(UUID::toString).orElse(""));
 					digestPart(digest, Integer.toString(failure.attemptCount()));
 					digestPart(digest, failure.error());
+				});
+			});
+			root.timeline().ifPresent(timeline -> {
+				digestPart(digest, timeline.instanceId().toString());
+				digestPart(digest, timeline.status().getSerializedName());
+				digestPart(
+					digest,
+					timeline.resumeStatus()
+						.map(WorldStateV3.TimelineStatus::getSerializedName)
+						.orElse("")
+				);
+				digestPart(digest, Boolean.toString(timeline.paused()));
+				digestPart(digest, timeline.pauseReason().orElse(""));
+				digestPart(digest, Long.toString(timeline.timelineRevision()));
+				timeline.currentTask().ifPresent(task -> {
+					digestPart(digest, task.taskInstanceId().toString());
+					digestPart(digest, task.taskId().toString());
+					digestPart(digest, task.status().getSerializedName());
+					digestPart(
+						digest,
+						task.resumeStatus()
+							.map(WorldStateV3.TaskStatus::getSerializedName)
+							.orElse("")
+					);
+					digestPart(
+						digest,
+						task.result().map(WorldStateV3.FrozenResult::resultId).orElse("")
+					);
+					digestPart(
+						digest,
+						task.lifecycleCallbackTrigger()
+							.map(trigger ->
+								trigger.kind().getSerializedName()
+									+ ":"
+									+ trigger.triggerRevision()
+							)
+							.orElse("")
+					);
+					digestPart(
+						digest,
+						task.phaseTransitionTrigger()
+							.map(trigger ->
+								trigger.transitionId()
+									+ ":"
+									+ trigger.fromPhaseId()
+									+ ":"
+									+ trigger.toPhaseId()
+									+ ":"
+									+ trigger.cause().getSerializedName()
+									+ ":"
+									+ trigger.triggerRevision()
+							)
+							.orElse("")
+					);
 				});
 			});
 			for (UUID targetId : targets.stream().sorted().toList()) {
@@ -2556,7 +4446,7 @@ public final class PixelTzzServerRuntime {
 			case TARGET_OFFLINE -> "目标玩家已经离线。";
 			case TARGET_INVALID -> "目标玩家无效。";
 			case ACTION_UNAVAILABLE -> "该主持人操作当前不可用。";
-			default -> "主持人操作失败：" + code.serializedName();
+			default -> "主持人操作未能完成，请刷新后重试；若持续出现请查看开发与诊断。";
 		};
 	}
 
@@ -2573,13 +4463,35 @@ public final class PixelTzzServerRuntime {
 		if (cancelFlowOperation(operation)) {
 			return "已取消当前流程。";
 		}
+		if (operation.type().equals("transition_phase")) {
+			return "已进入新的游戏阶段。";
+		}
+		if (
+			operation.type().equals(APPROVE_TIMELINE)
+				&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
+		) {
+			return "已批准开局，任务时间线开始运行。";
+		}
+		if (
+			operation.type().equals(RESET_GAME_PROGRESS)
+				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) {
+			return "本局进程已重置。";
+		}
+		if (
+			operation.type().equals(CLEAR_ALL_STATE)
+				&& operation.id().equals(CLEAR_ALL_STATE_OPERATION)
+		) {
+			return "Pixel TZZ 数据已清空。";
+		}
 		return immediateRoleChanged ? "身份已立即更新。" : "操作已完成。";
 	}
 
-	private static String operationType(final PanelActionDefinition action) {
+	static String operationType(final PanelActionDefinition action) {
 		return switch (action.operation()) {
 			case StartFlowOperation ignored -> "start_flow";
 			case AssignRoleOperation ignored -> "assign_role";
+			case TransitionPhaseOperation ignored -> "transition_phase";
 			default -> "unsupported";
 		};
 	}
@@ -2689,7 +4601,8 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
-		WorldStateV2 state = wrapper.currentV2().orElse(null);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		WorldStateV2 state = root == null ? null : root.core();
 		View view = DefinitionRegistry.INSTANCE.view();
 		if (state == null) {
 			ServerPlayNetworking.send(
@@ -2705,6 +4618,7 @@ public final class PixelTzzServerRuntime {
 					Optional.empty(),
 					jsonText("未配置游戏"),
 					jsonText("状态只读"),
+					List.of(),
 					isAdminEligible(player),
 					false,
 					Optional.empty(),
@@ -2757,7 +4671,13 @@ public final class PixelTzzServerRuntime {
 			message = state.activeForcedFlow()
 				.filter(flow -> flow.runtime().status() == FlowInstanceStatus.ACTIVE)
 				.map(flow -> "当前强制流程进行中。")
-				.orElse("");
+				.orElseGet(() ->
+					root.readiness()
+						.map(ReadinessInstance::flow)
+						.filter(flow -> flow.runtime().status() == FlowInstanceStatus.ACTIVE)
+						.map(flow -> "正在等待玩家逐一确认准备。")
+						.orElse("")
+				);
 		}
 		List<Diagnostic> diagnostics = new ArrayList<>();
 		if (!view.healthy()) {
@@ -2794,25 +4714,96 @@ public final class PixelTzzServerRuntime {
 				phaseId,
 				gameName,
 				phaseName,
+				consolePhaseRoute(state, view.active()),
 				isAdminEligible(player),
 				currentHost,
 				host,
-				consolePlayers(server, state, view.active()),
-				consoleActions(server, player, state, view),
-				activeFlowSummary(server, state),
-				recentFlowSummary(server, state),
+				consolePlayers(server, root, view.active()),
+				consoleActions(server, player, root, view),
+				activeFlowSummary(server, root),
+				recentFlowSummary(server, root),
 				state.audit().totalEvents(),
 				diagnostics.stream().limit(ConsoleSnapshotS2CPayload.MAX_DIAGNOSTICS).toList()
 			)
 		);
 	}
 
+	/**
+	 * Projects a stable, bounded phase route for the host console.
+	 *
+	 * <p>The compact rail is only allowed to claim completed/future ordering when the reachable
+	 * phase graph is a single linear chain. A branched or cyclic graph cannot be truthfully
+	 * flattened without persisted route history, so it degrades to the authoritative current
+	 * phase instead of presenting an invented order.</p>
+	 */
+	static List<PhaseEntry> consolePhaseRoute(
+		final WorldStateV2 state,
+		final DefinitionSnapshot definitions
+	) {
+		Identifier gameId = state.activeGameId().orElse(null);
+		Identifier currentPhase = state.activePhaseId().orElse(null);
+		GameDefinition game = gameId == null ? null : definitions.games().get(gameId);
+		if (game == null || currentPhase == null) {
+			return List.of();
+		}
+		List<Identifier> ordered = new ArrayList<>();
+		Set<Identifier> visited = new LinkedHashSet<>();
+		Identifier cursor = game.initialPhase();
+		boolean linear = true;
+		while (ordered.size() < ConsoleSnapshotS2CPayload.MAX_PHASES) {
+			if (!visited.add(cursor)) {
+				linear = false;
+				break;
+			}
+			PhaseDefinition phase = definitions.phases().get(cursor);
+			if (phase == null || !phase.game().equals(gameId)) {
+				linear = false;
+				break;
+			}
+			ordered.add(cursor);
+			List<Identifier> nextPhases = phase.transitions()
+				.stream()
+				.filter(next -> {
+					PhaseDefinition target = definitions.phases().get(next);
+					return target != null && target.game().equals(gameId);
+				})
+				.sorted(Comparator.comparing(Identifier::toString))
+				.toList();
+			if (nextPhases.size() > 1) {
+				linear = false;
+				break;
+			}
+			if (nextPhases.isEmpty()) {
+				break;
+			}
+			cursor = nextPhases.getFirst();
+		}
+		if (!linear || !ordered.contains(currentPhase)) {
+			PhaseDefinition current = definitions.phases().get(currentPhase);
+			return current == null || !current.game().equals(gameId)
+				? List.of()
+				: List.of(new PhaseEntry(currentPhase, current.name().json(), "current"));
+		}
+		int currentIndex = ordered.indexOf(currentPhase);
+		List<PhaseEntry> route = new ArrayList<>(ordered.size());
+		for (int index = 0; index < ordered.size(); index++) {
+			Identifier phaseId = ordered.get(index);
+			PhaseDefinition phase = definitions.phases().get(phaseId);
+			String relation = index < currentIndex
+				? "completed"
+				: index == currentIndex ? "current" : "future";
+			route.add(new PhaseEntry(phaseId, phase.name().json(), relation));
+		}
+		return List.copyOf(route);
+	}
+
 	private static List<ActionEntry> consoleActions(
 		final MinecraftServer server,
 		final ServerPlayer player,
-		final WorldStateV2 state,
+		final WorldStateV3 root,
 		final View view
 	) {
+		WorldStateV2 state = root.core();
 		List<ActionEntry> result = new ArrayList<>();
 		boolean admin = isAdminEligible(player);
 		boolean currentHost = state.host()
@@ -2868,6 +4859,7 @@ public final class PixelTzzServerRuntime {
 			);
 		}
 		if (currentHost) {
+			addTimelineControlActions(server, player, root, view, result);
 			state.activeForcedFlow()
 				.filter(flow -> flow.runtime().status() == FlowInstanceStatus.BLOCKED)
 				.stream()
@@ -2950,10 +4942,8 @@ public final class PixelTzzServerRuntime {
 				.limit(ConsoleSnapshotS2CPayload.MAX_ACTIONS)
 				.toList();
 		}
-		boolean activeFlow = state.activeForcedFlow()
-			.map(flow -> flow.runtime().status())
-			.filter(status -> status == FlowInstanceStatus.ACTIVE || status == FlowInstanceStatus.BLOCKED)
-			.isPresent();
+		Optional<String> blockingFlow = panelActionFlowBlockReason(root);
+		boolean activeFlow = blockingFlow.isPresent();
 		FrozenPredicateEvaluator predicateEvaluator = new FrozenPredicateEvaluator(
 			server,
 			view.active().predicateDocuments()
@@ -2962,6 +4952,13 @@ public final class PixelTzzServerRuntime {
 		view.active().panelActions().values()
 			.stream()
 			.filter(action -> state.activeGameId().filter(action.game()::equals).isPresent())
+			.filter(action ->
+				state.activeGameId()
+					.map(view.active().games()::get)
+					.flatMap(game -> game == null ? Optional.empty() : game.readiness())
+					.map(readiness -> !readiness.action().equals(action.id()))
+					.orElse(true)
+			)
 			.filter(
 				action -> action.phases().isEmpty()
 					|| state.activePhaseId().filter(action.phases()::contains).isPresent()
@@ -2984,7 +4981,7 @@ public final class PixelTzzServerRuntime {
 				PanelActionAvailability effective = !activeFlow && availability.enabled()
 					? panelCandidateAvailability(
 						server,
-						state,
+						root,
 						view.active(),
 						player,
 						action
@@ -3005,7 +5002,7 @@ public final class PixelTzzServerRuntime {
 							? ""
 							: jsonText(
 								activeFlow
-									? "必须先结束当前强制流程。"
+									? blockingFlow.orElseThrow()
 									: effective.message()
 							),
 						action.target().mode().name().toLowerCase(java.util.Locale.ROOT),
@@ -3018,6 +5015,341 @@ public final class PixelTzzServerRuntime {
 		return result.stream()
 			.limit(ConsoleSnapshotS2CPayload.MAX_ACTIONS)
 			.toList();
+	}
+
+	private static void addTimelineControlActions(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final WorldStateV3 root,
+		final View view,
+		final List<ActionEntry> actions
+	) {
+		WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+		if (
+			timeline == null
+				&& view.healthy()
+				&& view.active().usable()
+				&& root.activeGameInstanceId().isPresent()
+		) {
+			var approval = TimelineApprovalAuthority.approve(
+				root,
+				view.active(),
+				new ApprovalContext(
+					player.getUUID(),
+					root.activeGameInstanceId().orElseThrow(),
+					root.stateRevision(),
+					view.active().generation(),
+					new UUID(0L, 11L),
+					new UUID(0L, 12L),
+					server.getTickCount(),
+					onlinePlayerIds(server)
+				)
+			);
+			if (approval.successful()) {
+				actions.add(
+					controlAction(
+						APPROVE_TIMELINE,
+						APPROVE_TIMELINE_OPERATION,
+						"primary",
+						-900,
+						"批准开局",
+						"冻结本局任务计划与参与者，并正式启动首个任务。",
+						"#D7B45A",
+						true
+					)
+				);
+			}
+		}
+		if (timeline == null) {
+			actions.add(
+				controlAction(
+					CLEAR_ALL_STATE,
+					CLEAR_ALL_STATE_OPERATION,
+					"system",
+					1_000,
+					"清空全部数据",
+					"清除 Pixel TZZ 在该世界中的主持人、玩家、流程、任务与审计数据。",
+					"#E94F64",
+					true
+				)
+			);
+			return;
+		}
+
+		WorldStateV3.TaskInstance task = timeline.currentTask().orElse(null);
+		boolean callbackIdle = task != null
+			&& task.lifecycleCallbackTrigger().isEmpty()
+			&& task.phaseTransitionTrigger().isEmpty();
+		boolean pausable = callbackIdle
+			&& !timeline.paused()
+			&& (
+				timeline.status() == WorldStateV3.TimelineStatus.RUNNING
+					|| timeline.status() == WorldStateV3.TimelineStatus.INTERMISSION
+			);
+		boolean hostPaused = callbackIdle
+			&& timeline.paused()
+			&& timeline.pauseReason().filter(HOST_PAUSE_REASON::equals).isPresent();
+		if (pausable) {
+			actions.add(
+				controlAction(
+					PAUSE_TIMELINE,
+					PAUSE_TIMELINE_OPERATION,
+					"primary",
+					-900,
+					"暂停任务时间线",
+					"暂停正式游戏计时或当前任务间隔；可由主持人继续。",
+					"#55D7E6",
+					false
+				)
+			);
+		} else if (hostPaused) {
+			actions.add(
+				controlAction(
+					RESUME_TIMELINE,
+					RESUME_TIMELINE_OPERATION,
+					"primary",
+					-900,
+					"继续任务时间线",
+					"结束主持人暂停，并从原状态继续任务与计时。",
+					"#55D7E6",
+					false
+				)
+			);
+		}
+
+		if (
+			timeline.status() == WorldStateV3.TimelineStatus.INTERMISSION
+				&& callbackIdle
+		) {
+			actions.add(
+				controlAction(
+					EXTEND_INTERMISSION,
+					EXTEND_INTERMISSION_OPERATION,
+					"primary",
+					-850,
+					"延长间隔 60 秒",
+					"保留下一任务与当前结果，仅延长本次任务间隔。",
+					"#55D7E6",
+					true
+				)
+			);
+			actions.add(
+				controlAction(
+					FINISH_INTERMISSION,
+					FINISH_INTERMISSION_OPERATION,
+					"primary",
+					-840,
+					"提前结束间隔",
+					"立即执行间隔结束回调，并进入已冻结的下一任务或结束阶段。",
+					"#D7B45A",
+					true
+				)
+			);
+		}
+
+		if (timeline.status() == WorldStateV3.TimelineStatus.BLOCKED) {
+			failedTimelineCallbackSteps(timeline).forEach(step -> {
+				TimelineCallbackRetryKey retryKey = new TimelineCallbackRetryKey(
+					step.stepKey(),
+					step.playerId()
+				);
+				if (timelineCallbackStep(root, retryKey).filter(step::equals).isEmpty()) {
+					return;
+				}
+				Identifier operationId = timelineCallbackOperationId(step);
+				if (operationId == null) {
+					return;
+				}
+				String owner = step.playerId()
+					.map(playerId -> callbackPlayerName(server, root.core(), playerId))
+					.map(name -> " · " + name)
+					.orElse("");
+				boolean available = step.playerId()
+					.map(playerId -> server.getPlayerList().getPlayer(playerId) != null)
+					.orElse(true);
+				actions.add(
+					controlAction(
+						RETRY_TIMELINE_CALLBACK,
+						operationId,
+						"primary",
+						-880,
+						"重试任务回调",
+						step.functionId() + owner + " · 已尝试 " + step.attemptCount() + " 次",
+						"#E94F64",
+						true,
+						available,
+						available ? "" : "对应玩家当前离线，重连后才能重试该回调。"
+					)
+				);
+			});
+		}
+
+		TaskDefinition frozenTask = frozenCurrentTask(root).orElse(null);
+		if (
+			task != null
+				&& frozenTask != null
+				&& timeline.status() == WorldStateV3.TimelineStatus.SETTLING
+				&& task.result().isEmpty()
+		) {
+			frozenTask.results()
+				.values()
+				.stream()
+				.filter(result -> TimelineServerRuntime.hostFallbackEligible(timeline, result))
+				.sorted(Comparator.comparing(TaskResult::id))
+				.forEach(result -> {
+					Identifier operationId = Identifier.tryParse(
+						PixelTzzPro.MOD_ID + ":" + TIMELINE_RESULT_PATH_PREFIX + result.id()
+					);
+					if (operationId != null) {
+						actions.add(
+							controlAction(
+								HOST_FALLBACK_RESULT,
+								operationId,
+								"primary",
+								-870,
+								"人工指定结果：" + result.name().plainText(),
+								"仅用于数据包显式开放的结算兜底；确认后结果不可更换。",
+								"#E94F64",
+								true
+							)
+						);
+					}
+				});
+		}
+
+		boolean terminal = timeline.status() == WorldStateV3.TimelineStatus.COMPLETED
+			|| timeline.status() == WorldStateV3.TimelineStatus.INTERRUPTED;
+		if (terminal) {
+			boolean activeForcedFlow = root.core()
+				.activeForcedFlow()
+				.map(flow -> unfinishedFlow(flow.runtime().status()))
+				.orElse(false);
+			if (!activeForcedFlow) {
+				actions.add(
+					controlAction(
+						RESET_GAME_PROGRESS,
+						RESET_GAME_PROGRESS_OPERATION,
+						"primary",
+						-900,
+						"重置本局进程",
+						"保留主持人与注册名单，清除本局任务、回顾、流程及玩家游戏状态。",
+						"#D7B45A",
+						true
+					)
+				);
+			}
+		} else {
+			actions.add(
+				controlAction(
+					INTERRUPT_TIMELINE,
+					INTERRUPT_TIMELINE_OPERATION,
+					"system",
+					900,
+					"紧急终止整局",
+					"立即中断当前任务并保留回顾；已经发生的世界效果不会自动撤销。",
+					"#E94F64",
+					true
+				)
+			);
+		}
+		actions.add(
+			controlAction(
+				CLEAR_ALL_STATE,
+				CLEAR_ALL_STATE_OPERATION,
+				"system",
+				1_000,
+				"清空全部数据",
+				"清除 Pixel TZZ 在该世界中的主持人、玩家、流程、任务与审计数据。",
+				"#E94F64",
+				true
+			)
+		);
+	}
+
+	private static List<WorldStateV3.CallbackStep> failedTimelineCallbackSteps(
+		final WorldStateV3.TimelineInstance timeline
+	) {
+		return java.util.stream.Stream.concat(
+			timeline.currentTask().stream().flatMap(task -> task.callbackLedger().stream()),
+			timeline.callbackLedger().stream()
+		)
+			.filter(step ->
+				step.status() == WorldStateV3.CallbackStepStatus.FAILED
+					|| step.status() == WorldStateV3.CallbackStepStatus.OUTCOME_UNKNOWN
+			)
+			.sorted(
+				Comparator.comparing(WorldStateV3.CallbackStep::stepKey)
+					.thenComparing(step -> step.playerId().map(UUID::toString).orElse(""))
+			)
+			.limit(ConsoleSnapshotS2CPayload.MAX_ACTIONS / 2L)
+			.toList();
+	}
+
+	static Identifier timelineCallbackOperationId(
+		final WorldStateV3.CallbackStep step
+	) {
+		String owner = step.playerId().map(UUID::toString).orElse("global");
+		return Identifier.tryParse(
+			PixelTzzPro.MOD_ID
+				+ ":"
+				+ TIMELINE_CALLBACK_RETRY_PATH_PREFIX
+				+ step.stepKey()
+				+ "/"
+				+ owner
+		);
+	}
+
+	private static ActionEntry controlAction(
+		final String type,
+		final Identifier id,
+		final String section,
+		final int order,
+		final String label,
+		final String description,
+		final String color,
+		final boolean requiresConfirmation
+	) {
+		return controlAction(
+			type,
+			id,
+			section,
+			order,
+			label,
+			description,
+			color,
+			requiresConfirmation,
+			true,
+			""
+		);
+	}
+
+	private static ActionEntry controlAction(
+		final String type,
+		final Identifier id,
+		final String section,
+		final int order,
+		final String label,
+		final String description,
+		final String color,
+		final boolean requiresConfirmation,
+		final boolean enabled,
+		final String disabledReason
+	) {
+		return new ActionEntry(
+			type,
+			id,
+			section,
+			order,
+			jsonText(label),
+			jsonText(description),
+			color,
+			enabled,
+			enabled ? "" : jsonText(disabledReason),
+			"none",
+			0,
+			0,
+			requiresConfirmation
+		);
 	}
 
 	private static ActionEntry systemAction(
@@ -3075,31 +5407,48 @@ public final class PixelTzzServerRuntime {
 
 	private static Optional<ActiveFlowSummary> activeFlowSummary(
 		final MinecraftServer server,
-		final WorldStateV2 state
+		final WorldStateV3 state
 	) {
-		return flowSummary(
+		Optional<ActiveFlowSummary> ordinary = flowSummary(
 			server,
 			state,
+			state.core().activeForcedFlow(),
 			Set.of(FlowInstanceStatus.ACTIVE, FlowInstanceStatus.BLOCKED)
+		);
+		return ordinary.or(() ->
+			flowSummary(
+				server,
+				state,
+				state.readiness().map(ReadinessInstance::flow),
+				Set.of(FlowInstanceStatus.ACTIVE)
+			)
 		);
 	}
 
 	private static Optional<ActiveFlowSummary> recentFlowSummary(
 		final MinecraftServer server,
-		final WorldStateV2 state
+		final WorldStateV3 state
 	) {
-		return flowSummary(
+		Optional<ActiveFlowSummary> readiness = flowSummary(
 			server,
 			state,
-			Set.of(FlowInstanceStatus.COMPLETED, FlowInstanceStatus.CANCELED)
+			state.readiness().map(ReadinessInstance::flow),
+			Set.of(FlowInstanceStatus.COMPLETED)
 		);
+		return readiness.or(() -> flowSummary(
+			server,
+			state,
+			state.core().activeForcedFlow(),
+			Set.of(FlowInstanceStatus.COMPLETED, FlowInstanceStatus.CANCELED)
+		));
 	}
 
 	private static List<Target> consolePlayers(
 		final MinecraftServer server,
-		final WorldStateV2 state,
+		final WorldStateV3 root,
 		final DefinitionSnapshot definitions
 	) {
+		WorldStateV2 state = root.core();
 		Set<Identifier> displayFlows = definitions.flows()
 			.values()
 			.stream()
@@ -3125,9 +5474,17 @@ public final class PixelTzzServerRuntime {
 				record,
 				record.lastKnownName(),
 				server.getPlayerList().getPlayer(record.playerId()) != null,
-				record.activeFlowParticipation()
-					.map(participation -> participation.status().getSerializedName())
-					.orElse("none"),
+				root.readiness()
+					.map(ReadinessInstance::flow)
+					.map(ForcedFlowInstance::runtime)
+					.map(ForcedFlowRuntime::members)
+					.map(members -> members.get(record.playerId()))
+					.map(member -> member.status().getSerializedName())
+					.orElseGet(() ->
+						record.activeFlowParticipation()
+							.map(participation -> participation.status().getSerializedName())
+							.orElse("none")
+					),
 				displayFlows,
 				true,
 				""
@@ -3137,10 +5494,12 @@ public final class PixelTzzServerRuntime {
 
 	private static Optional<ActiveFlowSummary> flowSummary(
 		final MinecraftServer server,
-		final WorldStateV2 state,
+		final WorldStateV3 root,
+		final Optional<ForcedFlowInstance> source,
 		final Set<FlowInstanceStatus> statuses
 	) {
-		return state.activeForcedFlow()
+		WorldStateV2 state = root.core();
+		return source
 			.filter(flow -> statuses.contains(flow.runtime().status()))
 			.map(flow -> {
 			var restored = ExecutionSnapshotCompiler.restore(
@@ -3204,6 +5563,13 @@ public final class PixelTzzServerRuntime {
 							presentationDefinitions,
 							member.currentNodeId()
 						),
+						memberFieldSummaries(
+							root,
+							flow,
+							definition,
+							presentationDefinitions,
+							member
+						),
 						member.status() == FlowMemberStatus.BLOCKED
 							|| blockedPlayer.filter(member.playerId()::equals).isPresent()
 					)
@@ -3255,6 +5621,86 @@ public final class PixelTzzServerRuntime {
 							? "正在更新游戏状态"
 							: node instanceof CompleteNode ? "正在完成流程" : "流程节点"
 		);
+	}
+
+	private static List<MemberFieldSummary> memberFieldSummaries(
+		final WorldStateV3 root,
+		final ForcedFlowInstance instance,
+		final FlowDefinition flow,
+		final DefinitionSnapshot definitions,
+		final FlowMemberState member
+	) {
+		if (flow == null) {
+			return List.of();
+		}
+		Set<Identifier> fieldIds = flow.nodes()
+			.values()
+			.stream()
+			.filter(ChoiceNode.class::isInstance)
+			.map(ChoiceNode.class::cast)
+			.map(ChoiceNode::field)
+			.collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+		List<MemberFieldSummary> summaries = new ArrayList<>();
+		for (Identifier fieldId : fieldIds) {
+			FieldDefinition field = definitions.fields().get(fieldId);
+			if (field == null || field.exclusiveChoice().isEmpty()) {
+				continue;
+			}
+			ExclusiveReservation held = root.exclusiveReservations()
+				.stream()
+				.filter(reservation ->
+					reservation.gameId().equals(instance.identity().gameId())
+						&& reservation.fieldId().equals(fieldId)
+						&& reservation.ownerId().equals(member.playerId())
+						&& reservation.status() == ReservationStatus.HELD
+						&& reservation.flowInstanceId()
+							.filter(instance.identity().instanceId()::equals)
+							.isPresent()
+				)
+				.findFirst()
+				.orElse(null);
+			boolean completed = member.status() == FlowMemberStatus.COMPLETED
+				|| member.status() == FlowMemberStatus.ALREADY_COMPLETE;
+			ExclusiveReservation selected = held != null
+				? held
+				: completed
+					? root.exclusiveReservations()
+						.stream()
+						.filter(reservation ->
+							reservation.gameId().equals(instance.identity().gameId())
+								&& reservation.fieldId().equals(fieldId)
+								&& reservation.ownerId().equals(member.playerId())
+								&& reservation.status() == ReservationStatus.LOCKED
+						)
+						.findFirst()
+						.orElse(null)
+					: null;
+			String valueName = selected == null
+				? ""
+				: field.exclusiveChoice()
+					.orElseThrow()
+					.options()
+					.stream()
+					.filter(option -> option.value().equals(selected.value()))
+					.map(ExclusiveChoiceOption::name)
+					.map(RichText::json)
+					.findFirst()
+					.orElseGet(() -> jsonText(selected.value()));
+			summaries.add(
+				new MemberFieldSummary(
+					field.id(),
+					field.name().json(),
+					valueName,
+					selected == null
+						? "unselected"
+						: selected.status() == ReservationStatus.HELD ? "held" : "locked"
+				)
+			);
+			if (summaries.size() >= ConsoleSnapshotS2CPayload.MAX_MEMBER_FIELDS) {
+				break;
+			}
+		}
+		return List.copyOf(summaries);
 	}
 
 	private static void sendTargetSnapshot(
@@ -3457,16 +5903,21 @@ public final class PixelTzzServerRuntime {
 			reason = eligible ? "" : result.message();
 			if (eligible && addFlowMembersOperation(operation)) {
 				ForcedFlowInstance instance = state.activeForcedFlow().orElse(null);
-				FlowRosterAuthority.Result addResult = instance == null
+				WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElse(null);
+				ActiveFlowDefinitions active = activeFlowDefinitions(state).orElse(null);
+				FlowRosterAuthority.V3Result addResult =
+					instance == null || root == null || active == null
 					? null
 					: FlowRosterAuthority.addMembers(
-						state,
+						root,
+						active.definitions(),
 						actor.getUUID(),
 						instance.identity().instanceId(),
 						instance.runtime().instanceRevision(),
 						List.of(new OnlineMember(connected.playerId(), connected.name(), true)),
 						UUID::randomUUID,
-						System.currentTimeMillis()
+						System.currentTimeMillis(),
+						root.activeGameInstanceId().orElseThrow()
 					);
 				eligible = addResult != null && addResult.successful();
 				reason = eligible
@@ -3474,14 +5925,17 @@ public final class PixelTzzServerRuntime {
 					: addResult == null ? "当前没有活动流程" : addResult.message();
 			} else if (eligible && immediateRoleAction(action)) {
 				AssignRoleOperation assign = (AssignRoleOperation) action.operation();
-				FlowRosterAuthority.Result roleResult = FlowRosterAuthority.assignRoleImmediate(
-					state,
+				WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElseThrow();
+				FlowRosterAuthority.V3Result roleResult = FlowRosterAuthority.assignRoleImmediate(
+					root,
 					definitions,
 					actor.getUUID(),
 					state.stateRevision(),
 					assign.role(),
 					List.of(connected.playerId()),
-					System.currentTimeMillis()
+					System.currentTimeMillis(),
+					root.activeGameInstanceId().orElseThrow(),
+					server.getTickCount()
 				);
 				eligible = roleResult.successful();
 				reason = eligible ? "" : roleResult.message();
@@ -3716,9 +6170,20 @@ public final class PixelTzzServerRuntime {
 				targetMode,
 				minimum,
 				maximum,
-				targets
+				sortedTargets(targets)
 			)
 		);
+	}
+
+	private static List<Target> sortedTargets(final List<Target> targets) {
+		return targets.stream()
+			.sorted(
+				Comparator.<Target>comparingInt(target -> target.eligible() ? 0 : 1)
+					.thenComparingInt(target -> target.online() ? 0 : 1)
+					.thenComparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+					.thenComparing(Target::playerId)
+			)
+			.toList();
 	}
 
 	private static void sendOperationResult(
@@ -3904,17 +6369,28 @@ public final class PixelTzzServerRuntime {
 	}
 
 	private static void sendForcedPages(final MinecraftServer server) {
-		PixelTzzWorldState.get(server)
-			.currentV2()
-			.flatMap(WorldStateV2::activeForcedFlow)
-			.ifPresent(
-				flow -> flow.runtime().members().keySet().forEach(playerId -> {
-					ServerPlayer player = server.getPlayerList().getPlayer(playerId);
-					if (player != null && verified(player)) {
-						sendCurrentForcedPage(server, player);
-					}
-				})
-			);
+		WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElse(null);
+		if (root == null) {
+			return;
+		}
+		Set<UUID> members = new LinkedHashSet<>();
+		root.core().activeForcedFlow()
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::members)
+			.map(Map::keySet)
+			.ifPresent(members::addAll);
+		root.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::members)
+			.map(Map::keySet)
+			.ifPresent(members::addAll);
+		members.forEach(playerId -> {
+			ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+			if (player != null && verified(player)) {
+				sendCurrentForcedPage(server, player);
+			}
+		});
 	}
 
 	private static void releaseForcedPages(
@@ -3953,6 +6429,54 @@ public final class PixelTzzServerRuntime {
 		}
 	}
 
+	private static void refreshReadinessPages(
+		final MinecraftServer server,
+		final WorldStateV3 previous,
+		final WorldStateV3 next,
+		final Set<UUID> playerIds,
+		final String reason
+	) {
+		ForcedFlowInstance previousFlow = previous.readiness()
+			.map(ReadinessInstance::flow)
+			.orElse(null);
+		if (previousFlow == null) {
+			return;
+		}
+		long revision = next.stateRevision();
+		for (UUID playerId : playerIds) {
+			FlowMemberState oldMember = previousFlow.runtime().members().get(playerId);
+			Optional<UUID> oldPage = oldMember == null
+				? Optional.empty()
+				: oldMember.pageInstanceId();
+			Optional<UUID> nextPage = next.readiness()
+				.map(ReadinessInstance::flow)
+				.map(ForcedFlowInstance::runtime)
+				.map(ForcedFlowRuntime::members)
+				.map(members -> members.get(playerId))
+				.flatMap(member -> member == null ? Optional.empty() : member.pageInstanceId());
+			if (oldPage.isEmpty() || oldPage.equals(nextPage)) {
+				continue;
+			}
+			ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+			if (
+				player != null
+					&& verified(player)
+					&& ServerPlayNetworking.canSend(player, ForcedPageReleaseS2CPayload.TYPE)
+			) {
+				ServerPlayNetworking.send(
+					player,
+					new ForcedPageReleaseS2CPayload(
+						NetworkProtocol.CURRENT_VERSION,
+						previousFlow.identity().instanceId(),
+						oldPage.orElseThrow(),
+						reason,
+						revision
+					)
+				);
+			}
+		}
+	}
+
 	private static void sendCurrentForcedPage(
 		final MinecraftServer server,
 		final ServerPlayer player
@@ -3961,11 +6485,20 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
-		WorldStateV2 state = wrapper.currentV2().orElse(null);
-		if (state == null || !hasCurrentForcedPage(state, player.getUUID())) {
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		WorldStateV2 state = root == null ? null : root.core();
+		ForcedFlowInstance instance = root == null
+			? null
+			: currentPageFlow(root, player.getUUID()).orElse(null);
+		if (state == null || instance == null) {
 			return;
 		}
-		ForcedFlowInstance instance = state.activeForcedFlow().orElse(null);
+		boolean readinessPage = root.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::identity)
+			.map(WorldStateV2.ForcedFlowIdentity::instanceId)
+			.filter(instance.identity().instanceId()::equals)
+			.isPresent();
 		FlowMemberState member = instance.runtime().members().get(player.getUUID());
 		try {
 		var restored = ExecutionSnapshotCompiler.restore(
@@ -3979,10 +6512,11 @@ public final class PixelTzzServerRuntime {
 				player.getPlainTextName(),
 				restored.message()
 			);
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				restored.message(),
 				Optional.of(player.getUUID())
@@ -3992,10 +6526,11 @@ public final class PixelTzzServerRuntime {
 		DefinitionSnapshot definitions = restored.snapshot().orElseThrow();
 		FlowDefinition flow = definitions.flows().get(instance.identity().flowId());
 		if (flow == null) {
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				"frozen flow definition is unavailable",
 				Optional.of(player.getUUID())
@@ -4012,10 +6547,11 @@ public final class PixelTzzServerRuntime {
 				default -> null;
 		};
 		if (pageId == null) {
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				"current forced-flow node is missing or is not displayable",
 				Optional.of(player.getUUID())
@@ -4024,10 +6560,11 @@ public final class PixelTzzServerRuntime {
 		}
 		PageDefinition page = definitions.pages().get(pageId);
 		if (page == null) {
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				"frozen forced page definition is unavailable",
 				Optional.of(player.getUUID())
@@ -4040,10 +6577,11 @@ public final class PixelTzzServerRuntime {
 		var frozenPage = instance.runtime().executionSnapshot().pages().get(pageId);
 		var frozenTheme = instance.runtime().executionSnapshot().themes().get(page.theme());
 		if (theme == null || frozenPage == null) {
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				"frozen forced page or theme document is unavailable",
 				Optional.of(player.getUUID())
@@ -4057,10 +6595,11 @@ public final class PixelTzzServerRuntime {
 			themeHash = HexFormat.of().parseHex(theme.sha256());
 		} else {
 			if (frozenTheme == null) {
-				persistFlowBlock(
+				persistPageFlowBlock(
 					server,
 					wrapper,
 					state,
+					readinessPage,
 					OperationCode.SNAPSHOT_INVALID,
 					"frozen forced theme document is unavailable",
 					Optional.of(player.getUUID())
@@ -4121,10 +6660,11 @@ public final class PixelTzzServerRuntime {
 				player.getPlainTextName(),
 				error
 			);
-			persistFlowBlock(
+			persistPageFlowBlock(
 				server,
 				wrapper,
 				state,
+				readinessPage,
 				OperationCode.SNAPSHOT_INVALID,
 				"forced page bundle failed: " + message,
 				Optional.of(player.getUUID())
@@ -4133,10 +6673,30 @@ public final class PixelTzzServerRuntime {
 	}
 
 	private static boolean hasCurrentForcedPage(
-		final WorldStateV2 state,
+		final WorldStateV3 state,
 		final UUID playerId
 	) {
-		ForcedFlowInstance instance = state.activeForcedFlow().orElse(null);
+		return currentPageFlow(state, playerId).isPresent();
+	}
+
+	private static Optional<ForcedFlowInstance> currentPageFlow(
+		final WorldStateV3 state,
+		final UUID playerId
+	) {
+		ForcedFlowInstance ordinary = state.core().activeForcedFlow().orElse(null);
+		if (hasPage(ordinary, playerId)) {
+			return Optional.of(ordinary);
+		}
+		ForcedFlowInstance readiness = state.readiness()
+			.map(ReadinessInstance::flow)
+			.orElse(null);
+		return hasPage(readiness, playerId) ? Optional.of(readiness) : Optional.empty();
+	}
+
+	private static boolean hasPage(
+		final ForcedFlowInstance instance,
+		final UUID playerId
+	) {
 		if (
 			instance == null
 				|| (
@@ -4162,6 +6722,27 @@ public final class PixelTzzServerRuntime {
 			)
 			&& member.pageInstanceId().isPresent()
 			&& member.currentNodeId().isPresent();
+	}
+
+	private static void persistPageFlowBlock(
+		final MinecraftServer server,
+		final PixelTzzWorldState wrapper,
+		final WorldStateV2 state,
+		final boolean readinessPage,
+		final OperationCode code,
+		final String message,
+		final Optional<UUID> playerId
+	) {
+		if (readinessPage) {
+			PixelTzzPro.LOGGER.error(
+				"Readiness page snapshot failed for {}: {} ({})",
+				playerId.map(UUID::toString).orElse("unknown"),
+				message,
+				code.serializedName()
+			);
+			return;
+		}
+		persistFlowBlock(server, wrapper, state, code, message, playerId);
 	}
 
 	private static byte[] forcedBindingDocument(
@@ -4352,13 +6933,30 @@ public final class PixelTzzServerRuntime {
 		final MinecraftServer server,
 		final boolean completionTransition
 	) {
-		WorldStateV2 state = PixelTzzWorldState.get(server).currentV2().orElse(null);
+		WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElse(null);
+		WorldStateV2 state = root == null ? null : root.core();
 		pushHostConsoleSnapshot(server);
-		if (state == null || state.activeForcedFlow().isEmpty()) {
+		if (state == null) {
 			HOST_FLOW_BOSS_BAR.clear();
 			return;
 		}
-		ForcedFlowInstance instance = state.activeForcedFlow().orElseThrow();
+		ForcedFlowInstance ordinary = state.activeForcedFlow().orElse(null);
+		ForcedFlowInstance readiness = root.readiness()
+			.map(ReadinessInstance::flow)
+			.orElse(null);
+		ForcedFlowInstance instance = ordinary != null
+				&& (
+					ordinary.runtime().status() == FlowInstanceStatus.ACTIVE
+						|| ordinary.runtime().status() == FlowInstanceStatus.BLOCKED
+				)
+			? ordinary
+			: readiness != null ? readiness : ordinary;
+		if (instance == null) {
+			HOST_FLOW_BOSS_BAR.clear();
+			return;
+		}
+		boolean readinessProjection = readiness != null
+			&& readiness.identity().instanceId().equals(instance.identity().instanceId());
 		var restored = ExecutionSnapshotCompiler.restore(
 			instance.identity().flowId(),
 			instance.runtime().executionSnapshot()
@@ -4375,29 +6973,33 @@ public final class PixelTzzServerRuntime {
 				// Terminal snapshots are intentionally compacted; keep an already scheduled completion hold.
 				return;
 			}
-			persistFlowBlock(
-				server,
-				PixelTzzWorldState.get(server),
-				state,
-				OperationCode.SNAPSHOT_INVALID,
-				restored.message(),
-				Optional.empty(),
-				false
-			);
+			if (!readinessProjection) {
+				persistFlowBlock(
+					server,
+					PixelTzzWorldState.get(server),
+					state,
+					OperationCode.SNAPSHOT_INVALID,
+					restored.message(),
+					Optional.empty(),
+					false
+				);
+			}
 			HOST_FLOW_BOSS_BAR.clear();
 			return;
 		}
 		FlowDefinition flow = restored.snapshot().orElseThrow().flows().get(instance.identity().flowId());
 		if (flow == null) {
-			persistFlowBlock(
-				server,
-				PixelTzzWorldState.get(server),
-				state,
-				OperationCode.SNAPSHOT_INVALID,
-				"frozen flow definition is unavailable",
-				Optional.empty(),
-				false
-			);
+			if (!readinessProjection) {
+				persistFlowBlock(
+					server,
+					PixelTzzWorldState.get(server),
+					state,
+					OperationCode.SNAPSHOT_INVALID,
+					"frozen flow definition is unavailable",
+					Optional.empty(),
+					false
+				);
+			}
 			HOST_FLOW_BOSS_BAR.clear();
 			return;
 		}
@@ -4663,19 +7265,25 @@ public final class PixelTzzServerRuntime {
 			server,
 			instance.runtime().executionSnapshot()
 		);
+		WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElseThrow();
 		return fieldIds.stream()
 			.map(snapshot.fields()::get)
 			.filter(Objects::nonNull)
 			.filter(field ->
-				ForcedFlowAuthority.playerMayEditField(
+				ForcedFlowAuthority.playerMayEditFieldInFlow(
 					field,
 					player,
-					instance.identity().phaseIdAtCreation(),
+					instance,
 					evaluator,
 					context
 				)
 			)
-			.map(PixelTzzServerRuntime::fieldSchema)
+			.map(field ->
+				fieldSchema(
+					field,
+					exclusiveOptionStates(server, root, member, field)
+				)
+			)
 			.toList();
 	}
 
@@ -4694,6 +7302,40 @@ public final class PixelTzzServerRuntime {
 	}
 
 	private static PageBundleS2CPayload.FieldSchema fieldSchema(final FieldDefinition field) {
+		return fieldSchema(
+			field,
+			field.exclusiveChoice()
+				.map(definition ->
+					definition.options()
+						.stream()
+						.map(option ->
+							new ExclusiveOptionState(
+								option.value(),
+								option.name().json(),
+								option.description()
+									.map(GameDefinitions.RichText::json)
+									.orElse(""),
+								option.icon(),
+								option.previewPage(),
+								"available",
+								Optional.empty(),
+								Optional.empty(),
+								false
+							)
+						)
+						.toList()
+				)
+				.orElse(List.of())
+		);
+	}
+
+	private static PageBundleS2CPayload.FieldSchema fieldSchema(
+		final FieldDefinition field,
+		final List<ExclusiveOptionState> exclusiveOptions
+	) {
+		List<String> options = field.exclusiveChoice()
+			.map(GameDefinitions.ExclusiveChoiceDefinition::values)
+			.orElse(field.constraints().options());
 		return new PageBundleS2CPayload.FieldSchema(
 			field.id(),
 			field.type().name().toLowerCase(java.util.Locale.ROOT),
@@ -4708,10 +7350,78 @@ public final class PixelTzzServerRuntime {
 			optionalLong(field.constraints().maximum()),
 			optionalInt(field.constraints().minimumLength()),
 			optionalInt(field.constraints().maximumLength()),
-			field.constraints().options(),
+			options,
 			optionalInt(field.constraints().minimumSelections()),
-			optionalInt(field.constraints().maximumSelections())
+			optionalInt(field.constraints().maximumSelections()),
+			exclusiveOptions
 		);
+	}
+
+	private static List<ExclusiveOptionState> exclusiveOptionStates(
+		final MinecraftServer server,
+		final WorldStateV3 root,
+		final FlowMemberState member,
+		final FieldDefinition field
+	) {
+		if (field.exclusiveChoice().isEmpty()) {
+			return List.of();
+		}
+		UUID scopeId = root.activeGameInstanceId().orElseThrow();
+		var definition = field.exclusiveChoice().orElseThrow();
+		Map<String, WorldStateV3.ExclusiveReservation> reservations = root
+			.exclusiveReservations()
+			.stream()
+			.filter(reservation -> reservation.gameId().equals(field.game()))
+			.filter(reservation -> reservation.fieldId().equals(field.id()))
+			.filter(reservation -> reservation.scopeId().equals(scopeId))
+			.collect(java.util.stream.Collectors.toMap(
+				WorldStateV3.ExclusiveReservation::value,
+				java.util.function.Function.identity()
+			));
+		return definition.options()
+			.stream()
+			.map(option -> {
+				WorldStateV3.ExclusiveReservation reservation = reservations.get(option.value());
+				if (reservation == null) {
+					return new ExclusiveOptionState(
+						option.value(),
+						option.name().json(),
+						option.description().map(GameDefinitions.RichText::json).orElse(""),
+						option.icon(),
+						option.previewPage(),
+						"available",
+						Optional.empty(),
+						Optional.empty(),
+						false
+					);
+				}
+				boolean self = reservation.ownerId().equals(member.playerId());
+				String state = reservation.status() == WorldStateV3.ReservationStatus.HELD
+					? self ? "held_by_self" : "held_by_other"
+					: self ? "locked_by_self" : "locked_by_other";
+				boolean exposeOccupant = self || definition.showOccupant();
+				PlayerRecord occupant = root.core().players().get(reservation.ownerId());
+				Optional<String> occupantName = exposeOccupant
+					? Optional.of(
+						occupant == null
+							? reservation.ownerId().toString()
+							: occupant.lastKnownName()
+					)
+					: Optional.empty();
+				return new ExclusiveOptionState(
+					option.value(),
+					option.name().json(),
+					option.description().map(GameDefinitions.RichText::json).orElse(""),
+					option.icon(),
+					option.previewPage(),
+					state,
+					exposeOccupant ? Optional.of(reservation.ownerId()) : Optional.empty(),
+					occupantName,
+					exposeOccupant
+						&& server.getPlayerList().getPlayer(reservation.ownerId()) != null
+				);
+			})
+			.toList();
 	}
 
 	private static OptionalLong optionalLong(final java.util.Optional<Long> value) {
@@ -5143,11 +7853,7 @@ public final class PixelTzzServerRuntime {
 			player,
 			new SessionSnapshotS2CPayload(
 				NetworkProtocol.CURRENT_VERSION,
-				state.activePhaseId()
-					.map(Identifier::getPath)
-					.flatMap(GamePhase::bySerializedName)
-					.orElse(GamePhase.IDLE)
-					.getSerializedName(),
+				state.activePhaseId(),
 				adminEligible,
 				hostAssigned,
 				currentPlayerHost,
@@ -5271,6 +7977,9 @@ public final class PixelTzzServerRuntime {
 		final MinecraftServer server,
 		final ServerPlayer player
 	) {
+		if (!serverStopping) {
+			updateReadinessConnection(server, player, false);
+		}
 		updateMemberConnection(server, player.getUUID(), player.getPlainTextName(), false);
 		removeConnection(server, player.getUUID());
 		refreshFlowProjection(server, false);
@@ -5300,6 +8009,86 @@ public final class PixelTzzServerRuntime {
 		final ServerPlayer player
 	) {
 		updateMemberConnection(server, player.getUUID(), player.getPlainTextName(), true);
+	}
+
+	private static boolean updateReadinessConnection(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final boolean online
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV3 state = wrapper.currentV3().orElse(null);
+		if (state == null) {
+			return false;
+		}
+		ReadinessAuthority.MutationResult result = ReadinessAuthority.setOnline(
+			state,
+			player.getUUID(),
+			player.getPlainTextName(),
+			online,
+			UUID.randomUUID(),
+			System.currentTimeMillis()
+		);
+		if (!result.successful()) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not update readiness connection for {}: {} ({})",
+				player.getUUID(),
+				result.message(),
+				result.code().serializedName()
+			);
+			return false;
+		}
+		if (!result.changed()) {
+			return false;
+		}
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			state.stateRevision(),
+			ignored -> result.state()
+		);
+		if (!committed.committed()) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not persist readiness connection for {}: {}",
+				player.getUUID(),
+				committed.reason()
+			);
+			return false;
+		}
+		return true;
+	}
+
+	private static ReadinessAuthority.MutationResult reconcileReadinessPlayers(
+		final WorldStateV3 state,
+		final List<UUID> playerIds,
+		final Set<UUID> onlinePlayerIds,
+		final long occurredAtEpochMillis,
+		final String reason
+	) {
+		WorldStateV3 candidate = state;
+		boolean changed = false;
+		boolean invalidated = false;
+		for (UUID playerId : playerIds.stream().distinct().sorted().toList()) {
+			ReadinessAuthority.MutationResult result = ReadinessAuthority.reconcilePlayer(
+				candidate,
+				playerId,
+				onlinePlayerIds.contains(playerId),
+				UUID.randomUUID(),
+				occurredAtEpochMillis,
+				reason
+			);
+			if (!result.successful()) {
+				return result;
+			}
+			candidate = result.state();
+			changed |= result.changed();
+			invalidated |= result.invalidated();
+		}
+		return new ReadinessAuthority.MutationResult(
+			OperationCode.SUCCESS,
+			"",
+			candidate,
+			changed,
+			invalidated
+		);
 	}
 
 	private static boolean ensurePlayerRegistered(
@@ -5485,6 +8274,7 @@ public final class PixelTzzServerRuntime {
 		HANDSHAKE_TICKS_REMAINING.remove(playerId);
 		VERIFIED_PLAYERS.remove(playerId);
 		LAST_ADMIN_ELIGIBILITY.remove(playerId);
+		LAST_TIMELINE_VIEW_REQUEST_TICK.remove(playerId);
 		PREVIEW_INSTANCES.remove(playerId);
 		HOST_FLOW_BOSS_BAR.removeViewer(playerId);
 		Optional<Binding> canceledBinding = CONFIRMATIONS.pendingBinding(playerId);
@@ -5510,6 +8300,7 @@ public final class PixelTzzServerRuntime {
 		HANDSHAKE_TICKS_REMAINING.clear();
 		VERIFIED_PLAYERS.clear();
 		LAST_ADMIN_ELIGIBILITY.clear();
+		LAST_TIMELINE_VIEW_REQUEST_TICK.clear();
 		PREVIEW_INSTANCES.clear();
 		hostConsoleRefreshPending = false;
 		CONTROL_REQUEST_GATE.clear();
@@ -5548,6 +8339,19 @@ public final class PixelTzzServerRuntime {
 			playerId = Objects.requireNonNull(playerId, "playerId");
 			if ((kind == CallbackKind.ON_PLAYER_COMPLETE) != playerId.isPresent()) {
 				throw new IllegalArgumentException("callback retry target shape is invalid");
+			}
+		}
+	}
+
+	record TimelineCallbackRetryKey(
+		String stepKey,
+		Optional<UUID> playerId
+	) {
+		TimelineCallbackRetryKey {
+			Objects.requireNonNull(stepKey, "stepKey");
+			playerId = Objects.requireNonNull(playerId, "playerId");
+			if (stepKey.isBlank()) {
+				throw new IllegalArgumentException("stepKey cannot be blank");
 			}
 		}
 	}

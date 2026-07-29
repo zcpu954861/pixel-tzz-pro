@@ -37,7 +37,7 @@ public final class ConfirmationTokensSelfCheck {
 	public static void main(final String[] arguments) {
 		checkBindingBoundary();
 		checkReplacementAndCancellation();
-		checkExpiryAndSingleUse();
+		checkNoTimeLimitAndSingleUse();
 		checkEveryBindingField();
 		checkConsumedWindowBound();
 		checkClear();
@@ -146,7 +146,10 @@ public final class ConfirmationTokensSelfCheck {
 
 		IssuedConfirmation first = tokens.issue(OPERATOR_A, binding, prompt);
 		check(!first.replacedPrevious(), "first issue must not report replacement");
-		check(first.validForMilliseconds() == 30_000L, "visible validity must be 30 seconds");
+		check(
+			first.validForMilliseconds() == 30_000L,
+			"protocol-v8 compatibility validity must remain bounded"
+		);
 		check(first.tokenId().version() == 4, "secure token must use UUID version 4 layout");
 		check(first.tokenId().variant() == 2, "secure token must use the RFC 4122 variant");
 		check(
@@ -223,15 +226,15 @@ public final class ConfirmationTokensSelfCheck {
 		);
 	}
 
-	private static void checkExpiryAndSingleUse() {
+	private static void checkNoTimeLimitAndSingleUse() {
 		FakeClock clock = new FakeClock();
 		ConfirmationTokens tokens = tokens(clock);
 		Binding binding = binding(List.of(TARGET_A));
 
-		IssuedConfirmation beforeBoundary = tokens.issue(OPERATOR_A, binding, prompt());
-		clock.advance(ConfirmationTokens.LIFETIME_NANOS - 1L);
-		ConsumeResult accepted = tokens.consume(OPERATOR_A, beforeBoundary.tokenId(), binding);
-		check(accepted instanceof Accepted, "token must remain valid just before 30 seconds");
+		IssuedConfirmation issued = tokens.issue(OPERATOR_A, binding, prompt());
+		clock.advance(Long.MAX_VALUE);
+		ConsumeResult accepted = tokens.consume(OPERATOR_A, issued.tokenId(), binding);
+		check(accepted instanceof Accepted, "token must remain valid while its operation context is unchanged");
 		Accepted acceptedOperation = (Accepted)accepted;
 		check(
 			acceptedOperation.operation().binding().equals(binding),
@@ -242,32 +245,14 @@ public final class ConfirmationTokensSelfCheck {
 			"accepted result must return the frozen server prompt"
 		);
 		check(
-			rejection(tokens.consume(OPERATOR_A, beforeBoundary.tokenId(), binding))
+			rejection(tokens.consume(OPERATOR_A, issued.tokenId(), binding))
 				== Rejection.CONSUMED,
 			"accepted token replay must report that it was consumed"
 		);
 		check(
-			tokens.rejectionIfUnavailable(OPERATOR_A, beforeBoundary.tokenId())
+			tokens.rejectionIfUnavailable(OPERATOR_A, issued.tokenId())
 				.equals(Optional.of(Rejection.CONSUMED)),
 			"runtime lookup must preserve the consumed rejection"
-		);
-
-		IssuedConfirmation atBoundary = tokens.issue(OPERATOR_A, binding, prompt());
-		clock.advance(ConfirmationTokens.LIFETIME_NANOS);
-		check(
-			rejection(tokens.consume(OPERATOR_A, atBoundary.tokenId(), binding))
-				== Rejection.EXPIRED,
-			"token must expire exactly at 30 seconds"
-		);
-		check(
-			rejection(tokens.consume(OPERATOR_A, atBoundary.tokenId(), binding))
-				== Rejection.CONSUMED,
-			"expired token must be consumed before the rejection is returned"
-		);
-		IssuedConfirmation renewed = tokens.issue(OPERATOR_A, binding, prompt());
-		check(
-			tokens.consume(OPERATOR_A, renewed.tokenId(), binding) instanceof Accepted,
-			"the same validated operation must be executable with a freshly issued token"
 		);
 
 		IssuedConfirmation wrongOperator = tokens.issue(OPERATOR_A, binding, prompt());

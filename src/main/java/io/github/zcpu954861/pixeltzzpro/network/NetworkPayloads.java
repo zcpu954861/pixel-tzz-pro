@@ -3,11 +3,13 @@ package io.github.zcpu954861.pixeltzzpro.network;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.OperationResultS2CPayload;
@@ -21,6 +23,8 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 /**
@@ -48,11 +52,18 @@ public final class NetworkPayloads {
 		PayloadTypeRegistry.serverboundPlay()
 			.register(FlowActionC2SPayload.TYPE, FlowActionC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
+			.register(
+				ExclusiveChoiceMutationC2SPayload.TYPE,
+				ExclusiveChoiceMutationC2SPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.serverboundPlay()
 			.register(ConsoleRequestC2SPayload.TYPE, ConsoleRequestC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 			.register(TargetSnapshotRequestC2SPayload.TYPE, TargetSnapshotRequestC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 			.register(HostUiStateC2SPayload.TYPE, HostUiStateC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(TimelineViewRequestC2SPayload.TYPE, TimelineViewRequestC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
@@ -68,5 +79,9 @@ public final class NetworkPayloads {
 			.register(TargetSnapshotS2CPayload.TYPE, TargetSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
 			.register(ForcedPageReleaseS2CPayload.TYPE, ForcedPageReleaseS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(TimelineViewS2CPayload.TYPE, TimelineViewS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(HostSubtitleS2CPayload.TYPE, HostSubtitleS2CPayload.STREAM_CODEC);
 	}
 }

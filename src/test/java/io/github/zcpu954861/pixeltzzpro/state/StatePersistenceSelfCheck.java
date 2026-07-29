@@ -13,6 +13,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TabStyle;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState.CommitResult;
+import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState.CommitV3Result;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState.LoadKind;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration.MigrationResult;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration.MigrationStatus;
@@ -48,6 +49,17 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RecoverySnapshotMetad
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RemovalRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RequestSequenceWindow;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.StoredValue;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.CallbackStep;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.CallbackStepStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.FrozenResult;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.IntermissionState;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskInstance;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskKind;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineInstance;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineStatus;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -62,10 +74,16 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Stream;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtOps;
+import net.minecraft.nbt.Tag;
 import net.minecraft.resources.Identifier;
 
 /**
- * Runnable schema-v2, migration, and recovery contract check without a test framework.
+ * Runnable schema-v3 envelope, legacy migration, and recovery contract check without a test
+ * framework.
  */
 public final class StatePersistenceSelfCheck {
 	private static final UUID HOST_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -73,6 +91,14 @@ public final class StatePersistenceSelfCheck {
 	private static final UUID REMOVED_PLAYER_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
 	private static final UUID INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000000004");
 	private static final UUID PAGE_INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000000005");
+	private static final UUID TIMELINE_INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000000006");
+	private static final UUID TASK_INSTANCE_ID = UUID.fromString("00000000-0000-0000-0000-000000000007");
+	private static final UUID RESERVATION_ID = UUID.fromString("00000000-0000-0000-0000-000000000008");
+	private static final UUID SECOND_RESERVATION_ID =
+		UUID.fromString("00000000-0000-0000-0000-000000000009");
+	private static final UUID SECOND_SCOPE_ID = UUID.fromString("00000000-0000-0000-0000-000000000010");
+	private static final UUID GAME_INSTANCE_ID =
+		UUID.fromString("00000000-0000-0000-0000-000000000011");
 	private static final Identifier GAME_ID = id("test:game");
 	private static final Identifier PHASE_ID = id("test:setup");
 	private static final Identifier ROLE_ID = id("test:runner");
@@ -87,6 +113,10 @@ public final class StatePersistenceSelfCheck {
 	public static void main(final String[] args) throws Exception {
 		checkInitialAndCommit();
 		checkCompleteV2RoundTrip();
+		checkCompleteV3RoundTrip();
+		checkOversizedFrozenDocumentBinaryNbtRoundTrip();
+		checkMissingTimelineSnapshotRepair();
+		checkDevelopmentV3ScopeRepair();
 		checkSnapshotSizeIncludesMetadata();
 		checkTerminalSnapshotCompaction();
 		checkLegacyAndOpaqueClassification();
@@ -96,20 +126,33 @@ public final class StatePersistenceSelfCheck {
 
 	private static void checkInitialAndCommit() {
 		PixelTzzWorldState state = PixelTzzWorldState.initial();
-		check(state.loadKind() == LoadKind.CURRENT_V2, "new worlds must use schema v2");
-		check(state.isSchemaCompatible(), "new schema-v2 state must be writable");
+		check(state.loadKind() == LoadKind.CURRENT_V3, "new worlds must use schema v3");
+		check(state.schemaVersion() == WorldStateV3.SCHEMA_VERSION, "new world schema");
+		check(state.isSchemaCompatible(), "new schema-v3 state must be writable");
 		check(state.stateRevision() == 0L, "new state revision must be zero");
 		check(state.activeGameId().isEmpty() && state.activePhaseId().isEmpty(), "new worlds must not invent an activity");
 
-		CommitResult committed = state.commit(0L, value -> value.withActivity(GAME_ID, PHASE_ID));
+		CommitV3Result committed = state.commitV3(
+			0L,
+			value -> value.beginGameInstance(GAME_ID, PHASE_ID, GAME_INSTANCE_ID)
+		);
 		check(committed.committed(), "valid expected-revision commit must succeed: " + committed.reason());
 		check(state.stateRevision() == 1L, "commit must increment state revision exactly once");
 		check(state.isDirty(), "commit must mark SavedData dirty");
 		check(state.activeGameId().orElseThrow().equals(GAME_ID), "commit must publish the complete candidate");
+		check(
+			state.currentV3().orElseThrow().activeGameInstanceId().orElseThrow().equals(GAME_INSTANCE_ID),
+			"game activity initialization must publish one persistent instance scope"
+		);
 
 		CommitResult stale = state.commit(0L, value -> value.withHost(Optional.of(HostRecord.migratedLegacy(HOST_ID))));
 		check(!stale.committed(), "stale expected revision must be rejected");
 		check(state.stateRevision() == 1L && state.hostId().isEmpty(), "rejected commit must not partially mutate state");
+		check(
+			state.currentV3().orElseThrow().timeline().isEmpty()
+				&& state.currentV3().orElseThrow().exclusiveReservations().isEmpty(),
+			"legacy core commit must preserve empty v3 extensions"
+		);
 	}
 
 	private static void checkCompleteV2RoundTrip() {
@@ -142,7 +185,362 @@ public final class StatePersistenceSelfCheck {
 		PixelTzzWorldState wrapper = PixelTzzWorldState.CODEC
 			.parse(JsonOps.INSTANCE, encoded)
 			.getOrThrow();
-		check(wrapper.currentV2().orElseThrow().equals(value), "SavedData wrapper must retain the complete v2 payload");
+		check(wrapper.loadKind() == LoadKind.LEGACY_V2, "schema v2 must be classified as migratable legacy");
+		check(wrapper.currentV2().isEmpty(), "legacy schema v2 must not be exposed as writable current state");
+		check(wrapper.legacyV2().orElseThrow().equals(value), "SavedData wrapper must retain the complete v2 payload");
+		check(encode(wrapper).equals(encoded), "unmigrated schema v2 must be preserved exactly");
+	}
+
+	private static void checkCompleteV3RoundTrip() {
+		WorldStateV2 core = completeFixture();
+		CallbackStep callback = new CallbackStep(
+			"result/apply/global",
+			id("test:apply_result"),
+			Optional.empty(),
+			CallbackStepStatus.SUCCEEDED,
+			1,
+			Optional.empty(),
+			500L
+		);
+		FrozenResult result = new FrozenResult(
+			"success",
+			Optional.of(id("test:next_task")),
+			Optional.empty(),
+			500L
+		);
+		TaskInstance task = new TaskInstance(
+			TASK_INSTANCE_ID,
+			id("test:task"),
+			TaskKind.MAIN,
+			TaskStatus.SETTLED,
+			Optional.empty(),
+			400L,
+			Optional.of(result),
+			Optional.of(new IntermissionState(200L, 20L, true, false)),
+			List.of(PLAYER_ID),
+			100L,
+			Optional.of(500L),
+			List.of(callback)
+		);
+		TimelineInstance timeline = new TimelineInstance(
+			TIMELINE_INSTANCE_ID,
+			GAME_ID,
+			1,
+			FrozenDocument.of("{\"initial_task\":\"test:task\"}"),
+			TimelineStatus.INTERMISSION,
+			Optional.empty(),
+			Optional.of(task),
+			List.of(),
+			500L,
+			false,
+			Optional.empty(),
+			10L,
+			Optional.of(20L),
+			Optional.empty(),
+			3L,
+			List.of()
+		);
+		ExclusiveReservation reservation = new ExclusiveReservation(
+			RESERVATION_ID,
+			GAME_ID,
+			id("test:hunter_spawn"),
+			TIMELINE_INSTANCE_ID,
+			"north_gate",
+			PLAYER_ID,
+			ReservationStatus.HELD,
+			Optional.of(INSTANCE_ID),
+			10L,
+			20L,
+			1L
+		);
+		ExclusiveReservation sameOptionInAnotherScope = new ExclusiveReservation(
+			SECOND_RESERVATION_ID,
+			GAME_ID,
+			reservation.fieldId(),
+			SECOND_SCOPE_ID,
+			reservation.value(),
+			REMOVED_PLAYER_ID,
+			ReservationStatus.LOCKED,
+			Optional.empty(),
+			10L,
+			20L,
+			1L
+		);
+		RecoverySnapshotMetadata recovery = new RecoverySnapshotMetadata(
+			"world_state-v2-to-v3-800.dat",
+			800L,
+			2,
+			100L,
+			"b".repeat(64)
+		);
+		WorldStateV3 value = new WorldStateV3(
+			WorldStateV3.SCHEMA_VERSION,
+			core,
+			Optional.of(reservation.scopeId()),
+			Optional.of(timeline),
+			List.of(reservation, sameOptionInAnotherScope),
+			List.of(core.recoverySnapshotMetadata().orElseThrow(), recovery)
+		);
+		check(
+			value.validated().error().isEmpty(),
+			"the same option value must remain available in another reservation scope"
+		);
+		ExclusiveReservation duplicateInSameScope = new ExclusiveReservation(
+			SECOND_RESERVATION_ID,
+			GAME_ID,
+			reservation.fieldId(),
+			reservation.scopeId(),
+			reservation.value(),
+			REMOVED_PLAYER_ID,
+			ReservationStatus.LOCKED,
+			Optional.empty(),
+			10L,
+			20L,
+			1L
+		);
+		check(
+			value.withExclusiveReservations(List.of(reservation, duplicateInSameScope))
+				.validated()
+				.error()
+				.isPresent(),
+			"an option value must remain exclusive inside one game, field, and scope"
+		);
+		JsonElement encoded = WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, value).getOrThrow();
+		WorldStateV3 decoded = WorldStateV3.CODEC.parse(JsonOps.INSTANCE, encoded).getOrThrow();
+		check(decoded.equals(value), "complete schema-v3 payload must round-trip exactly");
+
+		PixelTzzWorldState wrapper = decode(encoded);
+		check(wrapper.loadKind() == LoadKind.CURRENT_V3, "schema v3 must be current");
+		var encodedNbt = PixelTzzWorldState.CODEC
+			.encodeStart(NbtOps.INSTANCE, wrapper)
+			.getOrThrow();
+		PixelTzzWorldState decodedNbt = PixelTzzWorldState.CODEC
+			.parse(NbtOps.INSTANCE, encodedNbt)
+			.getOrThrow();
+		check(
+			decodedNbt.isSchemaCompatible()
+				&& decodedNbt.currentV3().orElseThrow().equals(value),
+			"real SavedData NBT round-trip must preserve schema-v3 booleans"
+		);
+		CommitResult coreCommit = wrapper.commit(
+			core.stateRevision(),
+			current -> current.withHost(Optional.empty())
+		);
+		check(coreCommit.committed(), "schema-v2 core adapter commit must work inside v3");
+		check(
+			wrapper.currentV3().orElseThrow().timeline().equals(Optional.of(timeline))
+				&& wrapper.currentV3().orElseThrow().exclusiveReservations().size() == 2,
+			"core adapter commit must preserve v3 extensions"
+		);
+		long checkpointCoreRevision = wrapper.stateRevision();
+		var checkpoint = wrapper.timelineCheckpoint(
+			timeline.timelineRevision(),
+			current -> withGameElapsedTicks(current, current.gameElapsedTicks() + 1L)
+		);
+		check(checkpoint.committed(), "routine timeline checkpoint must succeed: " + checkpoint.reason());
+		check(
+			wrapper.stateRevision() == checkpointCoreRevision,
+			"routine timeline checkpoint must not increment the global state revision"
+		);
+		check(
+			checkpoint.timeline().orElseThrow().timelineRevision() == timeline.timelineRevision()
+				&& checkpoint.timeline().orElseThrow().gameElapsedTicks() == timeline.gameElapsedTicks() + 1L,
+			"routine timeline checkpoint must preserve lifecycle revision and publish the clock"
+		);
+		var staleCheckpoint = wrapper.timelineCheckpoint(
+			timeline.timelineRevision() + 1L,
+			current -> withGameElapsedTicks(current, current.gameElapsedTicks() + 1L)
+		);
+		check(!staleCheckpoint.committed(), "stale timeline checkpoint must be rejected");
+		check(
+			wrapper.currentV3().orElseThrow().timeline().orElseThrow().gameElapsedTicks()
+				== timeline.gameElapsedTicks() + 1L,
+			"rejected timeline checkpoint must not partially mutate the clock"
+		);
+		long nextRevision = wrapper.stateRevision();
+		var rootCommit = wrapper.commitV3(
+			nextRevision,
+			current -> current.withTimeline(Optional.empty())
+		);
+		check(rootCommit.committed(), "native schema-v3 commit must succeed");
+		check(wrapper.stateRevision() == nextRevision + 1L, "native v3 commit must increment core revision once");
+		check(wrapper.currentV3().orElseThrow().timeline().isEmpty(), "native v3 commit must publish extensions");
+		check(
+			!wrapper.timelineCheckpoint(0L, current -> current).committed(),
+			"timeline checkpoint must reject worlds without an active timeline"
+		);
+	}
+
+	private static void checkOversizedFrozenDocumentBinaryNbtRoundTrip() throws Exception {
+		FrozenDocument oversized = FrozenDocument.of(
+			"{\"payload\":\"" + "验".repeat(30_000) + "\"}"
+		);
+		check(
+			oversized.normalizedJson().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 65_535,
+			"binary NBT regression fixture must exceed the modified-UTF string limit"
+		);
+		WorldStateV3 value = timelineFixture(oversized);
+		PixelTzzWorldState wrapper = decode(
+			WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, value).getOrThrow()
+		);
+		Tag encoded = PixelTzzWorldState.CODEC
+			.encodeStart(NbtOps.INSTANCE, wrapper)
+			.getOrThrow();
+		check(encoded instanceof CompoundTag, "SavedData must encode to an NBT compound");
+
+		Path temporaryFile = Files.createTempFile("pixel-tzz-oversized-snapshot-", ".dat");
+		try {
+			NbtIo.writeCompressed((CompoundTag) encoded, temporaryFile);
+			CompoundTag reloaded = NbtIo.readCompressed(
+				temporaryFile,
+				NbtAccounter.unlimitedHeap()
+			);
+			PixelTzzWorldState decoded = PixelTzzWorldState.CODEC
+				.parse(NbtOps.INSTANCE, reloaded)
+				.getOrThrow();
+			FrozenDocument restored = decoded.currentV3()
+				.orElseThrow()
+				.timeline()
+				.orElseThrow()
+				.snapshot();
+			check(decoded.isSchemaCompatible(), "chunked binary NBT state must remain writable");
+			check(restored.equals(oversized), "binary NBT must preserve oversized snapshot content and SHA-256");
+			check(!restored.normalizedJson().isEmpty(), "binary NBT must not silently blank oversized content");
+		} finally {
+			Files.deleteIfExists(temporaryFile);
+		}
+	}
+
+	private static void checkMissingTimelineSnapshotRepair() {
+		FrozenDocument original = FrozenDocument.of(
+			"{\"payload\":\"" + "验".repeat(30_000) + "\"}"
+		);
+		WorldStateV3 value = timelineFixture(original);
+		com.google.gson.JsonObject damaged = WorldStateV3.CODEC
+			.encodeStart(JsonOps.INSTANCE, value)
+			.getOrThrow()
+			.getAsJsonObject();
+		com.google.gson.JsonObject snapshot = damaged
+			.getAsJsonObject("timeline")
+			.getAsJsonObject("snapshot");
+		snapshot.remove("normalized_json_chunks");
+		snapshot.addProperty("normalized_json", "");
+
+		PixelTzzWorldState protectedState = decode(damaged);
+		check(
+			protectedState.loadKind() == LoadKind.CURRENT_V3,
+			"legacy oversized-string damage must retain the complete schema-v3 envelope"
+		);
+		check(
+			protectedState.needsTimelineSnapshotRepair(),
+			"legacy oversized-string damage must be classified as repairable"
+		);
+		check(
+			!protectedState.isSchemaCompatible(),
+			"repairable damage must remain read-only before exact recovery"
+		);
+		long protectedRevision = protectedState.stateRevision();
+
+		var rejected = protectedState.repairMissingTimelineSnapshot(
+			FrozenDocument.of("{\"payload\":\"different\"}")
+		);
+		check(!rejected.committed(), "different snapshot SHA-256 must be rejected");
+		check(
+			protectedState.needsTimelineSnapshotRepair()
+				&& protectedState.stateRevision() == protectedRevision,
+			"rejected repair must preserve the protected payload and revision"
+		);
+
+		var repaired = protectedState.repairMissingTimelineSnapshot(original);
+		check(repaired.committed(), "exact snapshot SHA-256 must repair legacy NBT damage");
+		check(protectedState.isSchemaCompatible(), "successful exact repair must restore writability");
+		check(!protectedState.needsTimelineSnapshotRepair(), "successful exact repair must clear repair mode");
+		check(
+			protectedState.stateRevision() == protectedRevision + 1L,
+			"successful exact repair must increment the state revision exactly once"
+		);
+		check(
+			protectedState.currentV3()
+				.orElseThrow()
+				.timeline()
+				.orElseThrow()
+				.snapshot()
+				.equals(original),
+			"successful exact repair must restore the complete snapshot"
+		);
+	}
+
+	private static WorldStateV3 timelineFixture(final FrozenDocument snapshot) {
+		WorldStateV2 core = completeFixture();
+		TimelineInstance timeline = new TimelineInstance(
+			TIMELINE_INSTANCE_ID,
+			GAME_ID,
+			1,
+			snapshot,
+			TimelineStatus.PRE_START,
+			Optional.empty(),
+			Optional.empty(),
+			List.of(),
+			0L,
+			false,
+			Optional.empty(),
+			10L,
+			Optional.empty(),
+			Optional.empty(),
+			1L,
+			List.of()
+		);
+		WorldStateV3 value = new WorldStateV3(
+			WorldStateV3.SCHEMA_VERSION,
+			core,
+			Optional.of(TIMELINE_INSTANCE_ID),
+			Optional.of(timeline),
+			List.of(),
+			List.of(core.recoverySnapshotMetadata().orElseThrow())
+		);
+		check(value.validated().error().isEmpty(), "timeline persistence fixture must be valid");
+		return value;
+	}
+
+	private static void checkDevelopmentV3ScopeRepair() {
+		WorldStateV3 value = WorldStateV3.initial()
+			.beginGameInstance(GAME_ID, PHASE_ID, GAME_INSTANCE_ID);
+		com.google.gson.JsonObject legacy = WorldStateV3.CODEC
+			.encodeStart(JsonOps.INSTANCE, value)
+			.getOrThrow()
+			.getAsJsonObject();
+		legacy.remove("active_game_instance_id");
+		PixelTzzWorldState repaired = decode(legacy);
+		check(repaired.loadKind() == LoadKind.CURRENT_V3, "pre-scope schema v3 must be repaired");
+		check(repaired.isDirty(), "pre-scope schema v3 repair must be persisted");
+		check(
+			repaired.activeGameInstanceId().isPresent(),
+			"scope repair must generate a persistent active game-instance ID"
+		);
+	}
+
+	private static TimelineInstance withGameElapsedTicks(
+		final TimelineInstance value,
+		final long gameElapsedTicks
+	) {
+		return new TimelineInstance(
+			value.instanceId(),
+			value.gameId(),
+			value.contentVersion(),
+			value.snapshot(),
+			value.status(),
+			value.resumeStatus(),
+			value.currentTask(),
+			value.taskHistory(),
+			gameElapsedTicks,
+			value.paused(),
+			value.pauseReason(),
+			value.createdAtServerTick(),
+			value.startedAtServerTick(),
+			value.completedAtServerTick(),
+			value.timelineRevision(),
+			value.callbackLedger()
+		);
 	}
 
 	private static WorldStateV2 completeFixture() {
@@ -416,7 +814,7 @@ public final class StatePersistenceSelfCheck {
 
 		JsonElement futureJson = JsonParser.parseString(
 			"""
-			{"schema_version":3,"future":{"keep":true},"state_revision":9}
+			{"schema_version":4,"future":{"keep":true},"state_revision":9}
 			"""
 		);
 		PixelTzzWorldState future = decode(futureJson);
@@ -446,11 +844,16 @@ public final class StatePersistenceSelfCheck {
 				2_000L
 			);
 			check(migrated.status() == MigrationStatus.MIGRATED, "unambiguous v1 migration must succeed: " + migrated.reason());
-			check(legacy.loadKind() == LoadKind.CURRENT_V2 && legacy.isDirty(), "migration must atomically publish dirty v2");
+			check(legacy.loadKind() == LoadKind.CURRENT_V3 && legacy.isDirty(), "migration must atomically publish dirty v3");
+			WorldStateV3 migratedRoot = legacy.currentV3().orElseThrow();
 			WorldStateV2 migratedState = legacy.currentV2().orElseThrow();
 			check(migratedState.stateRevision() == 5L, "migration must preserve and increment revision");
 			check(migratedState.activeGameId().orElseThrow().equals(GAME_ID), "migration must bind the unique game");
 			check(migratedState.activePhaseId().orElseThrow().equals(PHASE_ID), "migration must bind initial phase");
+			check(
+				migratedRoot.activeGameInstanceId().isPresent(),
+				"v1 migration must create an active game-instance scope"
+			);
 			check(migratedState.host().orElseThrow().playerId().equals(HOST_ID), "migration must preserve legacy host UUID");
 			check(migratedState.players().isEmpty(), "migration must not invent offline player records");
 			RecoverySnapshotMetadata metadata = migrated.recoverySnapshot().orElseThrow();
@@ -458,7 +861,63 @@ public final class StatePersistenceSelfCheck {
 			check(Files.isRegularFile(backup), "migration must create a recovery file");
 			check(java.util.Arrays.equals(Files.readAllBytes(backup), original), "recovery copy must match source bytes");
 			check(metadata.sha256().equals(sha256(original)), "recovery metadata hash must match source bytes");
-			check(WorldStateV2.CODEC.parse(JsonOps.INSTANCE, WorldStateV2.CODEC.encodeStart(JsonOps.INSTANCE, migratedState).getOrThrow()).getOrThrow().equals(migratedState), "migrated v2 must round-trip");
+			check(
+				migratedRoot.timeline().isEmpty()
+					&& migratedRoot.exclusiveReservations().isEmpty()
+					&& migratedRoot.recoverySnapshots().equals(List.of(metadata)),
+				"v1 migration must initialize only empty v3 extensions and recovery history"
+			);
+			check(
+				WorldStateV3.CODEC.parse(
+					JsonOps.INSTANCE,
+					WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, migratedRoot).getOrThrow()
+				).getOrThrow().equals(migratedRoot),
+				"migrated v3 must round-trip"
+			);
+
+			byte[] v2Original = "schema-v2-compressed-placeholder".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+			Files.write(stateFile, v2Original);
+			WorldStateV2 v2Core = completeFixture();
+			JsonElement v2Json = WorldStateV2.CODEC.encodeStart(JsonOps.INSTANCE, v2Core).getOrThrow();
+			PixelTzzWorldState v2Legacy = decode(v2Json);
+			Path v2RecoveryDirectory = recoveryDirectory.resolve("v2");
+			MigrationResult v2Migrated = PixelTzzWorldStateMigration.migrate(
+				v2Legacy,
+				new View(DefinitionSnapshot.empty(), ReloadStatus.INVALID, false, List.of(), 0),
+				stateFile,
+				v2RecoveryDirectory,
+				2_010L
+			);
+			check(
+				v2Migrated.status() == MigrationStatus.MIGRATED,
+				"schema v2 migration must not depend on healthy definitions: " + v2Migrated.reason()
+			);
+			WorldStateV3 v2Root = v2Legacy.currentV3().orElseThrow();
+			check(
+				v2Root.core().equals(v2Core.withStateRevision(v2Core.stateRevision() + 1L)),
+				"v2 migration must preserve the complete accepted core except revision"
+			);
+			check(
+				v2Root.timeline().isEmpty() && v2Root.exclusiveReservations().isEmpty(),
+				"v2 migration must not invent timeline or reservation state"
+			);
+			check(
+				v2Root.activeGameInstanceId().isPresent(),
+				"active schema-v2 migration must create an active game-instance scope"
+			);
+			check(
+				v2Root.recoverySnapshots().size() == 2
+					&& v2Root.recoverySnapshots().getFirst().equals(v2Core.recoverySnapshotMetadata().orElseThrow())
+					&& v2Root.recoverySnapshots().getLast().equals(v2Migrated.recoverySnapshot().orElseThrow()),
+				"v2 migration must preserve prior recovery metadata and append its own"
+			);
+			check(
+				java.util.Arrays.equals(
+					Files.readAllBytes(v2RecoveryDirectory.resolve(v2Migrated.recoverySnapshot().orElseThrow().fileName())),
+					v2Original
+				),
+				"v2 recovery copy must match its source bytes"
+			);
 
 			assertBlockedAndPreserved(
 				decode(legacyJson("running", 1L)),
@@ -495,7 +954,7 @@ public final class StatePersistenceSelfCheck {
 
 			Path collisionDirectory = recoveryDirectory.resolve("collision");
 			Files.createDirectories(collisionDirectory);
-			Files.write(collisionDirectory.resolve("world_state-v1-to-v2-2005.dat"), new byte[] { 1, 2, 3 });
+			Files.write(collisionDirectory.resolve("world_state-v1-to-v3-2005.dat"), new byte[] { 1, 2, 3 });
 			PixelTzzWorldState collisionState = decode(legacyJson("idle", 2L));
 			JsonElement beforeCollision = encode(collisionState);
 			MigrationResult collision = PixelTzzWorldStateMigration.migrate(

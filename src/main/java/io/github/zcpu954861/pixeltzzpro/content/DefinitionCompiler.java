@@ -30,6 +30,8 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompletionPolicy
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.Confirmation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.EditPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ExclusiveChoiceDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ExclusiveChoiceOption;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldConstraints;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationStrategy;
@@ -48,17 +50,45 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelSurface;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ReadinessDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ReservationScope;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RunFunctionOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.SelectionMode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StateAxis;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TabStyle;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TabColorMode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TabPrefixMode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TargetFilter;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TargetSelection;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.CandidateVisibility;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.FutureVisibility;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.HistoryVisibility;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.IntermissionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.LiveVisibility;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.PlayerCallback;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.RecapVisibility;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.RequiredFieldRequirement;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.ResultSemantic;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.ResultStyle;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskCallbacks;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskCompletionPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskEventDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskEventPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskEventState;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskKind;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskRoute;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskStatisticDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskStatisticType;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskStatisticWrite;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskTimeline;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TransitionTiming;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitionParser.Issue;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitionParser.ParseResult;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.BindingValue;
@@ -107,6 +137,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.Set;
 import java.util.regex.Pattern;
 import net.minecraft.network.chat.Component;
@@ -126,11 +157,21 @@ public final class DefinitionCompiler {
 	public static final int MAX_DEFINITION_CHARACTERS = 262_144;
 	public static final int MAX_TOTAL_DEFINITION_CHARACTERS = 8_388_608;
 	public static final int MAX_FLOW_NODES = 256;
+	public static final int MAX_TASKS_PER_GAME = 256;
+	public static final int MAX_TASK_RESULTS = 32;
+	public static final int MAX_TASK_EVENTS = 64;
+	public static final int MAX_TASK_STATISTICS = 64;
+	public static final int MAX_TASK_CALLBACK_FIELDS = 32;
+	public static final int MAX_EXCLUSIVE_OPTIONS = 128;
+	public static final int MAX_REPEATABLE_EVENT_RECORDS = 4_096;
+	public static final long MAX_TASK_DURATION_TICKS = 51_840_000L;
+	public static final long MAX_INTERMISSION_DURATION_TICKS = 12_096_000L;
 	public static final int MAX_TEXT_JSON_LENGTH = 8_192;
 	public static final int MAX_JSON_DEPTH = 64;
 	public static final int MAX_DIAGNOSTIC_DETAILS = 100;
 	private static final int MAX_SHORT_STRING_LENGTH = 1_024;
 	private static final Pattern LOCAL_ID = Pattern.compile("[a-z0-9_.-]+");
+	private static final Pattern CALLBACK_MACRO = Pattern.compile("[a-z][a-z0-9_]{0,31}");
 	private static final Pattern HEX_COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
 	private static final Set<String> BUILT_IN_UI_STYLES = Set.of(
 		"primary_button",
@@ -162,6 +203,7 @@ public final class DefinitionCompiler {
 		PHASE("phases"),
 		FIELD("fields"),
 		FLOW("flows"),
+		TASK("tasks"),
 		PANEL_ACTION("panel_actions"),
 		PAGE("pages"),
 		THEME("themes");
@@ -271,6 +313,7 @@ public final class DefinitionCompiler {
 		private final Map<Identifier, PhaseDefinition> phases = new LinkedHashMap<>();
 		private final Map<Identifier, FieldDefinition> fields = new LinkedHashMap<>();
 		private final Map<Identifier, FlowDefinition> flows = new LinkedHashMap<>();
+		private final Map<Identifier, TaskDefinition> tasks = new LinkedHashMap<>();
 		private final Map<Identifier, PanelActionDefinition> panelActions = new LinkedHashMap<>();
 		private final Map<Identifier, PageDefinition> pages = new LinkedHashMap<>();
 		private final Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
@@ -348,6 +391,7 @@ public final class DefinitionCompiler {
 						this.phases,
 						this.fields,
 						this.flows,
+						this.tasks,
 						this.panelActions,
 						this.pages,
 						this.themes,
@@ -397,6 +441,7 @@ public final class DefinitionCompiler {
 				case PHASE -> parsePhase(source, reader);
 				case FIELD -> parseField(source, reader);
 				case FLOW -> parseFlow(source, reader);
+				case TASK -> parseTask(source, reader);
 				case PANEL_ACTION -> parsePanelAction(source, reader);
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
 			}
@@ -495,12 +540,37 @@ public final class DefinitionCompiler {
 			Identifier initialPhase = reader.requiredIdentifier("initial_phase");
 			Identifier defaultRole = reader.requiredIdentifier("default_role");
 			Identifier defaultLifeState = reader.requiredIdentifier("default_life_state");
-			if (apiVersion != null && apiVersion != GameDefinitions.CURRENT_API_VERSION) {
+			Optional<TaskTimeline> taskTimeline = parseTaskTimeline(reader);
+			Optional<ReadinessDefinition> readiness = parseReadiness(reader);
+			if (
+				apiVersion != null
+					&& (
+						apiVersion < GameDefinitions.MIN_API_VERSION
+							|| apiVersion > GameDefinitions.CURRENT_API_VERSION
+					)
+			) {
 				add(
 					source,
 					"UNSUPPORTED_API",
 					"/api_version",
-					"expected " + GameDefinitions.CURRENT_API_VERSION + " but found " + apiVersion
+					"expected "
+						+ GameDefinitions.MIN_API_VERSION
+						+ ".."
+						+ GameDefinitions.CURRENT_API_VERSION
+						+ " but found "
+						+ apiVersion
+				);
+			}
+			if (
+				apiVersion != null
+					&& apiVersion < 2
+					&& taskTimeline.isPresent()
+			) {
+				add(
+					source,
+					"UNSUPPORTED_API",
+					"/task_timeline",
+					"task_timeline requires api_version 2"
 				);
 			}
 			if (contentVersion != null && contentVersion < 1) {
@@ -508,7 +578,8 @@ public final class DefinitionCompiler {
 			}
 			if (
 				apiVersion != null
-					&& apiVersion == GameDefinitions.CURRENT_API_VERSION
+					&& apiVersion >= GameDefinitions.MIN_API_VERSION
+					&& apiVersion <= GameDefinitions.CURRENT_API_VERSION
 					&& contentVersion != null
 					&& contentVersion > 0
 					&& name != null
@@ -520,24 +591,129 @@ public final class DefinitionCompiler {
 					source.id(),
 					new GameDefinition(
 						source.id(),
+						apiVersion,
 						contentVersion,
 						name,
 						initialPhase,
 						defaultRole,
-						defaultLifeState
+						defaultLifeState,
+						taskTimeline,
+						readiness
 					)
 				);
 			}
+		}
+
+		private Optional<ReadinessDefinition> parseReadiness(final ObjectReader parent) {
+			JsonObject object = parent.optionalObject("readiness");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("readiness", object);
+			Identifier phase = reader.requiredIdentifier("phase");
+			Identifier action = reader.requiredIdentifier("action");
+			boolean disconnectInvalidates = reader.optionalBoolean(
+				"disconnect_invalidates",
+				true
+			);
+			boolean hostCanForce = reader.optionalBoolean("host_can_force", false);
+			reader.finish();
+			return phase == null || action == null
+				? Optional.empty()
+				: Optional.of(
+					new ReadinessDefinition(
+						phase,
+						action,
+						disconnectInvalidates,
+						hostCanForce
+					)
+				);
+		}
+
+		private Optional<TaskTimeline> parseTaskTimeline(final ObjectReader parent) {
+			JsonObject object = parent.optionalObject("task_timeline");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("task_timeline", object);
+			Identifier initialTask = reader.requiredIdentifier("initial_task");
+			boolean pauseWhenHostOffline = reader.optionalBoolean("pause_when_host_offline", false);
+			Identifier approvalPhase = reader.requiredIdentifier("approval_phase");
+			Identifier startPhase = reader.requiredIdentifier("start_phase");
+			JsonArray requirements = reader.optionalArray("pre_start_requirements");
+			List<RequiredFieldRequirement> parsedRequirements = new ArrayList<>();
+			if (requirements != null) {
+				for (int index = 0; index < requirements.size(); index++) {
+					JsonElement element = requirements.get(index);
+					String pointer = reader.pointer("/pre_start_requirements/" + index);
+					if (!element.isJsonObject()) {
+						add(parent.source, "TYPE_MISMATCH", pointer, "pre-start requirement must be an object");
+						continue;
+					}
+					ObjectReader requirementReader = new ObjectReader(
+						parent.source,
+						pointer,
+						element.getAsJsonObject(),
+						this.problems
+					);
+					String type = requirementReader.requiredString("type");
+					JsonObject audienceObject = requirementReader.requiredObject("audience");
+					Audience audience = audienceObject == null
+						? null
+						: parseAudienceObject(
+							requirementReader,
+							"audience",
+							audienceObject,
+							false
+						);
+					Identifier field = requirementReader.requiredIdentifier("field");
+					requirementReader.finish();
+					if (type != null && !"required_field".equals(type)) {
+						add(
+							parent.source,
+							"INVALID_ENUM",
+							pointer + "/type",
+							"only required_field is supported"
+						);
+					} else if (audience != null && field != null) {
+						parsedRequirements.add(new RequiredFieldRequirement(audience, field));
+					}
+				}
+			}
+			reader.finish();
+			return initialTask == null || approvalPhase == null || startPhase == null
+				? Optional.empty()
+				: Optional.of(
+					new TaskTimeline(
+						initialTask,
+						pauseWhenHostOffline,
+						approvalPhase,
+						startPhase,
+						parsedRequirements
+					)
+				);
 		}
 
 		private void parseRole(final Source source, final ObjectReader reader) {
 			Identifier game = reader.requiredIdentifier("game");
 			RichText name = reader.requiredText("name");
 			Optional<RichText> description = reader.optionalText("description");
+			Optional<Identifier> initializationFlow = reader.optionalIdentifier("initialization_flow");
 			Set<Identifier> tags = reader.optionalIdentifierSet("tags");
-			TabStyle tab = parseTab(reader);
+			TabStyle tab = parseTab(reader, true);
 			if (game != null && name != null) {
-				this.roles.put(source.id(), new RoleDefinition(source.id(), game, name, description, tags, tab));
+				this.roles.put(
+					source.id(),
+					new RoleDefinition(
+						source.id(),
+						game,
+						name,
+						description,
+						initializationFlow,
+						tags,
+						tab
+					)
+				);
 			}
 		}
 
@@ -547,7 +723,7 @@ public final class DefinitionCompiler {
 			Optional<RichText> description = reader.optionalText("description");
 			Set<Identifier> allowedRoles = reader.requiredIdentifierSet("allowed_roles");
 			Set<Identifier> tags = reader.optionalIdentifierSet("tags");
-			TabStyle tab = parseTab(reader);
+			TabStyle tab = parseTab(reader, false);
 			if (allowedRoles.isEmpty()) {
 				add(source, "OUT_OF_RANGE", "/allowed_roles", "a team must allow at least one role");
 			}
@@ -564,29 +740,77 @@ public final class DefinitionCompiler {
 			RichText name = reader.requiredText("name");
 			Optional<RichText> description = reader.optionalText("description");
 			Set<Identifier> tags = reader.optionalIdentifierSet("tags");
+			TabStyle tab = parseTab(reader, false);
 			if (game != null && name != null) {
 				this.lifeStates.put(
 					source.id(),
-					new LifeStateDefinition(source.id(), game, name, description, tags)
+					new LifeStateDefinition(source.id(), game, name, description, tags, tab)
 				);
 			}
 		}
 
-		private TabStyle parseTab(final ObjectReader parent) {
+		private TabStyle parseTab(final ObjectReader parent, final boolean roleLayer) {
 			JsonObject object = parent.optionalObject("tab");
 			if (object == null) {
-				return new TabStyle(Optional.empty(), Optional.empty());
+				return new TabStyle(
+					Optional.empty(),
+					Optional.empty(),
+					roleLayer ? Optional.of(0) : Optional.empty(),
+					TabPrefixMode.INHERIT,
+					TabColorMode.INHERIT
+				);
 			}
 			ObjectReader reader = parent.child("tab", object);
 			Optional<RichText> prefix = reader.optionalText("prefix");
 			Optional<String> color = reader.optionalString("color");
+			Optional<Integer> sortOrder = reader.optionalInteger("sort_order");
+			TabPrefixMode prefixMode = reader.optionalEnum(
+				"prefix_mode",
+				TabPrefixMode.class,
+				prefix.isPresent() ? TabPrefixMode.APPEND : TabPrefixMode.INHERIT
+			);
+			TabColorMode colorMode = reader.optionalEnum(
+				"color_mode",
+				TabColorMode.class,
+				color.isPresent() ? TabColorMode.REPLACE : TabColorMode.INHERIT
+			);
 			color.ifPresent(value -> {
 				if (!HEX_COLOR.matcher(value).matches()) {
 					add(parent.source, "INVALID_COLOR", reader.pointer("/color"), "expected #RRGGBB");
 				}
 			});
+			if (sortOrder.filter(value -> value < -10_000 || value > 10_000).isPresent()) {
+				add(
+					parent.source,
+					"OUT_OF_RANGE",
+					reader.pointer("/sort_order"),
+					"sort_order must be between -10000 and 10000"
+				);
+			}
+			if (prefix.isPresent() == (prefixMode == TabPrefixMode.INHERIT)) {
+				add(
+					parent.source,
+					"INVALID_COMBINATION",
+					reader.pointer("/prefix_mode"),
+					"inherit requires no prefix; append/replace require prefix"
+				);
+			}
+			if (color.isPresent() == (colorMode == TabColorMode.INHERIT)) {
+				add(
+					parent.source,
+					"INVALID_COMBINATION",
+					reader.pointer("/color_mode"),
+					"inherit requires no color; replace requires color"
+				);
+			}
 			reader.finish();
-			return new TabStyle(prefix, color);
+			return new TabStyle(
+				prefix,
+				color,
+				sortOrder.isPresent() ? sortOrder : roleLayer ? Optional.of(0) : Optional.empty(),
+				prefixMode,
+				colorMode
+			);
 		}
 
 		private void parsePhase(final Source source, final ObjectReader reader) {
@@ -626,7 +850,13 @@ public final class DefinitionCompiler {
 			Optional<Long> maximum = reader.optionalLong("max");
 			Optional<Integer> minimumLength = reader.optionalInteger("min_length");
 			Optional<Integer> maximumLength = reader.optionalInteger("max_length");
-			List<String> options = reader.optionalStringList("options");
+			JsonArray optionsArray = reader.optionalArray("options");
+			Optional<ExclusiveChoiceDefinition> exclusiveChoice = type == FieldType.EXCLUSIVE_CHOICE
+				? parseExclusiveChoice(source, reader, optionsArray)
+				: Optional.empty();
+			List<String> options = type == FieldType.EXCLUSIVE_CHOICE
+				? exclusiveChoice.map(ExclusiveChoiceDefinition::values).orElse(List.of())
+				: parseStringOptions(source, reader.pointer("/options"), optionsArray);
 			Optional<Integer> minimumSelections = reader.optionalInteger("min_selected");
 			Optional<Integer> maximumSelections = reader.optionalInteger("max_selected");
 
@@ -640,7 +870,7 @@ public final class DefinitionCompiler {
 				maximumSelections
 			);
 			if (type != null) {
-				validateField(source, type, defaultValue, constraints);
+				validateField(source, scope, type, defaultValue, constraints, exclusiveChoice);
 			}
 			if (version != null && version < 1) {
 				add(source, "OUT_OF_RANGE", "/version", "field version must be positive");
@@ -672,17 +902,118 @@ public final class DefinitionCompiler {
 						phases,
 						visibleWhen,
 						migration,
-						constraints
+						constraints,
+						exclusiveChoice
 					)
 				);
 			}
 		}
 
+		private Optional<ExclusiveChoiceDefinition> parseExclusiveChoice(
+			final Source source,
+			final ObjectReader reader,
+			final JsonArray optionsArray
+		) {
+			ReservationScope reservationScope = reader.optionalEnum(
+				"reservation_scope",
+				ReservationScope.class,
+				ReservationScope.GAME_INSTANCE
+			);
+			boolean releaseWhenRoleMismatch = reader.optionalBoolean(
+				"release_when_role_mismatch",
+				false
+			);
+			boolean showOccupant = reader.optionalBoolean("show_occupant", true);
+			List<ExclusiveChoiceOption> options = new ArrayList<>();
+			Set<String> values = new HashSet<>();
+			if (optionsArray == null || optionsArray.isEmpty()) {
+				add(source, "MISSING_KEY", "/options", "exclusive_choice requires non-empty options");
+			} else if (optionsArray.size() > MAX_EXCLUSIVE_OPTIONS) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					"/options",
+					"exclusive choice option count exceeds " + MAX_EXCLUSIVE_OPTIONS
+				);
+			} else {
+				for (int index = 0; index < optionsArray.size(); index++) {
+					JsonElement element = optionsArray.get(index);
+					String pointer = reader.pointer("/options/" + index);
+					if (!element.isJsonObject()) {
+						add(source, "TYPE_MISMATCH", pointer, "exclusive choice option must be an object");
+						continue;
+					}
+					ObjectReader optionReader = new ObjectReader(
+						source,
+						pointer,
+						element.getAsJsonObject(),
+						this.problems
+					);
+					String value = optionReader.requiredLocalId("value");
+					RichText name = optionReader.requiredText("name");
+					Optional<RichText> description = optionReader.optionalText("description");
+					Optional<Identifier> icon = optionReader.optionalIdentifier("icon");
+					Optional<Identifier> previewPage = optionReader.optionalIdentifier("preview_page");
+					optionReader.finish();
+					if (value != null && !values.add(value)) {
+						add(
+							source,
+							"DUPLICATE_VALUE",
+							pointer + "/value",
+							"duplicate exclusive choice value " + value
+						);
+					} else if (value != null && name != null) {
+						options.add(
+							new ExclusiveChoiceOption(
+								value,
+								name,
+								description,
+								icon,
+								previewPage
+							)
+						);
+					}
+				}
+			}
+			return reservationScope == null || options.isEmpty()
+				? Optional.empty()
+				: Optional.of(
+					new ExclusiveChoiceDefinition(
+						reservationScope,
+						releaseWhenRoleMismatch,
+						showOccupant,
+						options
+					)
+				);
+		}
+
+		private List<String> parseStringOptions(
+			final Source source,
+			final String pointer,
+			final JsonArray array
+		) {
+			if (array == null) {
+				return List.of();
+			}
+			List<String> result = new ArrayList<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+					add(source, "TYPE_MISMATCH", pointer + "/" + index, "expected a string");
+				} else {
+					result.add(element.getAsString());
+				}
+			}
+			return List.copyOf(result);
+		}
+
 		private void validateField(
 			final Source source,
+			final FieldScope scope,
 			final FieldType type,
 			final JsonElement defaultValue,
-			final FieldConstraints constraints
+			final FieldConstraints constraints,
+			final Optional<ExclusiveChoiceDefinition> exclusiveChoice
 		) {
 			if (
 				type != FieldType.INTEGER
@@ -704,6 +1035,7 @@ public final class DefinitionCompiler {
 			if (
 				type != FieldType.SINGLE_CHOICE
 					&& type != FieldType.MULTI_CHOICE
+					&& type != FieldType.EXCLUSIVE_CHOICE
 					&& !constraints.options().isEmpty()
 			) {
 				add(source, "INVALID_CONSTRAINT", "/options", "options are only valid for choice fields");
@@ -746,7 +1078,11 @@ public final class DefinitionCompiler {
 				add(source, "DUPLICATE_VALUE", "/options", "field options must be unique");
 			}
 			if (
-				(type == FieldType.SINGLE_CHOICE || type == FieldType.MULTI_CHOICE)
+				(
+					type == FieldType.SINGLE_CHOICE
+						|| type == FieldType.MULTI_CHOICE
+						|| type == FieldType.EXCLUSIVE_CHOICE
+				)
 					&& constraints.options().isEmpty()
 			) {
 				add(source, "MISSING_KEY", "/options", "choice fields require options");
@@ -767,7 +1103,36 @@ public final class DefinitionCompiler {
 					);
 				}
 			}
+			if (type == FieldType.EXCLUSIVE_CHOICE) {
+				if (scope != FieldScope.PLAYER) {
+					add(
+						source,
+						"INVALID_CONSTRAINT",
+						"/scope",
+						"exclusive_choice must use player scope"
+					);
+				}
+				if (defaultValue != null) {
+					add(
+						source,
+						"INVALID_DEFAULT",
+						"/default",
+						"exclusive_choice cannot provide a default"
+					);
+				}
+				if (exclusiveChoice.isEmpty()) {
+					add(
+						source,
+						"MISSING_KEY",
+						"/options",
+						"exclusive_choice requires valid option definitions"
+					);
+				}
+			}
 			if (defaultValue == null) {
+				return;
+			}
+			if (type == FieldType.EXCLUSIVE_CHOICE) {
 				return;
 			}
 
@@ -791,6 +1156,9 @@ public final class DefinitionCompiler {
 								&& value.getAsJsonPrimitive().isString()
 								&& constraints.options().contains(value.getAsString())
 						);
+				case EXCLUSIVE_CHOICE -> throw new IllegalStateException(
+					"exclusive choice defaults are rejected before type validation"
+				);
 			};
 			if (!typeMatches) {
 				add(source, "INVALID_DEFAULT", "/default", "default does not match field type " + type.name().toLowerCase(Locale.ROOT));
@@ -977,11 +1345,35 @@ public final class DefinitionCompiler {
 		}
 
 		private Audience parseAudience(final ObjectReader parent) {
+			return parseAudience(parent, Audience.everyoneExceptHost());
+		}
+
+		private Audience parseAudience(
+			final ObjectReader parent,
+			final Audience fallback
+		) {
 			JsonObject object = parent.optionalObject("audience");
 			if (object == null) {
-				return Audience.everyoneExceptHost();
+				return fallback;
 			}
-			ObjectReader reader = parent.child("audience", object);
+			return parseAudienceObject(parent, "audience", object, fallback.onlineOnly());
+		}
+
+		private Audience parseAudienceObject(
+			final ObjectReader parent,
+			final String name,
+			final JsonObject object
+		) {
+			return parseAudienceObject(parent, name, object, true);
+		}
+
+		private Audience parseAudienceObject(
+			final ObjectReader parent,
+			final String name,
+			final JsonObject object,
+			final boolean onlineOnlyDefault
+		) {
+			ObjectReader reader = parent.child(name, object);
 			Set<Identifier> roles = reader.optionalIdentifierSet("roles");
 			Set<Identifier> teams = reader.optionalIdentifierSet("teams");
 			Set<Identifier> lifeStates = reader.optionalIdentifierSet("life_states");
@@ -989,7 +1381,7 @@ public final class DefinitionCompiler {
 			Set<Identifier> teamTags = reader.optionalIdentifierSet("team_tags");
 			Set<Identifier> lifeStateTags = reader.optionalIdentifierSet("life_state_tags");
 			boolean excludeHost = reader.optionalBoolean("exclude_host", true);
-			boolean onlineOnly = reader.optionalBoolean("online_only", true);
+			boolean onlineOnly = reader.optionalBoolean("online_only", onlineOnlyDefault);
 			reader.finish();
 			return new Audience(
 				roles,
@@ -1042,7 +1434,10 @@ public final class DefinitionCompiler {
 				case "confirm" -> {
 					Identifier page = reader.requiredIdentifier("page");
 					String next = reader.requiredLocalId("next");
-					yield page == null || next == null ? null : new ConfirmNode(id, page, next);
+					Optional<String> back = reader.optionalLocalId("back");
+					yield page == null || next == null
+						? null
+						: new ConfirmNode(id, page, next, back);
 				}
 				case "branch" -> parseBranchNode(source, reader, id);
 				case "function" -> {
@@ -1192,7 +1587,8 @@ public final class DefinitionCompiler {
 
 			Map<String, Integer> colors = new HashMap<>();
 			if (hasCycle(entry, nodes, colors)) {
-				// ponytail: 2A accepts DAGs only; add a bounded loop node before allowing cycles.
+				// A confirm "back" edge is interactive navigation, not automatic flow progress.
+				// Progress edges must still remain acyclic until a bounded loop node exists.
 				add(source, "INVALID_GRAPH", "/nodes", "flow cycles are not supported; use a future bounded loop node");
 				return;
 			}
@@ -1217,7 +1613,7 @@ public final class DefinitionCompiler {
 				return false;
 			}
 			colors.put(nodeId, 1);
-			for (String target : nodes.get(nodeId).outgoing()) {
+			for (String target : progressTargets(nodes.get(nodeId))) {
 				if (hasCycle(target, nodes, colors)) {
 					return true;
 				}
@@ -1237,9 +1633,650 @@ public final class DefinitionCompiler {
 			}
 			FlowNode node = nodes.get(nodeId);
 			boolean result = node instanceof CompleteNode
-				|| node.outgoing().stream().allMatch(target -> canReachComplete(target, nodes, memo));
+				|| progressTargets(node).stream().allMatch(target -> canReachComplete(target, nodes, memo));
 			memo.put(nodeId, result);
 			return result;
+		}
+
+		private static List<String> progressTargets(final FlowNode node) {
+			return node instanceof ConfirmNode confirm ? List.of(confirm.next()) : node.outgoing();
+		}
+
+		private void parseTask(final Source source, final ObjectReader reader) {
+			Identifier game = reader.requiredIdentifier("game");
+			Integer version = reader.requiredInt("version");
+			TaskKind kind = reader.requiredEnum("kind", TaskKind.class);
+			RichText name = reader.requiredText("name");
+			Optional<RichText> description = reader.optionalText("description");
+			Optional<Identifier> page = reader.optionalIdentifier("page");
+			Audience audience = parseAudience(reader, TaskDefinitions.defaultTaskAudience());
+			TaskCompletionPolicy completionPolicy = reader.requiredEnum(
+				"completion_policy",
+				TaskCompletionPolicy.class
+			);
+			Optional<Long> duration = reader.optionalLong("duration_ticks");
+			boolean countsTowardGameTime = reader.optionalBoolean(
+				"counts_toward_game_time",
+				kind == TaskKind.MAIN
+			);
+			LiveVisibility liveVisibility = parseLiveVisibility(reader);
+			RecapVisibility recapVisibility = reader.optionalEnum(
+				"recap_visibility",
+				RecapVisibility.class,
+				RecapVisibility.PARTICIPANTS
+			);
+			TaskCallbacks callbacks = parseTaskCallbacks(reader);
+			Optional<PlayerCallback> onStartPlayers = parsePlayerCallback(reader, "on_start_players");
+			Map<String, TaskResult> results = parseTaskResults(source, reader);
+			List<TaskEventDefinition> events = parseTaskEvents(source, reader);
+			List<TaskStatisticDefinition> statistics = parseTaskStatistics(source, reader);
+
+			if (version != null && version < 1) {
+				add(source, "OUT_OF_RANGE", "/version", "task version must be positive");
+			}
+			if (
+				duration.filter(value -> value <= 0L || value > MAX_TASK_DURATION_TICKS).isPresent()
+			) {
+				add(
+					source,
+					"OUT_OF_RANGE",
+					"/duration_ticks",
+					"duration_ticks must be between 1 and " + MAX_TASK_DURATION_TICKS
+				);
+			}
+			if (
+				completionPolicy == TaskCompletionPolicy.EVENT_ONLY
+					&& duration.isPresent()
+			) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					"/duration_ticks",
+					"event_only tasks cannot declare duration_ticks"
+				);
+			}
+			if (
+				completionPolicy != null
+					&& completionPolicy != TaskCompletionPolicy.EVENT_ONLY
+					&& duration.isEmpty()
+			) {
+				add(
+					source,
+					"MISSING_KEY",
+					"/duration_ticks",
+					"timeout task policies require duration_ticks"
+				);
+			}
+			if (results.isEmpty()) {
+				add(source, "OUT_OF_RANGE", "/results", "task requires at least one valid result");
+			}
+			if (
+				game != null
+					&& version != null
+					&& version > 0
+					&& kind != null
+					&& name != null
+					&& completionPolicy != null
+					&& !results.isEmpty()
+			) {
+				this.tasks.put(
+					source.id(),
+					new TaskDefinition(
+						source.id(),
+						game,
+						version,
+						kind,
+						name,
+						description,
+						page,
+						audience,
+						completionPolicy,
+						duration.isPresent()
+							? OptionalLong.of(duration.orElseThrow())
+							: OptionalLong.empty(),
+						countsTowardGameTime,
+						liveVisibility,
+						recapVisibility,
+						callbacks,
+						onStartPlayers,
+						results,
+						events,
+						statistics
+					)
+				);
+			}
+		}
+
+		private LiveVisibility parseLiveVisibility(final ObjectReader parent) {
+			JsonObject object = parent.optionalObject("live_visibility");
+			if (object == null) {
+				return LiveVisibility.hidden();
+			}
+			ObjectReader reader = parent.child("live_visibility", object);
+			FutureVisibility future = reader.optionalEnum(
+				"future",
+				FutureVisibility.class,
+				FutureVisibility.HIDDEN
+			);
+			HistoryVisibility history = reader.optionalEnum(
+				"history",
+				HistoryVisibility.class,
+				HistoryVisibility.HIDDEN
+			);
+			CandidateVisibility candidate = reader.optionalEnum(
+				"candidate_visibility",
+				CandidateVisibility.class,
+				CandidateVisibility.NONE
+			);
+			reader.finish();
+			return new LiveVisibility(future, history, candidate);
+		}
+
+		private TaskCallbacks parseTaskCallbacks(final ObjectReader parent) {
+			JsonObject object = parent.optionalObject("callbacks");
+			if (object == null) {
+				return TaskCallbacks.empty();
+			}
+			ObjectReader reader = parent.child("callbacks", object);
+			TaskCallbacks callbacks = new TaskCallbacks(
+				reader.optionalIdentifier("on_start"),
+				reader.optionalIdentifier("on_pause"),
+				reader.optionalIdentifier("on_resume"),
+				reader.optionalIdentifier("on_timeout"),
+				reader.optionalIdentifier("on_settled")
+			);
+			reader.finish();
+			return callbacks;
+		}
+
+		private Optional<PlayerCallback> parsePlayerCallback(
+			final ObjectReader parent,
+			final String name
+		) {
+			JsonObject object = parent.optionalObject(name);
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child(name, object);
+			Identifier function = reader.requiredIdentifier("function");
+			JsonObject audienceObject = reader.optionalObject("audience");
+			Optional<Audience> audience = audienceObject == null
+				? Optional.empty()
+				: Optional.of(parseAudienceObject(reader, "audience", audienceObject, false));
+			JsonObject fieldsObject = reader.optionalObject("fields");
+			Map<String, Identifier> fields = new LinkedHashMap<>();
+			if (fieldsObject != null) {
+				if (fieldsObject.size() > MAX_TASK_CALLBACK_FIELDS) {
+					add(
+						parent.source,
+						"RESOURCE_LIMIT",
+						reader.pointer("/fields"),
+						"callback field count exceeds " + MAX_TASK_CALLBACK_FIELDS
+					);
+				}
+				for (Map.Entry<String, JsonElement> entry : fieldsObject.entrySet()) {
+					String macro = entry.getKey();
+					String pointer = reader.pointer("/fields/" + escapePointer(macro));
+					if (!CALLBACK_MACRO.matcher(macro).matches()) {
+						add(
+							parent.source,
+							"INVALID_LOCAL_ID",
+							pointer,
+							"callback macro must match [a-z][a-z0-9_]{0,31}"
+						);
+						continue;
+					}
+					JsonElement value = entry.getValue();
+					if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) {
+						add(parent.source, "TYPE_MISMATCH", pointer, "callback field must be an identifier string");
+						continue;
+					}
+					Identifier field = parseIdentifier(value.getAsString());
+					if (field == null) {
+						add(parent.source, "INVALID_IDENTIFIER", pointer, "expected an explicitly namespaced identifier");
+					} else {
+						fields.put(macro, field);
+					}
+				}
+			}
+			reader.finish();
+			return function == null
+				? Optional.empty()
+				: Optional.of(new PlayerCallback(function, audience, fields));
+		}
+
+		private Map<String, TaskResult> parseTaskResults(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonArray array = parent.requiredArray("results");
+			if (array.size() > MAX_TASK_RESULTS) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					"/results",
+					"task result count exceeds " + MAX_TASK_RESULTS
+				);
+				return Map.of();
+			}
+			Map<String, TaskResult> results = new LinkedHashMap<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				String pointer = parent.pointer("/results/" + index);
+				if (!element.isJsonObject()) {
+					add(source, "TYPE_MISMATCH", pointer, "task result must be an object");
+					continue;
+				}
+				ObjectReader reader = new ObjectReader(
+					source,
+					pointer,
+					element.getAsJsonObject(),
+					this.problems
+				);
+				String id = reader.requiredLocalId("id");
+				RichText name = reader.requiredText("name");
+				ResultStyle style = parseResultStyle(source, reader);
+				Optional<RichText> recap = reader.optionalText("recap");
+				Optional<Identifier> onApply = reader.optionalIdentifier("on_apply");
+				Optional<PlayerCallback> onApplyPlayers = parsePlayerCallback(reader, "on_apply_players");
+				boolean allowHostFallback = reader.optionalBoolean("allow_host_fallback", false);
+				TaskRoute route = parseTaskRoute(source, reader);
+				reader.finish();
+				if ("skipped".equals(id)) {
+					add(
+						source,
+						"INVALID_COMBINATION",
+						pointer + "/id",
+						"skipped is reserved and cannot be registered as a normal task result"
+					);
+				}
+				if (id != null && name != null && style != null && route != null) {
+					TaskResult result = new TaskResult(
+						id,
+						name,
+						style,
+						recap,
+						onApply,
+						onApplyPlayers,
+						allowHostFallback,
+						route
+					);
+					if (results.putIfAbsent(id, result) != null) {
+						add(source, "DUPLICATE_VALUE", pointer + "/id", "duplicate task result " + id);
+					}
+				}
+			}
+			return Map.copyOf(results);
+		}
+
+		private ResultStyle parseResultStyle(
+			final Source source,
+			final ObjectReader reader
+		) {
+			String value = reader.requiredString("semantic");
+			if (value == null) {
+				return null;
+			}
+			return switch (value) {
+				case "success" -> new ResultStyle(ResultSemantic.SUCCESS, Optional.empty());
+				case "failure" -> new ResultStyle(ResultSemantic.FAILURE, Optional.empty());
+				case "neutral" -> new ResultStyle(ResultSemantic.NEUTRAL, Optional.empty());
+				default -> {
+					Identifier custom = parseIdentifier(value);
+					if (custom == null) {
+						add(
+							source,
+							"INVALID_IDENTIFIER",
+							reader.pointer("/semantic"),
+							"custom result semantic must be an explicitly namespaced identifier"
+						);
+						yield null;
+					}
+					yield new ResultStyle(ResultSemantic.CUSTOM, Optional.of(custom));
+				}
+			};
+		}
+
+		private TaskRoute parseTaskRoute(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.requiredObject("route");
+			if (object == null) {
+				return null;
+			}
+			ObjectReader reader = parent.child("route", object);
+			Optional<Identifier> nextTask = reader.optionalIdentifier("next_task");
+			Optional<Identifier> endPhase = reader.optionalIdentifier("end_phase");
+			Optional<Identifier> phase = reader.optionalIdentifier("phase");
+			Optional<String> transitionText = reader.optionalString("transition_timing");
+			JsonObject intermissionObject = reader.optionalObject("intermission");
+			Optional<IntermissionDefinition> intermission = intermissionObject == null
+				? Optional.empty()
+				: parseIntermission(source, reader, intermissionObject);
+			Optional<TransitionTiming> transitionTiming = Optional.empty();
+			if (transitionText.isPresent()) {
+				transitionTiming = Optional.ofNullable(
+					parseEnumValue(
+						source,
+						reader.pointer("/transition_timing"),
+						transitionText.orElseThrow(),
+						TransitionTiming.class
+					)
+				);
+			} else if (intermission.isPresent()) {
+				transitionTiming = Optional.of(TransitionTiming.AFTER_INTERMISSION);
+			}
+			if (nextTask.isPresent() == endPhase.isPresent()) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer(""),
+					"route must contain exactly one of next_task or end_phase"
+				);
+			}
+			if (endPhase.isPresent() && phase.isPresent()) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer("/phase"),
+					"end_phase cannot be combined with phase"
+				);
+			}
+			if (intermission.isEmpty() && transitionText.isPresent()) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer("/transition_timing"),
+					"transition_timing requires intermission"
+				);
+			}
+			reader.finish();
+			return nextTask.isPresent() == endPhase.isPresent()
+				? null
+				: new TaskRoute(
+					nextTask,
+					endPhase,
+					phase,
+					transitionTiming,
+					intermission
+				);
+		}
+
+		private Optional<IntermissionDefinition> parseIntermission(
+			final Source source,
+			final ObjectReader parent,
+			final JsonObject object
+		) {
+			ObjectReader reader = parent.child("intermission", object);
+			Long duration = reader.requiredLong("duration_ticks");
+			boolean countsTowardGameTime = reader.optionalBoolean("counts_toward_game_time", true);
+			RichText name = reader.requiredText("name");
+			Optional<Identifier> onStart = reader.optionalIdentifier("on_start");
+			Optional<Identifier> onPause = reader.optionalIdentifier("on_pause");
+			Optional<Identifier> onResume = reader.optionalIdentifier("on_resume");
+			Optional<Identifier> onComplete = reader.optionalIdentifier("on_complete");
+			if (
+				duration != null
+					&& (duration <= 0L || duration > MAX_INTERMISSION_DURATION_TICKS)
+			) {
+				add(
+					source,
+					"OUT_OF_RANGE",
+					reader.pointer("/duration_ticks"),
+					"intermission duration must be between 1 and "
+						+ MAX_INTERMISSION_DURATION_TICKS
+				);
+			}
+			reader.finish();
+			return duration == null || duration <= 0L || name == null
+				? Optional.empty()
+				: Optional.of(
+					new IntermissionDefinition(
+						duration,
+						countsTowardGameTime,
+						name,
+						onStart,
+						onPause,
+						onResume,
+						onComplete
+					)
+				);
+		}
+
+		private List<TaskEventDefinition> parseTaskEvents(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonArray array = parent.optionalArray("events");
+			if (array == null) {
+				return List.of();
+			}
+			if (array.size() > MAX_TASK_EVENTS) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					"/events",
+					"task event count exceeds " + MAX_TASK_EVENTS
+				);
+				return List.of();
+			}
+			List<TaskEventDefinition> events = new ArrayList<>();
+			Set<String> ids = new HashSet<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				String pointer = parent.pointer("/events/" + index);
+				if (!element.isJsonObject()) {
+					add(source, "TYPE_MISMATCH", pointer, "task event must be an object");
+					continue;
+				}
+				ObjectReader reader = new ObjectReader(
+					source,
+					pointer,
+					element.getAsJsonObject(),
+					this.problems
+				);
+				String id = reader.requiredLocalId("id");
+				RichText name = reader.requiredText("name");
+				TaskEventPolicy policy = reader.requiredEnum("policy", TaskEventPolicy.class);
+				Optional<Integer> maximumRecords = reader.optionalInteger("max_records");
+				Set<TaskEventState> allowedStates = parseEventStates(source, reader);
+				JsonObject audienceObject = reader.optionalObject("audience");
+				Optional<Audience> audience = audienceObject == null
+					? Optional.empty()
+					: Optional.of(parseAudienceObject(reader, "audience", audienceObject, false));
+				RecapVisibility recapVisibility = reader.optionalEnum(
+					"recap_visibility",
+					RecapVisibility.class,
+					RecapVisibility.PARTICIPANTS
+				);
+				if (
+					policy == TaskEventPolicy.REPEATABLE
+						&& (
+							maximumRecords.isEmpty()
+								|| maximumRecords.filter(
+									value -> value <= 0 || value > MAX_REPEATABLE_EVENT_RECORDS
+								).isPresent()
+						)
+				) {
+					add(
+						source,
+						"OUT_OF_RANGE",
+						reader.pointer("/max_records"),
+						"repeatable events require max_records between 1 and "
+							+ MAX_REPEATABLE_EVENT_RECORDS
+					);
+				}
+				if (policy != null && policy != TaskEventPolicy.REPEATABLE && maximumRecords.isPresent()) {
+					add(
+						source,
+						"INVALID_COMBINATION",
+						reader.pointer("/max_records"),
+						"max_records is only valid for repeatable events"
+					);
+				}
+				reader.finish();
+				if (id != null && !ids.add(id)) {
+					add(source, "DUPLICATE_VALUE", pointer + "/id", "duplicate task event " + id);
+				} else if (
+					id != null
+						&& name != null
+						&& policy != null
+						&& !allowedStates.isEmpty()
+				) {
+					events.add(
+						new TaskEventDefinition(
+							id,
+							name,
+							policy,
+							maximumRecords,
+							allowedStates,
+							audience,
+							recapVisibility
+						)
+					);
+				}
+			}
+			return List.copyOf(events);
+		}
+
+		private Set<TaskEventState> parseEventStates(
+			final Source source,
+			final ObjectReader reader
+		) {
+			JsonArray array = reader.optionalArray("allowed_states");
+			if (array == null) {
+				return Set.of(TaskEventState.RUNNING);
+			}
+			Set<TaskEventState> result = new LinkedHashSet<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				String pointer = reader.pointer("/allowed_states/" + index);
+				if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+					add(source, "TYPE_MISMATCH", pointer, "event state must be a string");
+					continue;
+				}
+				TaskEventState state = parseEnumValue(
+					source,
+					pointer,
+					element.getAsString(),
+					TaskEventState.class
+				);
+				if (state != null && !result.add(state)) {
+					add(source, "DUPLICATE_VALUE", pointer, "duplicate event state " + element.getAsString());
+				}
+			}
+			if (result.isEmpty()) {
+				add(source, "OUT_OF_RANGE", reader.pointer("/allowed_states"), "allowed_states cannot be empty");
+			}
+			return Set.copyOf(result);
+		}
+
+		private List<TaskStatisticDefinition> parseTaskStatistics(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonArray array = parent.optionalArray("statistics");
+			if (array == null) {
+				return List.of();
+			}
+			if (array.size() > MAX_TASK_STATISTICS) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					"/statistics",
+					"task statistic count exceeds " + MAX_TASK_STATISTICS
+				);
+				return List.of();
+			}
+			List<TaskStatisticDefinition> statistics = new ArrayList<>();
+			Set<String> ids = new HashSet<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				String pointer = parent.pointer("/statistics/" + index);
+				if (!element.isJsonObject()) {
+					add(source, "TYPE_MISMATCH", pointer, "task statistic must be an object");
+					continue;
+				}
+				ObjectReader reader = new ObjectReader(
+					source,
+					pointer,
+					element.getAsJsonObject(),
+					this.problems
+				);
+				String id = reader.requiredLocalId("id");
+				RichText name = reader.requiredText("name");
+				TaskStatisticType type = reader.requiredEnum("type", TaskStatisticType.class);
+				Optional<Long> minimum = reader.optionalLong("min");
+				Optional<Long> maximum = reader.optionalLong("max");
+				TaskStatisticWrite write = reader.requiredEnum("write", TaskStatisticWrite.class);
+				RecapVisibility recapVisibility = reader.optionalEnum(
+					"recap_visibility",
+					RecapVisibility.class,
+					RecapVisibility.PARTICIPANTS
+				);
+				boolean numeric = type == TaskStatisticType.INTEGER
+					|| type == TaskStatisticType.DURATION_TICKS;
+				if (!numeric && (minimum.isPresent() || maximum.isPresent())) {
+					add(
+						source,
+						"INVALID_CONSTRAINT",
+						reader.pointer("/min"),
+						"min/max are only valid for integer or duration_ticks statistics"
+					);
+				}
+				if (
+					minimum.isPresent()
+						&& maximum.isPresent()
+						&& minimum.orElseThrow() > maximum.orElseThrow()
+				) {
+					add(source, "OUT_OF_RANGE", reader.pointer("/min"), "min must not exceed max");
+				}
+				if (write == TaskStatisticWrite.INCREMENT && !numeric) {
+					add(
+						source,
+						"INVALID_COMBINATION",
+						reader.pointer("/write"),
+						"increment is only valid for integer or duration_ticks statistics"
+					);
+				}
+				reader.finish();
+				if (id != null && !ids.add(id)) {
+					add(source, "DUPLICATE_VALUE", pointer + "/id", "duplicate task statistic " + id);
+				} else if (id != null && name != null && type != null && write != null) {
+					statistics.add(
+						new TaskStatisticDefinition(
+							id,
+							name,
+							type,
+							minimum,
+							maximum,
+							write,
+							recapVisibility
+						)
+					);
+				}
+			}
+			return List.copyOf(statistics);
+		}
+
+		private <E extends Enum<E>> E parseEnumValue(
+			final Source source,
+			final String pointer,
+			final String value,
+			final Class<E> type
+		) {
+			try {
+				return Enum.valueOf(type, value.toUpperCase(Locale.ROOT));
+			} catch (IllegalArgumentException error) {
+				add(
+					source,
+					"INVALID_ENUM",
+					pointer,
+					"unknown " + type.getSimpleName() + " value " + value
+				);
+				return null;
+			}
 		}
 
 		private void parsePanelAction(final Source source, final ObjectReader reader) {
@@ -1558,9 +2595,36 @@ public final class DefinitionCompiler {
 					LifeStateDefinition::game,
 					"life state"
 				);
+				game.taskTimeline().ifPresent(timeline -> validateTaskTimeline(game, timeline));
+				game.readiness().ifPresent(readiness -> validateReadiness(game, readiness));
+				long taskCount = this.tasks.values()
+					.stream()
+					.filter(task -> task.game().equals(game.id()))
+					.count();
+				if (taskCount > MAX_TASKS_PER_GAME) {
+					add(
+						origin(DefinitionType.GAME, game.id()),
+						"RESOURCE_LIMIT",
+						"/task_timeline",
+						"game task count exceeds " + MAX_TASKS_PER_GAME
+					);
+				}
+				validateTaskGraph(game);
 			}
 			for (RoleDefinition role : this.roles.values()) {
 				requireGame(DefinitionType.ROLE, role.id(), role.game());
+				role.initializationFlow().ifPresent(
+					flow -> requireSameGame(
+						DefinitionType.ROLE,
+						role.id(),
+						"/initialization_flow",
+						role.game(),
+						flow,
+						this.flows,
+						FlowDefinition::game,
+						"flow"
+					)
+				);
 			}
 			for (TeamDefinition team : this.teams.values()) {
 				requireGame(DefinitionType.TEAM, team.id(), team.game());
@@ -1632,6 +2696,31 @@ public final class DefinitionCompiler {
 							predicate
 						)
 					);
+				field.exclusiveChoice().ifPresent(exclusive -> {
+					GameDefinition game = this.games.get(field.game());
+					if (game != null && game.apiVersion() < 2) {
+						add(
+							origin(DefinitionType.FIELD, field.id()),
+							"UNSUPPORTED_API",
+							"/type",
+							"exclusive_choice requires a game with api_version 2"
+						);
+					}
+					for (ExclusiveChoiceOption option : exclusive.options()) {
+						option.previewPage().ifPresent(
+							page -> requireSameGame(
+								DefinitionType.FIELD,
+								field.id(),
+								"/options",
+								field.game(),
+								page,
+								this.pages,
+								PageDefinition::game,
+								"preview page"
+							)
+						);
+					}
+				});
 			}
 			for (PageDefinition page : this.pages.values()) {
 				requireGame(DefinitionType.PAGE, page.id(), page.game());
@@ -1654,6 +2743,9 @@ public final class DefinitionCompiler {
 				flow.onAllComplete()
 					.ifPresent(function -> requireFunction(DefinitionType.FLOW, flow.id(), "/on_all_complete", function));
 				validateFlowReferences(flow);
+			}
+			for (TaskDefinition task : this.tasks.values()) {
+				validateTaskReferences(task);
 			}
 			for (PanelActionDefinition action : this.panelActions.values()) {
 				requireGame(DefinitionType.PANEL_ACTION, action.id(), action.game());
@@ -1763,6 +2855,401 @@ public final class DefinitionCompiler {
 			}
 		}
 
+		private void validateTaskTimeline(
+			final GameDefinition game,
+			final TaskTimeline timeline
+		) {
+			if (game.apiVersion() < 2) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"UNSUPPORTED_API",
+					"/task_timeline",
+					"task_timeline requires api_version 2"
+				);
+			}
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/task_timeline/initial_task",
+				game.id(),
+				timeline.initialTask(),
+				this.tasks,
+				TaskDefinition::game,
+				"task"
+			);
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/task_timeline/approval_phase",
+				game.id(),
+				timeline.approvalPhase(),
+				this.phases,
+				PhaseDefinition::game,
+				"phase"
+			);
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/task_timeline/start_phase",
+				game.id(),
+				timeline.startPhase(),
+				this.phases,
+				PhaseDefinition::game,
+				"phase"
+			);
+			for (RequiredFieldRequirement requirement : timeline.preStartRequirements()) {
+				validateAudience(
+					DefinitionType.GAME,
+					game.id(),
+					game.id(),
+					requirement.audience()
+				);
+				requireSameGame(
+					DefinitionType.GAME,
+					game.id(),
+					"/task_timeline/pre_start_requirements",
+					game.id(),
+					requirement.field(),
+					this.fields,
+					FieldDefinition::game,
+					"field"
+				);
+				FieldDefinition field = this.fields.get(requirement.field());
+				if (
+					field != null
+						&& (field.scope() != FieldScope.PLAYER || !field.required())
+				) {
+					add(
+						origin(DefinitionType.GAME, game.id()),
+						"INVALID_CONSTRAINT",
+						"/task_timeline/pre_start_requirements",
+						"required_field must reference a required player-scoped field"
+					);
+				}
+			}
+		}
+
+		private void validateReadiness(
+			final GameDefinition game,
+			final ReadinessDefinition readiness
+		) {
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/readiness/phase",
+				game.id(),
+				readiness.phase(),
+				this.phases,
+				PhaseDefinition::game,
+				"phase"
+			);
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/readiness/action",
+				game.id(),
+				readiness.action(),
+				this.panelActions,
+				PanelActionDefinition::game,
+				"panel action"
+			);
+			PanelActionDefinition action = this.panelActions.get(readiness.action());
+			if (action == null) {
+				return;
+			}
+			if (
+				action.surface() != PanelSurface.HOST
+					|| action.target().mode() != SelectionMode.NONE
+					|| !action.phases().contains(readiness.phase())
+					|| !(action.operation() instanceof StartFlowOperation start)
+					|| start.completionPolicy() != CompletionPolicy.ALWAYS
+			) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"INVALID_CONSTRAINT",
+					"/readiness/action",
+					"readiness action must be a host start_flow action with target mode none, "
+						+ "completion_policy always, and the readiness phase"
+				);
+				return;
+			}
+			FlowDefinition flow = this.flows.get(start.flow());
+			if (flow == null || !flow.game().equals(game.id()) || !flow.required()) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"INVALID_CONSTRAINT",
+					"/readiness/action",
+					"readiness action must reference a required flow from the same game"
+				);
+				return;
+			}
+			if (
+				flow.onStart().isPresent()
+					|| flow.onPlayerComplete().isPresent()
+					|| flow.onAllComplete().isPresent()
+			) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"INVALID_CONSTRAINT",
+					"/readiness/action",
+					"readiness flow callbacks are not supported; use task or phase callbacks instead"
+				);
+			}
+			boolean unsupportedNode = flow.nodes().values().stream().anyMatch(node ->
+				!(node instanceof PageNode)
+					&& !(node instanceof ConfirmNode)
+					&& !(node instanceof CompleteNode)
+			);
+			if (unsupportedNode) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"INVALID_CONSTRAINT",
+					"/readiness/action",
+					"readiness flow may contain only page, confirm, and complete nodes"
+				);
+			}
+		}
+
+		private void validateTaskGraph(final GameDefinition game) {
+			Map<Identifier, Integer> marks = new HashMap<>();
+			Set<Identifier> reported = new HashSet<>();
+			for (TaskDefinition task : this.tasks.values()) {
+				if (task.game().equals(game.id())) {
+					validateTaskGraphNode(game.id(), task.id(), marks, reported);
+				}
+			}
+		}
+
+		private void validateTaskGraphNode(
+			final Identifier gameId,
+			final Identifier taskId,
+			final Map<Identifier, Integer> marks,
+			final Set<Identifier> reported
+		) {
+			int mark = marks.getOrDefault(taskId, 0);
+			if (mark == 2) {
+				return;
+			}
+			if (mark == 1) {
+				if (reported.add(taskId)) {
+					add(
+						origin(DefinitionType.TASK, taskId),
+						"INVALID_GRAPH",
+						"/results",
+						"task route graph contains a cycle at " + taskId
+					);
+				}
+				return;
+			}
+			TaskDefinition task = this.tasks.get(taskId);
+			if (task == null || !task.game().equals(gameId)) {
+				return;
+			}
+			marks.put(taskId, 1);
+			for (TaskResult result : task.results().values()) {
+				result.route().nextTask().ifPresent(
+					next -> {
+						TaskDefinition target = this.tasks.get(next);
+						if (target != null && target.game().equals(gameId)) {
+							validateTaskGraphNode(gameId, next, marks, reported);
+						}
+					}
+				);
+			}
+			marks.put(taskId, 2);
+		}
+
+		private void validateTaskReferences(final TaskDefinition task) {
+			requireGame(DefinitionType.TASK, task.id(), task.game());
+			GameDefinition game = this.games.get(task.game());
+			if (game != null && game.apiVersion() < 2) {
+				add(
+					origin(DefinitionType.TASK, task.id()),
+					"UNSUPPORTED_API",
+					"/game",
+					"tasks require a game with api_version 2"
+				);
+			}
+			validateAudience(DefinitionType.TASK, task.id(), task.game(), task.audience());
+			task.page().ifPresent(
+				page -> requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					"/page",
+					task.game(),
+					page,
+					this.pages,
+					PageDefinition::game,
+					"page"
+				)
+			);
+			validateTaskCallbacks(task);
+			task.onStartPlayers().ifPresent(
+				callback -> validatePlayerCallback(task, "/on_start_players", callback)
+			);
+			for (TaskResult result : task.results().values()) {
+				result.onApply().ifPresent(
+					function -> requireFunction(
+						DefinitionType.TASK,
+						task.id(),
+						"/results/" + result.id() + "/on_apply",
+						function
+					)
+				);
+				result.onApplyPlayers().ifPresent(
+					callback -> validatePlayerCallback(
+						task,
+						"/results/" + result.id() + "/on_apply_players",
+						callback
+					)
+				);
+				validateTaskRoute(task, result);
+			}
+			for (TaskEventDefinition event : task.events()) {
+				event.audience().ifPresent(
+					audience -> validateAudience(
+						DefinitionType.TASK,
+						task.id(),
+						task.game(),
+						audience
+					)
+				);
+			}
+		}
+
+		private void validateTaskCallbacks(final TaskDefinition task) {
+			TaskCallbacks callbacks = task.callbacks();
+			callbacks.onStart().ifPresent(
+				function -> requireFunction(DefinitionType.TASK, task.id(), "/callbacks/on_start", function)
+			);
+			callbacks.onPause().ifPresent(
+				function -> requireFunction(DefinitionType.TASK, task.id(), "/callbacks/on_pause", function)
+			);
+			callbacks.onResume().ifPresent(
+				function -> requireFunction(DefinitionType.TASK, task.id(), "/callbacks/on_resume", function)
+			);
+			callbacks.onTimeout().ifPresent(
+				function -> requireFunction(DefinitionType.TASK, task.id(), "/callbacks/on_timeout", function)
+			);
+			callbacks.onSettled().ifPresent(
+				function -> requireFunction(DefinitionType.TASK, task.id(), "/callbacks/on_settled", function)
+			);
+		}
+
+		private void validatePlayerCallback(
+			final TaskDefinition task,
+			final String pointer,
+			final PlayerCallback callback
+		) {
+			requireFunction(DefinitionType.TASK, task.id(), pointer + "/function", callback.function());
+			callback.audience().ifPresent(
+				audience -> validateAudience(
+					DefinitionType.TASK,
+					task.id(),
+					task.game(),
+					audience
+				)
+			);
+			for (Map.Entry<String, Identifier> entry : callback.fields().entrySet()) {
+				requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					pointer + "/fields/" + escapePointer(entry.getKey()),
+					task.game(),
+					entry.getValue(),
+					this.fields,
+					FieldDefinition::game,
+					"field"
+				);
+				FieldDefinition field = this.fields.get(entry.getValue());
+				if (field != null && field.scope() != FieldScope.PLAYER) {
+					add(
+						origin(DefinitionType.TASK, task.id()),
+						"INVALID_CONSTRAINT",
+						pointer + "/fields/" + escapePointer(entry.getKey()),
+						"player callback bindings require player-scoped fields"
+					);
+				}
+			}
+		}
+
+		private void validateTaskRoute(
+			final TaskDefinition task,
+			final TaskResult result
+		) {
+			TaskRoute route = result.route();
+			route.nextTask().ifPresent(
+				next -> requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					"/results/" + result.id() + "/route/next_task",
+					task.game(),
+					next,
+					this.tasks,
+					TaskDefinition::game,
+					"task"
+				)
+			);
+			route.endPhase().ifPresent(
+				phase -> requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					"/results/" + result.id() + "/route/end_phase",
+					task.game(),
+					phase,
+					this.phases,
+					PhaseDefinition::game,
+					"phase"
+				)
+			);
+			route.phase().ifPresent(
+				phase -> requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					"/results/" + result.id() + "/route/phase",
+					task.game(),
+					phase,
+					this.phases,
+					PhaseDefinition::game,
+					"phase"
+				)
+			);
+			route.intermission().ifPresent(intermission -> {
+				intermission.onStart().ifPresent(
+					function -> requireFunction(
+						DefinitionType.TASK,
+						task.id(),
+						"/results/" + result.id() + "/route/intermission/on_start",
+						function
+					)
+				);
+				intermission.onPause().ifPresent(
+					function -> requireFunction(
+						DefinitionType.TASK,
+						task.id(),
+						"/results/" + result.id() + "/route/intermission/on_pause",
+						function
+					)
+				);
+				intermission.onResume().ifPresent(
+					function -> requireFunction(
+						DefinitionType.TASK,
+						task.id(),
+						"/results/" + result.id() + "/route/intermission/on_resume",
+						function
+					)
+				);
+				intermission.onComplete().ifPresent(
+					function -> requireFunction(
+						DefinitionType.TASK,
+						task.id(),
+						"/results/" + result.id() + "/route/intermission/on_complete",
+						function
+					)
+				);
+			});
+		}
+
 		private void validateAudience(
 			final DefinitionType ownerType,
 			final Identifier owner,
@@ -1853,12 +3340,16 @@ public final class DefinitionCompiler {
 						"field"
 					);
 					FieldDefinition field = this.fields.get(choice.field());
-					if (field != null && field.type() != FieldType.SINGLE_CHOICE) {
+					if (
+						field != null
+							&& field.type() != FieldType.SINGLE_CHOICE
+							&& field.type() != FieldType.EXCLUSIVE_CHOICE
+					) {
 						add(
 							origin(DefinitionType.FLOW, flow.id()),
 							"TYPE_MISMATCH",
 							"/nodes",
-							"choice node field must be single_choice; multi_choice has no single-route semantics"
+							"choice node field must be single_choice or exclusive_choice"
 						);
 					}
 					if (field != null) {
@@ -2363,14 +3854,6 @@ public final class DefinitionCompiler {
 			if (path.startsWith("flow/fields/")) {
 				Identifier id = Identifier.tryParse(path.substring("flow/fields/".length()));
 				FieldDefinition field = id == null ? null : requirePageField(page, id, pointer);
-				if (field != null && field.scope() != FieldScope.FLOW) {
-					add(
-						origin(DefinitionType.PAGE, page.id()),
-						"INVALID_BINDING_SCOPE",
-						pointer,
-						"flow/fields binding requires a flow-scoped field"
-					);
-				}
 				return field == null ? UiValueType.UNKNOWN : fieldValueType(field.type());
 			}
 			if (path.startsWith("ui/") || path.startsWith("ui.")) {
@@ -2440,7 +3923,7 @@ public final class DefinitionCompiler {
 				case INTEGER -> UiValueType.INTEGER;
 				case IDENTIFIER -> UiValueType.IDENTIFIER;
 				case MULTI_CHOICE -> UiValueType.COLLECTION;
-				case STRING, SINGLE_CHOICE -> UiValueType.STRING;
+				case STRING, SINGLE_CHOICE, EXCLUSIVE_CHOICE -> UiValueType.STRING;
 			};
 		}
 
@@ -2830,6 +4313,23 @@ public final class DefinitionCompiler {
 			}
 		}
 
+		private Long requiredLong(final String name) {
+			JsonElement value = required(name);
+			if (value == null) {
+				return null;
+			}
+			if (!isIntegral(value)) {
+				add("TYPE_MISMATCH", "/" + escapePointer(name), "expected an integer");
+				return null;
+			}
+			try {
+				return value.getAsBigDecimal().longValueExact();
+			} catch (ArithmeticException | NumberFormatException error) {
+				add("OUT_OF_RANGE", "/" + escapePointer(name), "integer is outside the supported range");
+				return null;
+			}
+		}
+
 		private Integer integer(final String name, final JsonElement value) {
 			if (!isIntegral(value)) {
 				add("TYPE_MISMATCH", "/" + escapePointer(name), "expected an integer");
@@ -2883,6 +4383,15 @@ public final class DefinitionCompiler {
 			if (value != null && !LOCAL_ID.matcher(value).matches()) {
 				add("INVALID_LOCAL_ID", "/" + escapePointer(name), "expected lowercase [a-z0-9_.-]+");
 				return null;
+			}
+			return value;
+		}
+
+		private Optional<String> optionalLocalId(final String name) {
+			Optional<String> value = optionalString(name);
+			if (value.isPresent() && !LOCAL_ID.matcher(value.orElseThrow()).matches()) {
+				add("INVALID_LOCAL_ID", "/" + escapePointer(name), "expected lowercase [a-z0-9_.-]+");
+				return Optional.empty();
 			}
 			return value;
 		}

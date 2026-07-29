@@ -14,6 +14,7 @@ import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
@@ -22,6 +23,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -58,6 +60,7 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			ClientSessionState.beginConnection();
 			ClientPageState.beginConnection();
 			ClientConsoleState.beginConnection();
+			ClientTimelineState.beginConnection();
 			LivePageSupervisor.reset();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
@@ -66,6 +69,7 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> {
 			LivePageSupervisor.reset();
 			ClientConsoleState.disconnect();
+			ClientTimelineState.disconnect();
 			ClientPageState.disconnect();
 			ClientSessionState.disconnect();
 			LoadingActionBarAnimator.reset();
@@ -83,6 +87,7 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			boolean accepted = ClientSessionState.acceptSnapshot(payload);
 			if (accepted) {
 				ClientConsoleState.acceptSessionProjection(payload);
+				ClientTimelineState.probe();
 			}
 			if (accepted && payload.schemaCompatible() && payload.animateLoad()) {
 				LoadingActionBarAnimator.enqueue(payload.loadSequence(), Component.translatable("pixel_tzz_pro.load.success"));
@@ -105,7 +110,18 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		);
 		ClientPlayNetworking.registerGlobalReceiver(
 			ForcedPageReleaseS2CPayload.TYPE,
-			(payload, context) -> ClientPageState.acceptForcedRelease(payload)
+			(payload, context) -> {
+				boolean accepted = ClientPageState.acceptForcedRelease(payload);
+				if (
+					accepted
+						&& (
+							payload.reason().equals("member_ready")
+								|| payload.reason().equals("readiness_completed")
+						)
+				) {
+					OperationSubtitleAnimator.enqueue("准备状态已锁定");
+				}
+			}
 		);
 		ClientPlayNetworking.registerGlobalReceiver(
 			ConsoleSnapshotS2CPayload.TYPE,
@@ -118,6 +134,14 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(
 			ConfirmationS2CPayload.TYPE,
 			(payload, context) -> ClientConsoleState.acceptConfirmation(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			TimelineViewS2CPayload.TYPE,
+			(payload, context) -> ClientTimelineState.accept(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HostSubtitleS2CPayload.TYPE,
+			(payload, context) -> OperationSubtitleAnimator.enqueue(payload.message())
 		);
 
 		ClientTickEvents.END_CLIENT_TICK.register(LoadingActionBarAnimator::tick);

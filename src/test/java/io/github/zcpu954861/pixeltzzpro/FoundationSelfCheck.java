@@ -3,6 +3,7 @@ package io.github.zcpu954861.pixeltzzpro;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
+import io.github.zcpu954861.pixeltzzpro.animation.SubtitleQueueTimeline;
 import io.github.zcpu954861.pixeltzzpro.animation.TypewriterTimeline;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Compilation;
@@ -11,19 +12,24 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignLifeStateOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.AssignRoleOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ApplyTiming;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarColor;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BossBarStyle;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompletionPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompleteNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ConfirmNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationStrategy;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionKeyframe;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionProperty;
@@ -36,7 +42,6 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SizeMode;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.StyleValue;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.UiEvent;
-import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.server.TabListDisplay;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
@@ -70,12 +75,6 @@ public final class FoundationSelfCheck {
 	}
 
 	public static void main(final String[] args) {
-		Set<String> phaseIds = new HashSet<>();
-		for (GamePhase phase : GamePhase.values()) {
-			check(phaseIds.add(phase.getSerializedName()), "duplicate phase id: " + phase.getSerializedName());
-			check(GamePhase.bySerializedName(phase.getSerializedName()).orElseThrow() == phase, "phase round-trip failed: " + phase);
-		}
-
 		check(NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION), "current protocol must be compatible");
 		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION + 1), "future protocol must fail closed");
 		check(!NetworkProtocol.isCompatible(NetworkProtocol.CURRENT_VERSION - 1), "older protocol must fail closed");
@@ -88,14 +87,14 @@ public final class FoundationSelfCheck {
 
 		PixelTzzWorldState state = PixelTzzWorldState.initial();
 		check(state.isSchemaCompatible(), "fresh state must be compatible");
-		check(state.phase() == GamePhase.IDLE, "fresh state must start in IDLE");
+		check(state.activePhaseId().isEmpty(), "fresh state must not invent a data-pack phase");
 		check(state.hostId().isEmpty(), "reload must not invent a host");
 		check(state.stateRevision() == 0L, "resource loading must not advance core state revision");
 
 		JsonElement encodedState = PixelTzzWorldState.CODEC.encodeStart(JsonOps.INSTANCE, state).getOrThrow();
 		PixelTzzWorldState decodedState = PixelTzzWorldState.CODEC.parse(JsonOps.INSTANCE, encodedState).getOrThrow();
 		check(decodedState.isSchemaCompatible(), "current state codec round-trip must remain compatible");
-		check(decodedState.phase() == GamePhase.IDLE, "state codec round-trip must retain phase");
+		check(decodedState.activePhaseId().isEmpty(), "state codec round-trip must retain an absent phase");
 
 		JsonElement futureData = JsonParser.parseString(
 			"""
@@ -127,6 +126,15 @@ public final class FoundationSelfCheck {
 			new String(codePoints, 0, codePoints.length).equals(unicodeText),
 			"typewriter code-point storage must preserve supplementary characters"
 		);
+		int completedTicks = 0;
+		for (int tick = 1; tick <= 30; tick++) {
+			var hold = SubtitleQueueTimeline.afterCompletedFrame(completedTicks, 30);
+			completedTicks = hold.completedTicks();
+			check(
+				hold.mayAdvance() == (tick == 30),
+				"queued subtitle must retain its complete text for all 30 hold ticks"
+			);
+		}
 
 		checkMotionRuntime();
 		checkDefinitionRegistry(state);
@@ -174,6 +182,14 @@ public final class FoundationSelfCheck {
 			480,
 			240,
 			2
+		);
+		check(
+			RepeatVirtualization.fullyVisibleRows(237, 43, 5) == 5,
+			"list viewport must count the final row without requiring a trailing gap"
+		);
+		check(
+			RepeatVirtualization.fullyVisibleRows(234, 43, 5) == 4,
+			"list viewport must not count a row that is still partially clipped"
 		);
 		check(
 			repeatGridWindow.startItem() == 16
@@ -1011,11 +1027,557 @@ public final class FoundationSelfCheck {
 		check(!emptyRegistry.view().active().usable(), "empty definitions must not masquerade as a game");
 		check(!emptyRegistry.view().canStartNewFlows(), "empty definitions must block new flows");
 
-		check(worldState.phase() == GamePhase.IDLE, "definition reload must not mutate the persisted phase bridge");
+		check(worldState.activePhaseId().isEmpty(), "definition reload must not invent a persisted phase");
 		check(worldState.hostId().isEmpty(), "definition reload must not invent a host");
 		check(worldState.stateRevision() == 0L, "definition reload must not mutate core state revision");
+		checkTaskDefinitionCompiler(validSources, functions, predicates);
 		checkExampleDatapack();
 		System.out.println("DEFINITION_REGISTRY_SELF_CHECK=PASS");
+	}
+
+	private static void checkTaskDefinitionCompiler(
+		final List<Source> baseSources,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates
+	) {
+		List<Source> sources = replaceSource(
+			baseSources,
+			DefinitionType.GAME,
+			"main",
+			"""
+			{
+			  "format_version": 1,
+			  "api_version": 2,
+			  "content_version": 1,
+			  "name": {"text": "Test Game"},
+			  "initial_phase": "test:setup",
+			  "default_role": "test:runner",
+			  "default_life_state": "test:alive",
+			  "task_timeline": {
+			    "initial_task": "test:warmup",
+			    "pause_when_host_offline": false,
+			    "approval_phase": "test:setup",
+			    "start_phase": "test:ready",
+			    "pre_start_requirements": [{
+			      "type": "required_field",
+			      "audience": {
+			        "roles": ["test:runner"],
+			        "exclude_host": true
+			      },
+			      "field": "test:hunter_spawn"
+			    }]
+			  }
+			}
+			"""
+		);
+		sources = replaceSource(
+			sources,
+			DefinitionType.ROLE,
+			"runner",
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "name": {"text": "Runner"},
+			  "initialization_flow": "test:tutorial",
+			  "tags": ["test:general_initialization", "test:ready_participant"],
+			  "tab": {
+			    "prefix": {"text": "[Runner]"},
+			    "color": "#65D68A",
+			    "sort_order": 100,
+			    "prefix_mode": "replace",
+			    "color_mode": "replace"
+			  }
+			}
+			"""
+		);
+		sources = replaceSource(
+			sources,
+			DefinitionType.LIFE_STATE,
+			"alive",
+			"""
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "name": {"text": "Alive"},
+			  "tags": ["test:active"],
+			  "tab": {
+			    "color": "#7BE39B",
+			    "sort_order": 120,
+			    "color_mode": "replace"
+			  }
+			}
+			"""
+		);
+		List<Source> apiTwoSources = new ArrayList<>(sources);
+		apiTwoSources.add(
+			source(
+				DefinitionType.FIELD,
+				"hunter_spawn",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "name": {"text": "Hunter spawn"},
+				  "scope": "player",
+				  "type": "exclusive_choice",
+				  "required": true,
+				  "editable_by": "player",
+				  "invalidates_ready": true,
+				  "roles": ["test:runner"],
+				  "phases": ["test:setup"],
+				  "migration": "preserve",
+				  "reservation_scope": "game_instance",
+				  "release_when_role_mismatch": true,
+				  "show_occupant": true,
+				  "options": [
+				    {
+				      "value": "north_gate",
+				      "name": {"text": "North gate"},
+				      "description": {"text": "North deployment"},
+				      "icon": "minecraft:iron_door",
+				      "preview_page": "test:page/pick"
+				    },
+				    {
+				      "value": "station",
+				      "name": {"text": "Station"}
+				    }
+				  ]
+				}
+				"""
+			)
+		);
+		apiTwoSources.add(
+			source(
+				DefinitionType.TASK,
+				"warmup",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "kind": "warmup",
+				  "name": {"text": "Warmup"},
+				  "description": {"text": "Task compiler fixture"},
+				  "page": "test:page/intro",
+				  "audience": {
+				    "roles": ["test:runner"],
+				    "exclude_host": true
+				  },
+				  "completion_policy": "event_only",
+				  "counts_toward_game_time": false,
+				  "live_visibility": {
+				    "future": "teaser",
+				    "history": "summary",
+				    "candidate_visibility": "names_only"
+				  },
+				  "recap_visibility": "participants",
+				  "callbacks": {
+				    "on_start": "test:flow/start",
+				    "on_settled": "test:flow/all_complete"
+				  },
+				  "on_start_players": {
+				    "function": "test:flow/player_complete",
+				    "audience": {"roles": ["test:runner"]},
+				    "fields": {"spawn_point": "test:hunter_spawn"}
+				  },
+				  "results": [{
+				    "id": "done",
+				    "name": {"text": "Done"},
+				    "semantic": "success",
+				    "recap": {"text": "Warmup completed"},
+				    "on_apply": "test:flow/all_complete",
+				    "on_apply_players": {
+				      "function": "test:flow/player_complete",
+				      "fields": {"spawn_point": "test:hunter_spawn"}
+				    },
+				    "allow_host_fallback": true,
+				    "route": {
+				      "end_phase": "test:ready",
+				      "intermission": {
+				        "duration_ticks": 20,
+				        "counts_toward_game_time": false,
+				        "name": {"text": "Transition"},
+				        "on_complete": "test:flow/all_complete"
+				      }
+				    }
+				  }],
+				  "events": [{
+				    "id": "terminal",
+				    "name": {"text": "Terminal"},
+				    "policy": "repeatable",
+				    "max_records": 8,
+				    "allowed_states": ["running", "settling"],
+				    "audience": {"roles": ["test:runner"]},
+				    "recap_visibility": "participants"
+				  }],
+				  "statistics": [{
+				    "id": "rescued",
+				    "name": {"text": "Rescued"},
+				    "type": "integer",
+				    "min": 0,
+				    "max": 64,
+				    "write": "increment",
+				    "recap_visibility": "participants"
+				  }]
+				}
+				"""
+			)
+		);
+		Compilation valid = DefinitionCompiler.compile(apiTwoSources, functions, predicates);
+		check(valid.valid(), "api v2 task bundle must compile: " + valid.problems());
+		DefinitionSnapshot snapshot = valid.snapshot().orElseThrow();
+		check(snapshot.tasks().size() == 1, "task definitions must enter the immutable snapshot");
+		check(
+			snapshot.games().get(Identifier.parse("test:main")).apiVersion() == 2,
+			"api v2 must survive compilation"
+		);
+		check(
+			snapshot.games().get(Identifier.parse("test:main")).taskTimeline().isPresent(),
+			"task timeline must survive compilation"
+		);
+		check(
+			!snapshot.games()
+				.get(Identifier.parse("test:main"))
+				.taskTimeline()
+				.orElseThrow()
+				.preStartRequirements()
+				.getFirst()
+				.audience()
+				.onlineOnly(),
+			"partial pre-start audiences must include frozen offline participants by default"
+		);
+		var warmup = snapshot.tasks().get(Identifier.parse("test:warmup"));
+		check(
+			!warmup.audience().onlineOnly(),
+			"partial task audiences must include frozen offline participants by default"
+		);
+		check(
+			!warmup.onStartPlayers()
+				.orElseThrow()
+				.audience()
+				.orElseThrow()
+				.onlineOnly(),
+			"partial task callback audiences must default online_only to false"
+		);
+		check(
+			!warmup.events()
+				.getFirst()
+				.audience()
+				.orElseThrow()
+				.onlineOnly(),
+			"partial task event audiences must default online_only to false"
+		);
+		check(
+			snapshot.flows()
+				.get(Identifier.parse("test:tutorial"))
+				.audience()
+				.onlineOnly(),
+			"legacy flow audiences must retain their online_only default"
+		);
+		check(
+			snapshot.roles().get(Identifier.parse("test:runner")).initializationFlow().isPresent(),
+			"role initialization flow must survive compilation"
+		);
+		check(
+			snapshot.lifeStates().get(Identifier.parse("test:alive")).tab().sortOrder().orElseThrow() == 120,
+			"life-state TAB style must survive compilation"
+		);
+		var spawn = snapshot.fields().get(Identifier.parse("test:hunter_spawn"));
+		check(
+			spawn.exclusiveChoice().orElseThrow().options().size() == 2,
+			"exclusive choice option metadata must survive compilation"
+		);
+		check(
+			snapshot.tasks().get(Identifier.parse("test:warmup")).results().containsKey("done"),
+			"task result map must retain stable local ids"
+		);
+		List<Source> snapshotSources = new ArrayList<>(apiTwoSources);
+		snapshotSources.add(
+			source(
+				DefinitionType.TASK,
+				"unused",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "version": 1,
+				  "kind": "main",
+				  "name": {"text": "Unreachable task"},
+				  "completion_policy": "event_only",
+				  "results": [{
+				    "id": "done",
+				    "name": {"text": "Done"},
+				    "semantic": "neutral",
+				    "route": {"end_phase": "test:ready"}
+				  }]
+				}
+				"""
+			)
+		);
+		Compilation snapshotCompilation = DefinitionCompiler.compile(
+			snapshotSources,
+			functions,
+			predicates
+		);
+		check(
+			snapshotCompilation.valid(),
+			"timeline snapshot fixture must compile: " + snapshotCompilation.problems()
+		);
+		DefinitionSnapshot generationOne = snapshotCompilation.snapshot()
+			.orElseThrow()
+			.withGeneration(41L);
+		var timelineFreeze = TimelineSnapshotCompiler.freeze(
+			generationOne,
+			generationOne.games().get(Identifier.parse("test:main"))
+		);
+		check(
+			timelineFreeze.success(),
+			"reachable timeline must freeze and restore: "
+				+ timelineFreeze.code()
+				+ " ("
+				+ timelineFreeze.message()
+				+ ")"
+		);
+		check(
+			timelineFreeze.compiled().orElseThrow().tasks().keySet().equals(
+				Set.of(Identifier.parse("test:warmup"))
+			),
+			"timeline snapshot must exclude tasks outside the initial-task reachable DAG"
+		);
+		var repeatedFreeze = TimelineSnapshotCompiler.freeze(
+			generationOne,
+			generationOne.games().get(Identifier.parse("test:main"))
+		);
+		check(
+			repeatedFreeze.success()
+				&& repeatedFreeze.frozen().orElseThrow().sha256().equals(
+					timelineFreeze.frozen().orElseThrow().sha256()
+				),
+			"unchanged definition generations must produce deterministic timeline snapshots"
+		);
+		List<Source> reloadedSources = snapshotSources.stream()
+			.map(
+				source -> source.type() == DefinitionType.TASK
+						&& source.id().equals(Identifier.parse("test:warmup"))
+					? new Source(
+						source.type(),
+						source.id(),
+						source.resource(),
+						source.sourcePack(),
+						source.json().replace(
+							"Task compiler fixture",
+							"Reloaded task compiler fixture"
+						)
+					)
+					: source
+			)
+			.toList();
+		Compilation reloadedCompilation = DefinitionCompiler.compile(
+			reloadedSources,
+			functions,
+			predicates
+		);
+		check(reloadedCompilation.valid(), "reloaded task fixture must compile");
+		check(
+			reloadedCompilation.snapshot()
+				.orElseThrow()
+				.tasks()
+				.get(Identifier.parse("test:warmup"))
+				.description()
+				.orElseThrow()
+				.plainText()
+				.startsWith("Reloaded"),
+			"reload fixture must actually change the live task definition"
+		);
+		var restoredTimeline = TimelineSnapshotCompiler.restore(
+			Identifier.parse("test:main"),
+			timelineFreeze.frozen().orElseThrow()
+		);
+		check(
+			restoredTimeline.success()
+				&& restoredTimeline.snapshot().orElseThrow().generation() == 41L
+				&& restoredTimeline.snapshot()
+					.orElseThrow()
+					.tasks()
+					.get(Identifier.parse("test:warmup"))
+					.description()
+					.orElseThrow()
+					.plainText()
+					.equals("Task compiler fixture"),
+			"reload must not replace the definition generation frozen for an active timeline"
+		);
+		List<Source> exclusiveFlowSources = apiTwoSources.stream()
+			.map(source -> {
+				String json = source.json();
+				if (
+					source.type() == DefinitionType.FIELD
+						&& source.id().equals(Identifier.parse("test:hunter_spawn"))
+				) {
+					json = json.replace("test:page/pick", "test:spawn/preview");
+				} else if (
+					source.type() == DefinitionType.FLOW
+						&& source.id().equals(Identifier.parse("test:tutorial"))
+				) {
+					json = json.replace("test:lane", "test:hunter_spawn")
+						.replace("\"alpha\"", "\"north_gate\"")
+						.replace("\"beta\"", "\"station\"");
+				} else if (
+					source.type() == DefinitionType.PAGE
+						&& source.id().equals(Identifier.parse("test:page/pick"))
+				) {
+					json = json.replace("test:lane", "test:hunter_spawn");
+				}
+				return json.equals(source.json())
+					? source
+					: new Source(
+						source.type(),
+						source.id(),
+						source.resource(),
+						source.sourcePack(),
+						json
+					);
+			})
+			.collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+		exclusiveFlowSources.add(
+			source(
+				DefinitionType.PAGE,
+				"spawn/preview",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Spawn preview"},
+				  "root": {
+				    "type": "text",
+				    "text": {"text": "North deployment preview"}
+				  }
+				}
+				"""
+			)
+		);
+		Compilation exclusiveFlowCompilation = DefinitionCompiler.compile(
+			exclusiveFlowSources,
+			functions,
+			predicates
+		);
+		check(
+			exclusiveFlowCompilation.valid(),
+			"exclusive-choice flow fixture must compile: " + exclusiveFlowCompilation.problems()
+		);
+		DefinitionSnapshot exclusiveFlowSnapshot = exclusiveFlowCompilation.snapshot()
+			.orElseThrow()
+			.withGeneration(42L);
+		var exclusiveFlowFreeze = ExecutionSnapshotCompiler.freeze(
+			exclusiveFlowSnapshot,
+			exclusiveFlowSnapshot.flows().get(Identifier.parse("test:tutorial")),
+			exclusiveFlowSnapshot.panelActions().get(Identifier.parse("test:assign_hunter"))
+		);
+		check(
+			exclusiveFlowFreeze.success()
+				&& exclusiveFlowFreeze.frozen()
+					.orElseThrow()
+					.pages()
+					.containsKey(Identifier.parse("test:spawn/preview")),
+			"execution snapshot must retain exclusive-choice preview pages: "
+				+ exclusiveFlowFreeze.message()
+		);
+
+		List<Source> cycleSources = new ArrayList<>(apiTwoSources);
+		cycleSources.removeIf(
+			source -> source.type() == DefinitionType.TASK
+				&& source.id().equals(Identifier.parse("test:warmup"))
+		);
+		cycleSources.add(
+			source(
+				DefinitionType.TASK,
+				"warmup",
+				taskCycleJson("test:second")
+			)
+		);
+		cycleSources.add(
+			source(
+				DefinitionType.TASK,
+				"second",
+				taskCycleJson("test:warmup")
+			)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(cycleSources, functions, predicates),
+			"INVALID_GRAPH",
+			"task route cycles must fail closed"
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				replaceSource(
+					apiTwoSources,
+					DefinitionType.TASK,
+					"warmup",
+					"""
+					{
+					  "format_version": 1,
+					  "game": "test:main",
+					  "version": 1,
+					  "kind": "warmup",
+					  "name": {"text": "Skipped"},
+					  "completion_policy": "event_only",
+					  "results": [{
+					    "id": "skipped",
+					    "name": {"text": "Skipped"},
+					    "semantic": "neutral",
+					    "route": {"end_phase": "test:ready"}
+					  }]
+					}
+					"""
+				),
+				functions,
+				predicates
+			),
+			"INVALID_COMBINATION",
+			"skipped task results must fail closed"
+		);
+
+		List<Source> apiOneSources = replaceSource(
+			apiTwoSources,
+			DefinitionType.GAME,
+			"main",
+			"""
+			{
+			  "format_version": 1,
+			  "api_version": 1,
+			  "content_version": 1,
+			  "name": {"text": "Test Game"},
+			  "initial_phase": "test:setup",
+			  "default_role": "test:runner",
+			  "default_life_state": "test:alive"
+			}
+			"""
+		);
+		checkProblem(
+			DefinitionCompiler.compile(apiOneSources, functions, predicates),
+			"UNSUPPORTED_API",
+			"tasks and exclusive choices must require api v2"
+		);
+	}
+
+	private static String taskCycleJson(final String nextTask) {
+		return """
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "version": 1,
+			  "kind": "main",
+			  "name": {"text": "Cycle"},
+			  "completion_policy": "event_only",
+			  "results": [{
+			    "id": "done",
+			    "name": {"text": "Done"},
+			    "semantic": "neutral",
+			    "route": {"next_task": "%s"}
+			  }]
+			}
+			""".formatted(nextTask);
 	}
 
 	private static void checkUiDefinitionCompiler(
@@ -1478,17 +2040,16 @@ public final class FoundationSelfCheck {
 
 	private static void checkExampleDatapack() {
 		Path packRoot = Path.of("examples", "pixel-tzz-base-datapack");
-		check(Files.isDirectory(packRoot), "2C example data pack is missing");
+		check(Files.isDirectory(packRoot), "2D example data pack is missing");
+		long fileCount;
 		try (var paths = Files.walk(packRoot)) {
-			check(
-				paths.filter(Files::isRegularFile).count() == 38,
-				"2C example data pack file count changed unexpectedly"
-			);
+			fileCount = paths.filter(Files::isRegularFile).count();
+			check(fileCount == 70, "2D example data pack file count changed unexpectedly");
 		} catch (IOException error) {
-			throw new AssertionError("failed to count the 2C example data pack", error);
+			throw new AssertionError("failed to count the 2D example data pack", error);
 		}
 		Path root = packRoot.resolve("data");
-		check(Files.isDirectory(root), "2A example data pack is missing");
+		check(Files.isDirectory(root), "2D example data pack data root is missing");
 		List<Source> sources = new ArrayList<>();
 		Set<Identifier> functions = new HashSet<>();
 		Set<Identifier> predicates = new HashSet<>();
@@ -1539,17 +2100,137 @@ public final class FoundationSelfCheck {
 				);
 			}
 		} catch (IOException error) {
-			throw new AssertionError("failed to read the 2A example data pack", error);
+			throw new AssertionError("failed to read the 2D example data pack", error);
 		}
 
 		Compilation example = DefinitionCompiler.compile(sources, functions, predicates);
-		check(example.valid(), "2A example data pack must compile: " + example.problems());
+		check(example.valid(), "2D example data pack must compile: " + example.problems());
 		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
 		check(snapshot.games().size() == 1, "example must register one game");
-		check(snapshot.fields().size() == 1, "example must register one field");
-		check(snapshot.pages().size() == 10, "example must register six preview pages and four 2C fixture pages");
+		check(snapshot.fields().size() == 2, "example must register two fields");
+		check(snapshot.pages().size() == 12, "example must register preview, fixture, and readiness pages");
+		check(snapshot.tasks().size() == 3, "example must register the three-task 2D timeline");
 		check(snapshot.themes().size() == 1, "example must register one theme");
-		check(snapshot.definitionCount() == 30, "example definition count changed unexpectedly");
+		check(snapshot.definitionCount() == 42, "example definition count changed unexpectedly");
+		check(functions.size() == 26, "example callback and wrapper function count changed unexpectedly");
+		Identifier gameId = Identifier.fromNamespaceAndPath("pixel_tzz", "main");
+		Identifier warmupTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/warmup");
+		Identifier branchTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/main_branch");
+		Identifier timeoutTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/timeout_only");
+		Identifier warmupPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "warmup");
+		Identifier runningPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "running");
+		Identifier endedPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "ended");
+		var game = snapshot.games().get(gameId);
+		check(
+			game.apiVersion() == 2
+				&& game.taskTimeline().isPresent()
+				&& game.readiness().isPresent(),
+			"2D example must opt into API v2 tasks and player readiness"
+		);
+		var timeline = game.taskTimeline().orElseThrow();
+		check(
+			timeline.initialTask().equals(warmupTaskId)
+				&& timeline.approvalPhase().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "ready"))
+				&& timeline.startPhase().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "warmup")),
+			"2D example timeline entry and approval phases changed unexpectedly"
+		);
+		var warmupTask = snapshot.tasks().get(warmupTaskId);
+		var branchTask = snapshot.tasks().get(branchTaskId);
+		var timeoutTask = snapshot.tasks().get(timeoutTaskId);
+		check(
+			warmupTask.results().get("ready").route().nextTask().orElseThrow().equals(branchTaskId)
+				&& branchTask.results().get("success").route().nextTask().orElseThrow().equals(timeoutTaskId)
+				&& branchTask.results().get("failure").route().endPhase().orElseThrow().equals(endedPhaseId)
+				&& branchTask.results().get("timeout").route().endPhase().orElseThrow().equals(endedPhaseId)
+				&& timeoutTask.results().get("finished").route().endPhase().orElseThrow().equals(endedPhaseId),
+			"2D example task DAG must retain its warmup, success branch, and terminal routes"
+		);
+		check(
+			snapshot.phases()
+				.get(warmupPhaseId)
+				.onExit()
+				.orElseThrow()
+				.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_2d/phase/warmup_exit"))
+				&& snapshot.phases()
+					.get(runningPhaseId)
+					.onEnter()
+					.orElseThrow()
+					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_2d/phase/running_enter")),
+			"warmup -> running must retain observable on_exit -> on_enter acceptance callbacks"
+		);
+		var hunterRole = snapshot.roles().get(Identifier.fromNamespaceAndPath("pixel_tzz", "hunter"));
+		var runnerRole = snapshot.roles().get(Identifier.fromNamespaceAndPath("pixel_tzz", "runner"));
+		var spectatorRole = snapshot.roles().get(Identifier.fromNamespaceAndPath("pixel_tzz", "spectator"));
+		check(
+			hunterRole.tab().sortOrder().orElseThrow() < runnerRole.tab().sortOrder().orElseThrow()
+				&& runnerRole.tab().sortOrder().orElseThrow() < spectatorRole.tab().sortOrder().orElseThrow(),
+			"example TAB roles must sort hunter -> runner -> spectator after the host"
+		);
+		check(
+			hunterRole.tab().prefix().orElseThrow().plainText().endsWith(" ")
+				&& runnerRole.tab().prefix().orElseThrow().plainText().endsWith(" ")
+				&& spectatorRole.tab().prefix().orElseThrow().plainText().endsWith(" "),
+			"example TAB role prefixes must retain a readable separator before player names"
+		);
+		Identifier hunterSpawnFieldId = Identifier.fromNamespaceAndPath("pixel_tzz", "hunter_spawn");
+		var hunterSpawnField = snapshot.fields().get(hunterSpawnFieldId);
+		check(
+			hunterSpawnField.exclusiveChoice().orElseThrow().values().equals(
+				List.of("north_gate", "central_station", "south_yard")
+			),
+			"hunter spawn must remain a three-option exclusive field"
+		);
+		List<NodeDefinition> hunterSpawnNodes = new ArrayList<>();
+		collectNodes(
+			snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/spawn"))
+				.root(),
+			hunterSpawnNodes
+		);
+		NodeDefinition spawnScroll = hunterSpawnNodes.stream()
+			.filter(node -> node.id().filter("hunter_spawn_scroll"::equals).isPresent())
+			.findFirst()
+			.orElseThrow();
+		NodeDefinition spawnIntroContent = hunterSpawnNodes.stream()
+			.filter(node -> node.id().filter("hunter_spawn_intro_content"::equals).isPresent())
+			.findFirst()
+			.orElseThrow();
+		NodeDefinition spawnSelectionContent = hunterSpawnNodes.stream()
+			.filter(node -> node.id().filter("hunter_spawn_selection_content"::equals).isPresent())
+			.findFirst()
+			.orElseThrow();
+		check(
+			spawnIntroContent.layout().width().orElseThrow().mode() == SizeMode.FILL
+				&& spawnSelectionContent.layout().width().orElseThrow().mode() == SizeMode.FILL,
+			"hunter spawn card content must fill the card so labels and choices use the full row"
+		);
+		check(
+			spawnScroll.content() instanceof SingleChildContent scroll
+				&& scroll.showScrollbar()
+				&& scroll.child().content() instanceof FieldInputContent input
+				&& !input.showLabel()
+				&& !input.showDescription()
+				&& scroll.child().layout().width().orElseThrow().mode() == SizeMode.FILL
+				&& spawnScroll.layout().height().orElseThrow().mode() == SizeMode.FIXED
+				&& spawnScroll.layout().height().orElseThrow().value().orElseThrow() == 48.0,
+			"hunter spawn scroll must contain only a full-width, one-row choice-card viewport"
+		);
+		check(
+			branchTask.onStartPlayers().orElseThrow().function().equals(
+				Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_2d/timeline/deploy_hunter")
+			)
+				&& branchTask.onStartPlayers().orElseThrow().fields().equals(
+					Map.of("spawn_point", hunterSpawnFieldId)
+				),
+			"main task must bind each hunter's frozen spawn field into its start callback"
+		);
+		var enterInitializingAction = snapshot.panelActions()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "enter_initializing"));
+		check(
+			enterInitializingAction.operation() instanceof TransitionPhaseOperation transition
+				&& transition.phase().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "initializing")),
+			"enter_initializing must remain an explicit transition into the initialization phase"
+		);
 		check(
 			snapshot.pages().containsKey(Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/buttons")),
 			"example must expose the button component showcase"
@@ -1613,6 +2294,16 @@ public final class FoundationSelfCheck {
 				),
 			"button specimen content must leave an inset below its button"
 		);
+		System.out.printf(
+			"EXAMPLE_DATAPACK_COUNTS files=%d definitions=%d pages=%d fields=%d tasks=%d phases=%d functions=%d%n",
+			fileCount,
+			snapshot.definitionCount(),
+			snapshot.pages().size(),
+			snapshot.fields().size(),
+			snapshot.tasks().size(),
+			snapshot.phases().size(),
+			functions.size()
+		);
 
 		Set<Identifier> previewPages = Set.of(
 			Identifier.fromNamespaceAndPath("pixel_tzz", "tutorial/welcome"),
@@ -1635,10 +2326,13 @@ public final class FoundationSelfCheck {
 			"general 2C fixture must be a versioned briefing -> confirm -> complete flow"
 		);
 		check(
-			generalFlow.audience().roles().isEmpty()
+			generalFlow.audience().roles().equals(
+				Set.of(Identifier.fromNamespaceAndPath("pixel_tzz", "runner"))
+			)
 				&& generalFlow.audience().roleTags().isEmpty()
-				&& generalFlow.audience().excludeHost(),
-			"general initialization audience must support both runners and spectator recovery"
+				&& generalFlow.audience().excludeHost()
+				&& generalFlow.audience().onlineOnly(),
+			"general initialization must only auto-select online non-host runners"
 		);
 		check(
 			generalFlow.nodes().get("briefing") instanceof PageNode briefing
@@ -1653,20 +2347,35 @@ public final class FoundationSelfCheck {
 			"general 2C fixture confirmation page reference changed unexpectedly"
 		);
 		check(
-			hunterFlow.version() == 2 && hunterFlow.entry().equals("briefing") && hunterFlow.nodes().size() == 3,
-			"hunter 2C fixture must be a versioned briefing -> confirm -> complete flow"
+			hunterFlow.version() == 3 && hunterFlow.entry().equals("briefing") && hunterFlow.nodes().size() == 4,
+			"hunter 2D fixture must be a versioned briefing -> choice -> confirm -> complete flow"
 		);
 		check(
 			hunterFlow.nodes().get("briefing") instanceof PageNode briefing
 				&& briefing.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/briefing"))
-				&& briefing.next().equals("confirm"),
-			"hunter 2C fixture briefing page reference changed unexpectedly"
+				&& briefing.next().equals("choose_spawn"),
+			"hunter 2D fixture briefing page reference changed unexpectedly"
+		);
+		check(
+			hunterFlow.nodes().get("choose_spawn") instanceof ChoiceNode choice
+				&& choice.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/spawn"))
+				&& choice.field().equals(hunterSpawnFieldId)
+				&& choice.choices().stream().map(route -> route.value()).toList().equals(
+					List.of("north_gate", "central_station", "south_yard")
+				)
+				&& choice.choices().stream().allMatch(route -> route.next().equals("confirm")),
+			"hunter 2D fixture must route all three exclusive spawn choices into confirmation"
 		);
 		check(
 			hunterFlow.nodes().get("confirm") instanceof ConfirmNode confirmation
 				&& confirmation.page().equals(Identifier.fromNamespaceAndPath("pixel_tzz", "fixture/hunter/confirm"))
-				&& confirmation.next().equals("done"),
-			"hunter 2C fixture confirmation page reference changed unexpectedly"
+				&& confirmation.next().equals("done")
+				&& confirmation.back().filter("choose_spawn"::equals).isPresent(),
+			"hunter 2D fixture confirmation page reference changed unexpectedly"
+		);
+		check(
+			hunterFlow.nodes().get("done") instanceof CompleteNode,
+			"hunter 2D fixture must terminate after confirmation"
 		);
 		check(
 			snapshot.flows()
@@ -1759,7 +2468,16 @@ public final class FoundationSelfCheck {
 		);
 		DefinitionSnapshot fixtureSnapshot = snapshot.withGeneration(8L);
 		var generalFreeze = ExecutionSnapshotCompiler.freeze(fixtureSnapshot, generalFlow, generalAction);
-		check(generalFreeze.success(), "general 2C fixture must satisfy the executable page contract");
+		check(
+			generalFreeze.success(),
+			"general 2D fixture must satisfy the executable page contract: "
+				+ generalFreeze.code()
+				+ " at "
+				+ generalFreeze.nodeId()
+				+ " ("
+				+ generalFreeze.message()
+				+ ")"
+		);
 		check(
 			generalFreeze.compiled().orElseThrow().panelActions().containsKey(generalAction.id()),
 			"restored execution snapshot must retain its source panel action"

@@ -7,15 +7,18 @@
   "description": {
     "text": "本轮游戏的普通参与者。"
   },
+  "initialization_flow": "pixel_tzz:general_tutorial",
   "tags": [
     "pixel_tzz:general_initialization",
     "pixel_tzz:ready_participant",
-    "pixel_tzz:disconnect_notice"
+    "pixel_tzz:disconnect_notice",
+    "pixel_tzz:active_participant"
   ],
   "tab": {
     "prefix": {
-      "text": "[逃走者]"
+      "text": "[逃走者] "
     },
-    "color": "#65D68A"
+    "color": "#65D68A",
+    "sort_order": 200
   }
 }
