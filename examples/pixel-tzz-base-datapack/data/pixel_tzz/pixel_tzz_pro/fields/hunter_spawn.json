@@ -1,0 +1,60 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "猎人出生点"
+  },
+  "description": {
+    "text": "每名猎人在本局中独占一个由数据包注册的部署位置。"
+  },
+  "scope": "player",
+  "type": "exclusive_choice",
+  "required": true,
+  "editable_by": "player",
+  "invalidates_ready": true,
+  "roles": [
+    "pixel_tzz:hunter"
+  ],
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "migration": "preserve",
+  "reservation_scope": "game_instance",
+  "release_when_role_mismatch": true,
+  "show_occupant": true,
+  "options": [
+    {
+      "value": "north_gate",
+      "name": {
+        "text": "北门"
+      },
+      "description": {
+        "text": "从地图北侧入口开始部署。"
+      },
+      "icon": "minecraft:iron_door"
+    },
+    {
+      "value": "central_station",
+      "name": {
+        "text": "中央站"
+      },
+      "description": {
+        "text": "从地图中央交通节点开始部署。"
+      },
+      "icon": "minecraft:minecart"
+    },
+    {
+      "value": "south_yard",
+      "name": {
+        "text": "南侧场地"
+      },
+      "description": {
+        "text": "从地图南侧开阔区域开始部署。"
+      },
+      "icon": "minecraft:compass"
+    }
+  ]
+}

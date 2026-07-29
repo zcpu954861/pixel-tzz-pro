@@ -53,16 +53,31 @@ public record WorldStateV2(
 	public static final int MAX_SNAPSHOT_PAGES = 64;
 	public static final int MAX_SNAPSHOT_THEMES = 8;
 	public static final int MAX_SNAPSHOT_UTF8_BYTES = 2 * 1_024 * 1_024;
+	/**
+	 * NBT strings are serialized through {@link java.io.DataOutput#writeUTF(String)}, whose
+	 * modified-UTF payload is limited to 65,535 bytes. Minecraft deliberately replaces an
+	 * oversized string with an empty string instead of aborting the whole save. Keeping frozen
+	 * documents in much smaller character chunks prevents a valid snapshot from being silently
+	 * blanked during a normal world save. 16,384 UTF-16 code units remain below the limit even
+	 * when every code unit needs three modified-UTF bytes.
+	 */
+	public static final int MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS = 16_384;
+	public static final int MAX_FROZEN_DOCUMENT_CHUNKS =
+		(MAX_SNAPSHOT_UTF8_BYTES / MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS) + 1;
 	public static final int MAX_MEMBER_FIELD_UTF8_BYTES = 64 * 1_024;
 
-	private static final Codec<Map<UUID, PlayerRecord>> PLAYERS_CODEC = PlayerRecord.CODEC
-		.sizeLimitedListOf(MAX_PLAYER_RECORDS)
-		.comapFlatMap(
-			records -> indexByUuid(records, PlayerRecord::playerId, "player"),
-			records -> List.copyOf(records.values())
+	private static final Codec<Map<UUID, PlayerRecord>> PLAYERS_CODEC = Codec.lazyInitialized(
+		() -> PlayerRecord.CODEC
+			.sizeLimitedListOf(MAX_PLAYER_RECORDS)
+			.comapFlatMap(
+				records -> indexByUuid(records, PlayerRecord::playerId, "player"),
+				records -> List.copyOf(records.values())
+			)
+	);
+	private static final Codec<List<CompletionRecord>> COMPLETION_HISTORY_CODEC =
+		Codec.lazyInitialized(
+			() -> CompletionRecord.CODEC.sizeLimitedListOf(MAX_COMPLETION_HISTORY)
 		);
-	private static final Codec<List<CompletionRecord>> COMPLETION_HISTORY_CODEC = CompletionRecord.CODEC
-		.sizeLimitedListOf(MAX_COMPLETION_HISTORY);
 
 	public static final Codec<WorldStateV2> CODEC = Codec.lazyInitialized(
 		WorldStateV2::createCodec
@@ -1433,15 +1448,22 @@ public record WorldStateV2(
 	}
 
 	public record FrozenDocument(String normalizedJson, String sha256) {
+		private static final Codec<List<String>> CHUNKS_CODEC = Codec
+			.sizeLimitedString(MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS)
+			.sizeLimitedListOf(MAX_FROZEN_DOCUMENT_CHUNKS);
+
 		public static final Codec<FrozenDocument> CODEC = RecordCodecBuilder.<FrozenDocument>create(
 			instance -> instance.group(
 					Codec.sizeLimitedString(MAX_SNAPSHOT_UTF8_BYTES)
-						.fieldOf("normalized_json")
-						.forGetter(FrozenDocument::normalizedJson),
+						.optionalFieldOf("normalized_json")
+						.forGetter(ignored -> Optional.empty()),
+					CHUNKS_CODEC
+						.optionalFieldOf("normalized_json_chunks")
+						.forGetter(document -> Optional.of(chunks(document.normalizedJson))),
 					Codec.sizeLimitedString(64).fieldOf("sha256").forGetter(FrozenDocument::sha256)
 				)
-				.apply(instance, FrozenDocument::new)
-		).validate(FrozenDocument::validated);
+				.apply(instance, FrozenDocument::decode)
+		).validate(FrozenDocument::storageValidated);
 
 		public FrozenDocument {
 			Objects.requireNonNull(normalizedJson, "normalizedJson");
@@ -1450,6 +1472,63 @@ public record WorldStateV2(
 
 		public static FrozenDocument of(final String normalizedJson) {
 			return new FrozenDocument(normalizedJson, sha256Utf8(normalizedJson));
+		}
+
+		/**
+		 * Identifies the exact fail-safe representation written by Minecraft when an old,
+		 * oversized single-string snapshot exceeded the NBT modified-UTF limit. The retained
+		 * digest lets startup recover only from a freshly compiled byte-for-byte match.
+		 */
+		public boolean hasMissingContent() {
+			return this.normalizedJson.isEmpty()
+				&& validSha256(this.sha256)
+				&& !this.sha256.equals(sha256Utf8(""));
+		}
+
+		private static FrozenDocument decode(
+			final Optional<String> legacy,
+			final Optional<List<String>> chunks,
+			final String sha256
+		) {
+			if (legacy.isPresent() == chunks.isPresent()) {
+				return new FrozenDocument("", "");
+			}
+			if (chunks.isPresent()) {
+				List<String> values = chunks.orElseThrow();
+				if (values.isEmpty() || values.stream().anyMatch(String::isEmpty)) {
+					return new FrozenDocument("", "");
+				}
+				StringBuilder joined = new StringBuilder();
+				values.forEach(joined::append);
+				return new FrozenDocument(joined.toString(), sha256);
+			}
+			return new FrozenDocument(legacy.orElseThrow(), sha256);
+		}
+
+		private static List<String> chunks(final String value) {
+			if (value.isEmpty()) {
+				return List.of("");
+			}
+			List<String> chunks = new ArrayList<>(
+				(value.length() + MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS - 1)
+					/ MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS
+			);
+			for (int start = 0; start < value.length(); start += MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS) {
+				chunks.add(
+					value.substring(
+						start,
+						Math.min(value.length(), start + MAX_FROZEN_DOCUMENT_CHUNK_CHARACTERS)
+					)
+				);
+			}
+			return List.copyOf(chunks);
+		}
+
+		private DataResult<FrozenDocument> storageValidated() {
+			if (hasMissingContent()) {
+				return DataResult.success(this);
+			}
+			return validated();
 		}
 
 		private DataResult<FrozenDocument> validated() {
@@ -1796,12 +1875,17 @@ public record WorldStateV2(
 		MEMBER_ADDED("member_added"),
 		MEMBER_REMOVED("member_removed"),
 		MEMBER_COMPLETED("member_completed"),
+		READINESS_OPENED("readiness_opened"),
+		READINESS_INVALIDATED("readiness_invalidated"),
+		READINESS_COMPLETED("readiness_completed"),
 		ROLE_CHANGE_CREATED("role_change_created"),
 		ROLE_CHANGE_APPLIED("role_change_applied"),
 		ROLE_CHANGE_CANCELED("role_change_canceled"),
 		ROLE_CHANGE_BLOCKED("role_change_blocked"),
 		CALLBACK_FAILED("callback_failed"),
 		CALLBACK_RETRIED("callback_retried"),
+		PHASE_TRANSITIONED("phase_transitioned"),
+		TIMELINE_CONTROL("timeline_control"),
 		SCHEMA_MIGRATED("schema_migrated"),
 		RECOVERY_CREATED("recovery_created"),
 		REQUEST_REJECTED("request_rejected");

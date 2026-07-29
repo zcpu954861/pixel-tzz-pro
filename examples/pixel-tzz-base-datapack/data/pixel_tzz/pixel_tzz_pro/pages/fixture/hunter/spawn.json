@@ -1,0 +1,323 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "选择猎人出生点"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "hunter_spawn_fixture",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 18,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "hunter_target",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "id": "hunter_spawn_intro_content",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 5,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "hunter_eyebrow",
+              "text": {
+                "text": "EXCLUSIVE DEPLOYMENT / 独占部署"
+              }
+            },
+            {
+              "type": "text",
+              "style": "hunter_title",
+              "text": {
+                "text": "选择一个未被占用的出生点"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "出生点由本次游戏数据包提供。点击选项会立即向服务端预约；其他猎人的选择会实时显示占用状态，改选会原子交换预约。"
+              },
+              "wrap": true,
+              "max_lines": 4,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "broadcast_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "id": "hunter_spawn_selection_content",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 8,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 12,
+                "cross_align": "start"
+              },
+              "responsive": {
+                "compact": {
+                  "type": "column",
+                  "layout": {
+                    "gap": 4,
+                    "cross_align": "stretch"
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "text": {
+                    "text": "SPAWN RESERVATION / 出生点预约"
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 3,
+                    "cross_align": "stretch"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "猎人出生点  /  必选"
+                      },
+                      "text_align": "right"
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "每名猎人在本局中独占一个由数据包注册的部署位置。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "right"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "scroll",
+              "id": "hunter_spawn_scroll",
+              "direction": "vertical",
+              "show_scrollbar": true,
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fixed",
+                  "value": 48
+                }
+              },
+              "child": {
+                "type": "field_input",
+                "id": "hunter_spawn",
+                "field": "pixel_tzz:hunter_spawn",
+                "presentation": "choice_cards",
+                "show_label": false,
+                "show_description": false,
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "text",
+          "style": "rule_body",
+          "layout": {
+            "padding": {
+              "vertical": 7,
+              "horizontal": 9
+            }
+          },
+          "text": {
+            "text": "点击出生点即建立临时预约；再次点击自己的预约会释放它。下方按钮只推进流程，最终确认后服务端才会锁定该位置。"
+          },
+          "wrap": true,
+          "max_lines": 3,
+          "overflow": "ellipsis",
+          "text_align": "left"
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 6,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "utility_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "第 2 步 / 共 3 步  ·  RESERVE"
+            }
+          },
+          {
+            "type": "button",
+            "id": "submit_hunter_spawn",
+            "style": "primary_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 184
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "确认选择并继续"
+            },
+            "enabled_when": {
+              "exists": {
+                "bind": "ui/hunter_spawn/value"
+              }
+            },
+            "disabled_reason": {
+              "text": "请先选择一个可用出生点"
+            },
+            "action": {
+              "type": "flow",
+              "name": "submit"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

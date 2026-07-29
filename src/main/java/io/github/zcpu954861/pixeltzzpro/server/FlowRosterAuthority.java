@@ -31,6 +31,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerFlowParticipati
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RemovalRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.RequestSequenceWindow;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -674,7 +675,8 @@ public final class FlowRosterAuthority {
 					copyPlayer(
 						player,
 						roleId,
-						player.pendingRoleChange(),
+						// A direct assignment cannot carry a previous identity-flow credential.
+						Optional.empty(),
 						Optional.empty(),
 						player.lastKnownName(),
 						player.lastSeenAtEpochMillis()
@@ -700,6 +702,199 @@ public final class FlowRosterAuthority {
 		} catch (ArithmeticException | IllegalArgumentException | NullPointerException error) {
 			return Result.failed(OperationCode.INTERNAL_ERROR, safeMessage(error));
 		}
+	}
+
+	/**
+	 * Schema-v3 member addition with the same exclusive-field capacity preflight used by a fresh
+	 * flow start. Adding members must not turn a viable flow into one that cannot be completed.
+	 */
+	public static V3Result addMembers(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final UUID actorId,
+		final UUID instanceId,
+		final long expectedInstanceRevision,
+		final List<OnlineMember> additions,
+		final Supplier<UUID> pageInstanceIds,
+		final long occurredAtEpochMillis,
+		final UUID gameScopeId
+	) {
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(definitions, "definitions");
+		Objects.requireNonNull(gameScopeId, "gameScopeId");
+		if (state.activeGameInstanceId().filter(gameScopeId::equals).isEmpty()) {
+			return V3Result.failed(
+				OperationCode.FLOW_INSTANCE_MISMATCH,
+				"exclusive scope is not the active game instance"
+			);
+		}
+		Result coreResult = addMembers(
+			state.core(),
+			actorId,
+			instanceId,
+			expectedInstanceRevision,
+			additions,
+			pageInstanceIds,
+			occurredAtEpochMillis
+		);
+		if (!coreResult.successful()) {
+			return V3Result.failed(coreResult.code(), coreResult.message());
+		}
+		WorldStateV3 candidate = state.withCore(coreResult.nextState().orElseThrow());
+		ForcedFlowAuthority.CapacityFailure capacityFailure =
+			ForcedFlowAuthority.exclusiveCapacityFailure(
+				candidate,
+				definitions,
+				gameScopeId
+			);
+		if (capacityFailure != null) {
+			return V3Result.failed(capacityFailure.code(), capacityFailure.message());
+		}
+		return candidate.validated().result().isPresent()
+			? V3Result.succeeded(candidate, coreResult.becameCompleted())
+			: V3Result.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 member addition failed state validation"
+			);
+	}
+
+	/**
+	 * Schema-v3 member removal that also releases this member's temporary exclusive selections.
+	 */
+	public static V3Result removeMembers(
+		final WorldStateV3 state,
+		final UUID actorId,
+		final UUID instanceId,
+		final long expectedInstanceRevision,
+		final List<UUID> targetIds,
+		final String reason,
+		final long occurredAtEpochMillis,
+		final long serverTick
+	) {
+		Objects.requireNonNull(state, "state");
+		Result coreResult = removeMembers(
+			state.core(),
+			actorId,
+			instanceId,
+			expectedInstanceRevision,
+			targetIds,
+			reason,
+			occurredAtEpochMillis
+		);
+		if (!coreResult.successful()) {
+			return V3Result.failed(coreResult.code(), coreResult.message());
+		}
+		WorldStateV3 candidate = state.withCore(coreResult.nextState().orElseThrow());
+		ExclusiveChoiceAuthority.Result released = ExclusiveChoiceAuthority.cancelHeld(
+			candidate,
+			instanceId,
+			Set.copyOf(targetIds),
+			serverTick
+		);
+		if (!released.accepted()) {
+			return V3Result.failed(released.code(), released.message());
+		}
+		candidate = released.nextState().orElse(candidate);
+		return candidate.validated().result().isPresent()
+			? V3Result.succeeded(candidate, coreResult.becameCompleted())
+			: V3Result.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 member removal failed state validation"
+			);
+	}
+
+	/**
+	 * Schema-v3 cancellation that releases every temporary selection owned by the canceled flow.
+	 */
+	public static V3Result cancelFlow(
+		final WorldStateV3 state,
+		final UUID actorId,
+		final UUID instanceId,
+		final long expectedInstanceRevision,
+		final String reason,
+		final long occurredAtEpochMillis,
+		final long serverTick
+	) {
+		Objects.requireNonNull(state, "state");
+		ForcedFlowInstance instance = state.core().activeForcedFlow().orElse(null);
+		Result coreResult = cancelFlow(
+			state.core(),
+			actorId,
+			instanceId,
+			expectedInstanceRevision,
+			reason,
+			occurredAtEpochMillis
+		);
+		if (!coreResult.successful()) {
+			return V3Result.failed(coreResult.code(), coreResult.message());
+		}
+		Set<UUID> owners = instance == null
+			? Set.of()
+			: Set.copyOf(instance.runtime().members().keySet());
+		WorldStateV3 candidate = state.withCore(coreResult.nextState().orElseThrow());
+		ExclusiveChoiceAuthority.Result released = ExclusiveChoiceAuthority.cancelHeld(
+			candidate,
+			instanceId,
+			owners,
+			serverTick
+		);
+		if (!released.accepted()) {
+			return V3Result.failed(released.code(), released.message());
+		}
+		candidate = released.nextState().orElse(candidate);
+		return candidate.validated().result().isPresent()
+			? V3Result.succeeded(candidate, false)
+			: V3Result.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 flow cancellation failed state validation"
+			);
+	}
+
+	/**
+	 * Immediate role assignment composed with configured exclusive-lock release.
+	 */
+	public static V3Result assignRoleImmediate(
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final UUID actorId,
+		final long expectedStateRevision,
+		final Identifier roleId,
+		final List<UUID> targetIds,
+		final long occurredAtEpochMillis,
+		final UUID gameScopeId,
+		final long serverTick
+	) {
+		Objects.requireNonNull(state, "state");
+		Result coreResult = assignRoleImmediate(
+			state.core(),
+			definitions,
+			actorId,
+			expectedStateRevision,
+			roleId,
+			targetIds,
+			occurredAtEpochMillis
+		);
+		if (!coreResult.successful()) {
+			return V3Result.failed(coreResult.code(), coreResult.message());
+		}
+		WorldStateV3 candidate = state.withCore(coreResult.nextState().orElseThrow());
+		ExclusiveChoiceAuthority.Result released =
+			ExclusiveChoiceAuthority.releaseRoleMismatches(
+				candidate,
+				definitions,
+				gameScopeId,
+				serverTick
+			);
+		if (!released.accepted()) {
+			return V3Result.failed(released.code(), released.message());
+		}
+		candidate = released.nextState().orElse(candidate);
+		return candidate.validated().result().isPresent()
+			? V3Result.succeeded(candidate, false)
+			: V3Result.failed(
+				OperationCode.INTERNAL_ERROR,
+				"schema-v3 immediate role assignment failed state validation"
+			);
 	}
 
 	private static Failure preflight(
@@ -1276,6 +1471,45 @@ public final class FlowRosterAuthority {
 
 		private static Result failed(final OperationCode code, final String message) {
 			return new Result(code, message, Optional.empty(), false);
+		}
+	}
+
+	public record V3Result(
+		OperationCode code,
+		String message,
+		Optional<WorldStateV3> nextState,
+		boolean becameCompleted
+	) {
+		public V3Result {
+			code = Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			nextState = Objects.requireNonNull(nextState, "nextState");
+			if (
+				(code == OperationCode.SUCCESS) != nextState.isPresent()
+					|| (becameCompleted && code != OperationCode.SUCCESS)
+			) {
+				throw new IllegalArgumentException("schema-v3 roster result is inconsistent");
+			}
+		}
+
+		public boolean successful() {
+			return this.code == OperationCode.SUCCESS;
+		}
+
+		private static V3Result succeeded(
+			final WorldStateV3 state,
+			final boolean becameCompleted
+		) {
+			return new V3Result(
+				OperationCode.SUCCESS,
+				"",
+				Optional.of(state),
+				becameCompleted
+			);
+		}
+
+		private static V3Result failed(final OperationCode code, final String message) {
+			return new V3Result(code, message, Optional.empty(), false);
 		}
 	}
 

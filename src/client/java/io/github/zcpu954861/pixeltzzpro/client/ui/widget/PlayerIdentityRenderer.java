@@ -66,7 +66,7 @@ public final class PlayerIdentityRenderer {
 		graphics.text(font, online, onlineX, y + 5, onlineColor, false);
 		graphics.text(
 			font,
-			font.plainSubstrByWidth(target.name(), Math.max(24, onlineX - textX - 8)),
+			ellipsize(font, target.name(), Math.max(24, onlineX - textX - 8)),
 			textX,
 			y + 5,
 			target.online() ? MAIN_TEXT : MUTED_TEXT,
@@ -80,7 +80,7 @@ public final class PlayerIdentityRenderer {
 			: detailOverride;
 		graphics.text(
 			font,
-			font.plainSubstrByWidth(detail, Math.max(24, width - (textX - x) - 9)),
+			ellipsize(font, detail, Math.max(24, width - (textX - x) - 9)),
 			textX,
 			y + height - 12,
 			detailOverride == null ? completionColor(target) : detailColorOverride,
@@ -248,5 +248,14 @@ public final class PlayerIdentityRenderer {
 			case "blocked" -> DANGER;
 			default -> MUTED_TEXT;
 		};
+	}
+
+	public static String ellipsize(final Font font, final String value, final int maximumWidth) {
+		if (font.width(value) <= maximumWidth) {
+			return value;
+		}
+		String suffix = "...";
+		int contentWidth = Math.max(0, maximumWidth - font.width(suffix));
+		return font.plainSubstrByWidth(value, contentWidth) + suffix;
 	}
 }

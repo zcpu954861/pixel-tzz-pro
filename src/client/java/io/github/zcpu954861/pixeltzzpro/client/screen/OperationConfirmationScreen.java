@@ -25,6 +25,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -48,8 +49,6 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 	private boolean reviewing;
 	private boolean submitAfterReview;
 	private boolean renewalRequested;
-	private boolean refreshingContext;
-	private long reviewAfterConsoleRevision = Long.MIN_VALUE;
 	private UUID observedToken;
 
 	OperationConfirmationScreen(final Screen returnTo, final ActionEntry action) {
@@ -129,7 +128,7 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 					new AffectedPlayersScreen(
 						this,
 						this.action,
-						confirmation.targets()
+						orderedTargets(confirmation.targets())
 					)
 				),
 				Variant.NORMAL
@@ -155,19 +154,6 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 	@Override
 	public void tick() {
 		super.tick();
-		if (
-			this.refreshingContext
-				&& ClientConsoleState.consoleResponseRevision() > this.reviewAfterConsoleRevision
-		) {
-			this.refreshingContext = false;
-			if (ClientConsoleState.refreshOperation(this.action, this.reviewTargets)) {
-				this.renewalRequested = true;
-			} else {
-				this.reviewing = false;
-				this.submitAfterReview = false;
-				updatePrimaryButton();
-			}
-		}
 		continueAutomaticRenewal();
 		ConfirmationS2CPayload confirmation = ClientConsoleState.confirmation().orElse(null);
 		if (confirmation != null && !confirmation.tokenId().equals(this.observedToken)) {
@@ -216,7 +202,6 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 			this.reviewing = false;
 			this.submitAfterReview = false;
 			this.renewalRequested = false;
-			this.refreshingContext = false;
 			this.observedToken = null;
 			rebuildWidgets();
 			return;
@@ -384,12 +369,13 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		final int width,
 		final int height
 	) {
-		if (confirmation.targets().isEmpty()) {
+		List<Target> targets = orderedTargets(confirmation.targets());
+		if (targets.isEmpty()) {
 			return;
 		}
 		graphics.text(
 			this.font,
-			"影响玩家  ·  %d 人".formatted(confirmation.targets().size()),
+			"影响玩家  ·  %d 人".formatted(targets.size()),
 			x + 18,
 			y + 71,
 			INFO_CYAN,
@@ -398,11 +384,11 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		if (height < 250) {
 			return;
 		}
-		if (confirmation.targets().size() == 1) {
+		if (targets.size() == 1) {
 			PlayerIdentityRenderer.drawCompactIdentity(
 				graphics,
 				this.font,
-				confirmation.targets().getFirst(),
+				targets.getFirst(),
 				x + 18,
 				y + 87,
 				width - 36
@@ -423,13 +409,13 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		);
 		graphics.fill(cardX, cardY, cardX + 3, cardY + TARGET_SUMMARY_HEIGHT, INFO_CYAN);
 
-		int stackCount = Math.min(2, confirmation.targets().size());
+		int stackCount = Math.min(2, targets.size());
 		int headSize = 22;
 		int headStep = 14;
 		int headX = cardX + 10;
 		int headY = cardY + 8;
 		for (int index = stackCount - 1; index >= 0; index--) {
-			Target target = confirmation.targets().get(index);
+			Target target = targets.get(index);
 			int currentX = headX + index * headStep;
 			graphics.fill(
 				currentX - 1,
@@ -448,7 +434,7 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 				false
 			);
 		}
-		if (confirmation.targets().size() > stackCount) {
+		if (targets.size() > stackCount) {
 			int stackRight = headX + headSize + (stackCount - 1) * headStep;
 			int badgeX = stackRight - 11;
 			int badgeY = headY + headSize - 9;
@@ -473,8 +459,8 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		int detailsWidth = Math.min(126, Math.max(88, width / 5));
 		int detailsX = x + width - 24 - detailsWidth;
 		String summary = "%s 等 %d 人".formatted(
-			confirmation.targets().getFirst().name(),
-			confirmation.targets().size()
+			targets.getFirst().name(),
+			targets.size()
 		);
 		graphics.text(
 			this.font,
@@ -559,7 +545,6 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		this.reviewing = true;
 		this.submitted = false;
 		this.renewalRequested = false;
-		this.refreshingContext = false;
 		continueAutomaticRenewal();
 		updatePrimaryButton();
 	}
@@ -568,14 +553,12 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		if (
 			!this.reviewing
 				|| this.renewalRequested
-				|| this.refreshingContext
 				|| ClientConsoleState.pending()
 		) {
 			return;
 		}
-		this.reviewAfterConsoleRevision = ClientConsoleState.consoleResponseRevision();
-		if (ClientConsoleState.requestConsole()) {
-			this.refreshingContext = true;
+		if (ClientConsoleState.refreshOperation(this.action, renewalTargetIds())) {
+			this.renewalRequested = true;
 		} else {
 			this.submitAfterReview = false;
 			this.reviewing = false;
@@ -587,7 +570,6 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		ClientConsoleState.clearResult();
 		this.submitAfterReview = false;
 		this.renewalRequested = false;
-		this.refreshingContext = false;
 		this.reviewing = true;
 		this.submitted = false;
 		continueAutomaticRenewal();
@@ -612,6 +594,19 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 	private void rememberReview(final ConfirmationS2CPayload confirmation) {
 		this.reviewTargets = confirmation.targets().stream().map(Target::playerId).toList();
 		this.observedToken = confirmation.tokenId();
+	}
+
+	private static List<Target> orderedTargets(final List<Target> targets) {
+		return targets.stream()
+			.sorted(
+				Comparator.comparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+					.thenComparing(Target::playerId)
+			)
+			.toList();
+	}
+
+	private List<UUID> renewalTargetIds() {
+		return this.action.targetMode().equals("none") ? List.of() : this.reviewTargets;
 	}
 
 	private Component confirmLabel() {

@@ -7,6 +7,21 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.Audience;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceRoute;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.CompleteNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.EditPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ExclusiveChoiceDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ExclusiveChoiceOption;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldConstraints;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationStrategy;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldScope;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldType;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FlowDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.NodeScope;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ReservationScope;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TabStyle;
@@ -15,7 +30,9 @@ import io.github.zcpu954861.pixeltzzpro.server.FlowBlockAuthority;
 import io.github.zcpu954861.pixeltzzpro.server.FlowRosterAuthority;
 import io.github.zcpu954861.pixeltzzpro.server.FlowRosterAuthority.OnlineMember;
 import io.github.zcpu954861.pixeltzzpro.server.FlowRosterAuthority.Result;
+import io.github.zcpu954861.pixeltzzpro.server.FlowRosterAuthority.V3Result;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditEventType;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditLog;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.BlockDiagnostic;
@@ -89,6 +106,7 @@ public final class FlowRosterAuthoritySelfCheck {
 		WorldStateV2.initial();
 		checkAddMembers();
 		checkAddFailures();
+		checkExclusiveCapacityOnAdd();
 		checkFrozenTargetPolicy();
 		checkRemoval();
 		checkCallbackFailureRemovalFence();
@@ -269,6 +287,43 @@ public final class FlowRosterAuthoritySelfCheck {
 				&& initialized.lastSeenAtEpochMillis() == NOW,
 			"first-seen timestamps"
 		);
+	}
+
+	private static void checkExclusiveCapacityOnAdd() {
+		WorldStateV2 core = flowState(
+			FlowInstanceStatus.ACTIVE,
+			CompletionPolicy.ALWAYS,
+			Map.of(MEMBER_ID, member(MEMBER_ID, FlowMemberStatus.IN_PROGRESS)),
+			Map.of(),
+			Set.of(NEW_MEMBER_ID),
+			List.of()
+		);
+		UUID gameScopeId = uuid(300);
+		WorldStateV3 state = new WorldStateV3(
+			WorldStateV3.SCHEMA_VERSION,
+			core,
+			Optional.of(gameScopeId),
+			Optional.empty(),
+			List.of(),
+			List.of()
+		);
+		V3Result result = FlowRosterAuthority.addMembers(
+			state,
+			exclusiveDefinitions(),
+			HOST_ID,
+			INSTANCE_ID,
+			INSTANCE_REVISION,
+			List.of(new OnlineMember(NEW_MEMBER_ID, "New Runner", true)),
+			() -> NEW_PAGE_ID,
+			NOW,
+			gameScopeId
+		);
+		check(
+			result.code() == OperationCode.EXCLUSIVE_REQUIREMENT_INCOMPLETE,
+			"exclusive capacity must reject a roster larger than its option set"
+		);
+		check(result.nextState().isEmpty(), "failed exclusive-capacity add produced state");
+		check(state.core().equals(core), "failed exclusive-capacity add mutated its input");
 	}
 
 	private static void checkAddFailures() {
@@ -1608,6 +1663,94 @@ public final class FlowRosterAuthoritySelfCheck {
 			empty.phases(),
 			empty.fields(),
 			empty.flows(),
+			empty.panelActions(),
+			empty.pages(),
+			empty.themes(),
+			empty.sourceDocuments(),
+			empty.functions(),
+			empty.predicates(),
+			empty.predicateDocuments()
+		);
+	}
+
+	private static DefinitionSnapshot exclusiveDefinitions() {
+		Identifier fieldId = id("test:spawn");
+		RichText name = new RichText("{\"text\":\"Spawn\"}", "Spawn");
+		ExclusiveChoiceOption option = new ExclusiveChoiceOption(
+			"only",
+			new RichText("{\"text\":\"Only\"}", "Only"),
+			Optional.empty(),
+			Optional.empty(),
+			Optional.empty()
+		);
+		FieldDefinition field = new FieldDefinition(
+			fieldId,
+			GAME_ID,
+			1,
+			name,
+			Optional.empty(),
+			FieldScope.PLAYER,
+			FieldType.EXCLUSIVE_CHOICE,
+			true,
+			Optional.empty(),
+			EditPolicy.PLAYER,
+			false,
+			Set.of(RUNNER_ROLE_ID),
+			Set.of(PHASE_ID),
+			Optional.empty(),
+			FieldMigrationStrategy.PRESERVE,
+			new FieldConstraints(
+				Optional.empty(),
+				Optional.empty(),
+				Optional.empty(),
+				Optional.empty(),
+				List.of("only"),
+				Optional.empty(),
+				Optional.empty()
+			),
+			Optional.of(
+				new ExclusiveChoiceDefinition(
+					ReservationScope.GAME_INSTANCE,
+					true,
+					false,
+					List.of(option)
+				)
+			)
+		);
+		FlowDefinition flow = new FlowDefinition(
+			FLOW_ID,
+			GAME_ID,
+			1,
+			name,
+			"entry",
+			Audience.everyoneExceptHost(),
+			true,
+			Optional.empty(),
+			Optional.empty(),
+			Optional.empty(),
+			Optional.empty(),
+			Map.of(
+				"entry",
+				new ChoiceNode(
+					"entry",
+					id("test:choose"),
+					fieldId,
+					List.of(new ChoiceRoute("only", "done"))
+				),
+				"done",
+				new CompleteNode("done", NodeScope.PLAYER)
+			)
+		);
+		DefinitionSnapshot empty = DefinitionSnapshot.empty();
+		return new DefinitionSnapshot(
+			1L,
+			empty.games(),
+			empty.roles(),
+			empty.teams(),
+			empty.lifeStates(),
+			empty.phases(),
+			Map.of(fieldId, field),
+			Map.of(FLOW_ID, flow),
 			empty.panelActions(),
 			empty.pages(),
 			empty.themes(),

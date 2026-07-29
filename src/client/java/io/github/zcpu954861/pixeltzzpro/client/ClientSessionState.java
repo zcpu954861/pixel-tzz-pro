@@ -1,9 +1,10 @@
 package io.github.zcpu954861.pixeltzzpro.client;
 
-import io.github.zcpu954861.pixeltzzpro.lifecycle.GamePhase;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
+import java.util.Optional;
+import net.minecraft.resources.Identifier;
 
 /**
  * Read-only client projection of the authoritative server snapshot.
@@ -35,10 +36,8 @@ public final class ClientSessionState {
 			return false;
 		}
 
-		GamePhase phase = GamePhase.bySerializedName(payload.phase()).orElse(null);
 		if (
-			phase == null
-				|| !isKnownDefinitionStatus(payload.definitionStatus())
+			!isKnownDefinitionStatus(payload.definitionStatus())
 				|| payload.definitionGeneration() < 0L
 				|| payload.gameDefinitionCount() < 0
 				|| payload.definitionCount() < 0
@@ -51,7 +50,7 @@ public final class ClientSessionState {
 			ConnectionStatus.READY,
 			payload.protocolVersion(),
 			snapshot.serverModVersion(),
-			phase,
+			payload.phaseId(),
 			payload.adminEligible(),
 			payload.hostAssigned(),
 			payload.currentPlayerHost(),
@@ -100,7 +99,7 @@ public final class ClientSessionState {
 		ConnectionStatus status,
 		int serverProtocolVersion,
 		String serverModVersion,
-		GamePhase phase,
+		Optional<Identifier> phaseId,
 		boolean adminEligible,
 		boolean hostAssigned,
 		boolean currentPlayerHost,
@@ -119,7 +118,7 @@ public final class ClientSessionState {
 				ConnectionStatus.WAITING,
 				0,
 				"—",
-				GamePhase.IDLE,
+				Optional.empty(),
 				false,
 				false,
 				false,
@@ -140,7 +139,7 @@ public final class ClientSessionState {
 				ConnectionStatus.OFFLINE,
 				0,
 				"—",
-				GamePhase.IDLE,
+				Optional.empty(),
 				false,
 				false,
 				false,
@@ -161,7 +160,7 @@ public final class ClientSessionState {
 				newStatus,
 				protocolVersion,
 				modVersion,
-				this.phase,
+				this.phaseId,
 				this.adminEligible,
 				this.hostAssigned,
 				this.currentPlayerHost,
@@ -182,7 +181,7 @@ public final class ClientSessionState {
 				newStatus,
 				this.serverProtocolVersion,
 				this.serverModVersion,
-				this.phase,
+				this.phaseId,
 				this.adminEligible,
 				this.hostAssigned,
 				this.currentPlayerHost,

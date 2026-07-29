@@ -1,0 +1,50 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "kind": "warmup",
+  "name": {
+    "text": "2D 验收 · 赛前确认"
+  },
+  "description": {
+    "text": "不计正式游戏时间、只能由事件结束的验收环节；不会代表任何正式赛前游戏。"
+  },
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": false
+  },
+  "completion_policy": "event_only",
+  "counts_toward_game_time": false,
+  "live_visibility": {
+    "future": "teaser",
+    "history": "hidden",
+    "candidate_visibility": "none"
+  },
+  "recap_visibility": "participants",
+  "callbacks": {
+    "on_start": "pixel_tzz:acceptance_2d/timeline/capture_context",
+    "on_settled": "pixel_tzz:acceptance_2d/timeline/capture_result"
+  },
+  "results": [
+    {
+      "id": "ready",
+      "name": {
+        "text": "赛前验收完成"
+      },
+      "semantic": "success",
+      "recap": {
+        "text": "主持人通过验收函数结束了不计时赛前环节。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/capture_result",
+      "route": {
+        "next_task": "pixel_tzz:acceptance/main_branch",
+        "phase": "pixel_tzz:running"
+      }
+    }
+  ],
+  "events": [],
+  "statistics": []
+}

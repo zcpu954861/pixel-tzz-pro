@@ -19,6 +19,7 @@ import io.github.zcpu954861.pixeltzzpro.client.ui.widget.PlayerIdentityRenderer;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import java.util.Comparator;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
@@ -43,7 +44,12 @@ final class AffectedPlayersScreen extends TransitioningConsoleScreen {
 	) {
 		super(Component.literal("全部受影响玩家"), parent, Motion.PUSH_ENTER);
 		this.action = action;
-		this.targets = List.copyOf(targets);
+		this.targets = targets.stream()
+			.sorted(
+				Comparator.comparing(Target::name, String.CASE_INSENSITIVE_ORDER)
+					.thenComparing(Target::playerId)
+			)
+			.toList();
 	}
 
 	@Override

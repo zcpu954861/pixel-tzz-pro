@@ -10,7 +10,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.resources.Identifier;
 
 /**
- * Shared bounded context for every state-changing protocol-v7 request.
+ * Shared bounded context for every state-changing protocol-v10 request.
  *
  * <p>The connection supplies the operator UUID. It is intentionally absent here.
  */

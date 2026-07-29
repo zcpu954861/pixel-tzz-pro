@@ -22,6 +22,7 @@ import io.github.zcpu954861.pixeltzzpro.client.ui.widget.ConsoleButton.Variant;
 import io.github.zcpu954861.pixeltzzpro.client.ui.widget.PlayerIdentityRenderer;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActiveFlowSummary;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.MemberFieldSummary;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.MemberSummary;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
 import java.time.Instant;
@@ -31,6 +32,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -49,6 +51,12 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 	private boolean unfinishedOnly = true;
 	private int firstVisible;
 	private int visibleRows;
+	private String widgetStructureKey = "";
+	private ConsoleButton addButton;
+	private ConsoleButton filterButton;
+	private ConsoleButton refreshButton;
+	private ConsoleButton cancelButton;
+	private final java.util.ArrayList<RemoveBinding> removeButtons = new java.util.ArrayList<>();
 
 	ActiveFlowScreen(final Screen parent) {
 		super(Component.literal("当前强制流程"), parent, Motion.PUSH_ENTER);
@@ -65,6 +73,11 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 	@Override
 	protected void rebuildWidgets() {
 		this.clearWidgets();
+		this.removeButtons.clear();
+		this.addButton = null;
+		this.filterButton = null;
+		this.refreshButton = null;
+		this.cancelButton = null;
 		int x = panelX();
 		int y = panelY();
 		int width = panelWidth();
@@ -94,8 +107,9 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 				button -> dispatchAction(addAction),
 				Variant.PRIMARY
 			);
-			add.active = addAction.enabled() && !ClientConsoleState.pending();
+			add.active = addAction.enabled();
 			this.addRenderableWidget(add);
+			this.addButton = add;
 		}
 		ActionEntry removeAction = action("remove_flow_members");
 		if (removeAction != null) {
@@ -124,8 +138,9 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 					),
 					Variant.DANGER
 				);
-				remove.active = removeAction.enabled() && !ClientConsoleState.pending();
+				remove.active = removeAction.enabled();
 				this.addRenderableWidget(remove);
+				this.removeButtons.add(new RemoveBinding(member.player().playerId(), remove));
 			}
 		}
 
@@ -151,6 +166,7 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 		ActiveFlowSummary flow = flowSnapshot();
 		filter.active = flow != null && flow.completed() < flow.total();
 		this.addRenderableWidget(filter);
+		this.filterButton = filter;
 
 		ConsoleButton refresh = new ConsoleButton(
 			x + 18 + filterWidth + gap,
@@ -161,8 +177,9 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 			button -> ClientConsoleState.requestConsole(),
 			Variant.NORMAL
 		);
-		refresh.active = !ClientConsoleState.pending();
+		refresh.active = true;
 		this.addRenderableWidget(refresh);
+		this.refreshButton = refresh;
 
 		int secondaryY = stacked ? footerY + 29 : footerY;
 		int secondaryX = stacked
@@ -186,8 +203,9 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 				button -> dispatchAction(cancel),
 				Variant.DANGER
 			);
-			cancelButton.active = cancel.enabled() && !ClientConsoleState.pending();
+			cancelButton.active = cancel.enabled();
 			this.addRenderableWidget(cancelButton);
+			this.cancelButton = cancelButton;
 			secondaryX += cancelButton.getWidth() + gap;
 		}
 
@@ -224,6 +242,8 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 		);
 		this.addRenderableWidget(back);
 		this.setInitialFocus(back);
+		this.widgetStructureKey = widgetStructureKey();
+		this.observedRevision = ClientConsoleState.revision();
 	}
 
 	@Override
@@ -235,8 +255,85 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 		long revision = ClientConsoleState.revision();
 		if (this.observedRevision != revision) {
 			this.observedRevision = revision;
-			rebuildWidgets();
+			if (!this.widgetStructureKey.equals(widgetStructureKey())) {
+				rebuildWidgets();
+			} else {
+				refreshWidgets();
+			}
 		}
+	}
+
+	private void refreshWidgets() {
+		ActionEntry add = action("add_flow_members");
+		if (this.addButton != null && add != null) {
+			this.addButton.setMessage(
+				Component.literal(
+					actionRouting(add.operationId())
+						? "审阅中…"
+						: panelWidth() < 520 ? "+ 添加" : "+ 添加玩家"
+				)
+			);
+			this.addButton.active = add.enabled();
+		}
+		ActionEntry remove = action("remove_flow_members");
+		for (RemoveBinding binding : this.removeButtons) {
+			binding.button().setMessage(
+				Component.literal(
+					remove != null && actionRouting(remove.operationId()) ? "审阅中…" : "移除"
+				)
+			);
+			binding.button().active = remove != null && remove.enabled();
+		}
+		ActiveFlowSummary flow = flowSnapshot();
+		if (this.filterButton != null) {
+			this.filterButton.active = flow != null && flow.completed() < flow.total();
+		}
+		if (this.refreshButton != null) {
+			this.refreshButton.active = true;
+		}
+		ActionEntry cancel = action("cancel_flow");
+		if (this.cancelButton != null && cancel != null) {
+			this.cancelButton.setMessage(
+				Component.literal(
+					actionRouting(cancel.operationId()) ? "正在审阅…" : "终止当前流程"
+				)
+			);
+			this.cancelButton.active = cancel.enabled();
+		}
+	}
+
+	private String widgetStructureKey() {
+		StringBuilder key = new StringBuilder()
+			.append(panelWidth())
+			.append('|')
+			.append(panelHeight())
+			.append('|')
+			.append(this.unfinishedOnly)
+			.append('|')
+			.append(this.firstVisible);
+		ActiveFlowSummary flow = flowSnapshot();
+		key.append('|').append(flow == null ? "none" : flow.instanceId());
+		for (String operation : List.of(
+			"add_flow_members",
+			"remove_flow_members",
+			"cancel_flow"
+		)) {
+			ActionEntry action = action(operation);
+			key.append('|').append(operation).append('=');
+			if (action != null) {
+				key.append(action.operationId());
+			}
+		}
+		List<MemberSummary> members = visibleMembers();
+		int end = Math.min(members.size(), this.firstVisible + Math.max(1, this.visibleRows));
+		for (int index = this.firstVisible; index < end; index++) {
+			MemberSummary member = members.get(index);
+			key.append('|')
+				.append(member.player().playerId())
+				.append(':')
+				.append(removable(member));
+		}
+		return key.toString();
 	}
 
 	@Override
@@ -504,6 +601,11 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 					member.currentNodeNameJson(),
 					"尚未进入流程页面"
 				).getString();
+			String field = memberFieldDetail(member);
+			String detail = node
+				+ (field.isEmpty() ? "" : "  ·  " + field)
+				+ "  ·  "
+				+ statusLabel(member);
 			PlayerIdentityRenderer.drawTargetRow(
 				graphics,
 				this.font,
@@ -518,11 +620,28 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 				),
 				ROW_HEIGHT,
 				false,
-				node + "  ·  " + statusLabel(member),
+				detail,
 				color
 			);
 		}
 		drawScrollBar(graphics, x, width, listTop, listBottom, members.size());
+	}
+
+	private static String memberFieldDetail(final MemberSummary member) {
+		if (member.fields().isEmpty()) {
+			return "";
+		}
+		MemberFieldSummary field = member.fields().getFirst();
+		if (field.status().equals("unselected")) {
+			return "尚未选择"
+				+ ConsoleText.currentObject(
+					ConsoleText.parse(field.fieldNameJson(), field.fieldId().toString())
+				).getString();
+		}
+		Component value = ConsoleText.currentObject(
+			ConsoleText.parse(field.valueNameJson(), "已选项目")
+		);
+		return (field.status().equals("held") ? "暂时预约" : "已确认") + value.getString();
 	}
 
 	private void drawScrollBar(
@@ -670,5 +789,8 @@ final class ActiveFlowScreen extends TransitioningConsoleScreen {
 	@Override
 	public void onClose() {
 		closeToParent();
+	}
+
+	private record RemoveBinding(UUID playerId, ConsoleButton button) {
 	}
 }

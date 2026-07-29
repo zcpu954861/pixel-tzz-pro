@@ -1,0 +1,2 @@
+# Cache one authoritative task context and bound its callback audit to this task instance.
+$data modify storage pixel_tzz:acceptance_2d session set value {current:{game_id:"$(game_id)",timeline_instance_id:"$(timeline_instance_id)",task_id:"$(task_id)",task_instance_id:"$(task_instance_id)",game_elapsed_ticks:$(game_elapsed_ticks),task_elapsed_ticks:$(task_elapsed_ticks)},result_history:[]}

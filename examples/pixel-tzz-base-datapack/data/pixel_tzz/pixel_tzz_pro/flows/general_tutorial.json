@@ -7,6 +7,9 @@
   },
   "entry": "briefing",
   "audience": {
+    "roles": [
+      "pixel_tzz:runner"
+    ],
     "exclude_host": true,
     "online_only": true
   },

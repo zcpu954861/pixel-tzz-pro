@@ -238,12 +238,27 @@ public abstract class TransitioningConsoleScreen extends Screen {
 		final int rightX,
 		final int y
 	) {
-		String label = ClientConsoleState.pending()
-			? "同步中"
-			: ClientConsoleState.snapshot().isPresent() ? "已同步" : "未同步";
-		int color = ClientConsoleState.pending()
-			? WARNING
-			: ClientConsoleState.snapshot().isPresent() ? SUCCESS : DANGER;
+		return drawServerSyncBadge(
+			graphics,
+			rightX,
+			y,
+			ClientConsoleState.pending(),
+			ClientConsoleState.snapshot().isPresent()
+		);
+	}
+
+	/**
+	 * Uses the same synchronization badge for another server-authored read model.
+	 */
+	protected final int drawServerSyncBadge(
+		final GuiGraphicsExtractor graphics,
+		final int rightX,
+		final int y,
+		final boolean pending,
+		final boolean synchronizedState
+	) {
+		String label = pending ? "同步中" : synchronizedState ? "已同步" : "未同步";
+		int color = pending ? WARNING : synchronizedState ? SUCCESS : DANGER;
 		int width = this.font.width(label) + 23;
 		int x = rightX - width;
 		graphics.fill(x, y, rightX, y + 17, 0xD5202B35);

@@ -41,18 +41,41 @@ public final class FlowCallbackRunner {
 		Objects.requireNonNull(server, "server");
 		Objects.requireNonNull(functionId, "functionId");
 		Objects.requireNonNull(context, "context");
+		return invokePrepared(
+			server,
+			functionId,
+			context.toMacroArguments(),
+			"flow instance " + context.instanceId(),
+			context.playerId(),
+			Objects.requireNonNull(player, "player")
+		);
+	}
+
+	static Invocation invokePrepared(
+		final MinecraftServer server,
+		final Identifier functionId,
+		final CompoundTag macroArguments,
+		final String diagnosticContext,
+		final Optional<UUID> expectedPlayerId,
+		final Optional<ServerPlayer> player
+	) {
+		Objects.requireNonNull(server, "server");
+		Objects.requireNonNull(functionId, "functionId");
+		Objects.requireNonNull(macroArguments, "macroArguments");
+		Objects.requireNonNull(diagnosticContext, "diagnosticContext");
+		Optional<UUID> expectedPlayer = Objects.requireNonNull(expectedPlayerId, "expectedPlayerId");
 		Optional<ServerPlayer> sourcePlayer = Objects.requireNonNull(player, "player");
 		if (!server.isSameThread()) {
 			return Invocation.failed("callback must execute on the server thread");
 		}
-		if (sourcePlayer.isPresent() != context.playerId().isPresent()) {
-			return Invocation.failed("player callback context does not match its command source");
+		if (sourcePlayer.isPresent() != expectedPlayer.isPresent()) {
+			return Invocation.failed("callback player context does not match its command source");
 		}
 		if (
 			sourcePlayer.isPresent()
-				&& !sourcePlayer.orElseThrow().getUUID().equals(context.playerId().orElseThrow())
+				&& !sourcePlayer.orElseThrow().getUUID().equals(expectedPlayer.orElseThrow())
 		) {
-			return Invocation.failed("player callback source UUID does not match its frozen context");
+			return Invocation.failed("callback source UUID does not match its frozen context");
 		}
 
 		CommandFunction<CommandSourceStack> function = server.getFunctions()
@@ -65,7 +88,7 @@ public final class FlowCallbackRunner {
 		final InstantiatedFunction<CommandSourceStack> instantiated;
 		try {
 			instantiated = function.instantiate(
-				context.toMacroArguments(),
+				macroArguments,
 				server.getFunctions().getDispatcher()
 			);
 		} catch (FunctionInstantiationException | RuntimeException error) {
@@ -100,9 +123,9 @@ public final class FlowCallbackRunner {
 			);
 		} catch (RuntimeException error) {
 			PixelTzzPro.LOGGER.warn(
-				"Pixel TZZ callback {} failed for flow instance {}",
+				"Pixel TZZ callback {} failed for {}",
 				functionId,
-				context.instanceId(),
+				diagnosticContext,
 				error
 			);
 			return Invocation.failed(

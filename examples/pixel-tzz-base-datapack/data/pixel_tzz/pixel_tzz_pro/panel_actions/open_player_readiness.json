@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "system",
+  "order": 9000,
+  "label": {
+    "text": "开放玩家准备"
+  },
+  "description": {
+    "text": "由阶段迁移自动建立的内部准备事务，不作为普通主持人操作显示。"
+  },
+  "phases": [
+    "pixel_tzz:ready"
+  ],
+  "target": {
+    "mode": "none"
+  },
+  "confirmation": {
+    "title": {
+      "text": "开放玩家准备"
+    },
+    "consequences": [
+      {
+        "text": "服务端将锁定本阶段的实际准备参与者。"
+      },
+      {
+        "text": "玩家必须逐人确认；全员完成后仍需主持人批准开局。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "start_flow",
+    "flow": "pixel_tzz:player_readiness",
+    "completion_policy": "always"
+  }
+}

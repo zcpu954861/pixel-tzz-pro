@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskTimeline;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -14,7 +15,8 @@ import net.minecraft.resources.Identifier;
  */
 public final class GameDefinitions {
 	public static final int CURRENT_FORMAT_VERSION = 1;
-	public static final int CURRENT_API_VERSION = 1;
+	public static final int MIN_API_VERSION = 1;
+	public static final int CURRENT_API_VERSION = 2;
 
 	private GameDefinitions() {
 	}
@@ -22,20 +24,114 @@ public final class GameDefinitions {
 	public record RichText(String json, String plainText) {
 	}
 
-	public record TabStyle(Optional<RichText> prefix, Optional<String> color) {
+	public enum TabPrefixMode {
+		APPEND,
+		REPLACE,
+		INHERIT
+	}
+
+	public enum TabColorMode {
+		REPLACE,
+		INHERIT
+	}
+
+	public record TabStyle(
+		Optional<RichText> prefix,
+		Optional<String> color,
+		Optional<Integer> sortOrder,
+		TabPrefixMode prefixMode,
+		TabColorMode colorMode
+	) {
 		public TabStyle {
 			prefix = prefix == null ? Optional.empty() : prefix;
 			color = color == null ? Optional.empty() : color;
+			sortOrder = sortOrder == null ? Optional.empty() : sortOrder;
+		}
+
+		public TabStyle(final Optional<RichText> prefix, final Optional<String> color) {
+			this(
+				prefix,
+				color,
+				Optional.empty(),
+				prefix != null && prefix.isPresent() ? TabPrefixMode.APPEND : TabPrefixMode.INHERIT,
+				color != null && color.isPresent() ? TabColorMode.REPLACE : TabColorMode.INHERIT
+			);
 		}
 	}
 
 	public record GameDefinition(
 		Identifier id,
+		int apiVersion,
 		int contentVersion,
 		RichText name,
 		Identifier initialPhase,
 		Identifier defaultRole,
-		Identifier defaultLifeState
+		Identifier defaultLifeState,
+		Optional<TaskTimeline> taskTimeline,
+		Optional<ReadinessDefinition> readiness
+	) {
+		public GameDefinition {
+			taskTimeline = taskTimeline == null ? Optional.empty() : taskTimeline;
+			readiness = readiness == null ? Optional.empty() : readiness;
+		}
+
+		public GameDefinition(
+			final Identifier id,
+			final int apiVersion,
+			final int contentVersion,
+			final RichText name,
+			final Identifier initialPhase,
+			final Identifier defaultRole,
+			final Identifier defaultLifeState,
+			final Optional<TaskTimeline> taskTimeline
+		) {
+			this(
+				id,
+				apiVersion,
+				contentVersion,
+				name,
+				initialPhase,
+				defaultRole,
+				defaultLifeState,
+				taskTimeline,
+				Optional.empty()
+			);
+		}
+
+		public GameDefinition(
+			final Identifier id,
+			final int contentVersion,
+			final RichText name,
+			final Identifier initialPhase,
+			final Identifier defaultRole,
+			final Identifier defaultLifeState
+		) {
+			this(
+				id,
+				MIN_API_VERSION,
+				contentVersion,
+				name,
+				initialPhase,
+				defaultRole,
+				defaultLifeState,
+				Optional.empty(),
+				Optional.empty()
+			);
+		}
+	}
+
+	/**
+	 * Data-pack binding for the one authoritative player-readiness session of a game instance.
+	 *
+	 * <p>The referenced action remains a normal required {@code start_flow} definition so its
+	 * pages, theme, audience, and BossBar stay fully data-driven. The runtime hides that action
+	 * from the ordinary host action list and opens it atomically when {@code phase} is entered.
+	 */
+	public record ReadinessDefinition(
+		Identifier phase,
+		Identifier action,
+		boolean disconnectInvalidates,
+		boolean hostCanForce
 	) {
 	}
 
@@ -44,12 +140,25 @@ public final class GameDefinitions {
 		Identifier game,
 		RichText name,
 		Optional<RichText> description,
+		Optional<Identifier> initializationFlow,
 		Set<Identifier> tags,
 		TabStyle tab
 	) {
 		public RoleDefinition {
 			description = description == null ? Optional.empty() : description;
+			initializationFlow = initializationFlow == null ? Optional.empty() : initializationFlow;
 			tags = Set.copyOf(tags);
+		}
+
+		public RoleDefinition(
+			final Identifier id,
+			final Identifier game,
+			final RichText name,
+			final Optional<RichText> description,
+			final Set<Identifier> tags,
+			final TabStyle tab
+		) {
+			this(id, game, name, description, Optional.empty(), tags, tab);
 		}
 	}
 
@@ -74,11 +183,22 @@ public final class GameDefinitions {
 		Identifier game,
 		RichText name,
 		Optional<RichText> description,
-		Set<Identifier> tags
+		Set<Identifier> tags,
+		TabStyle tab
 	) {
 		public LifeStateDefinition {
 			description = description == null ? Optional.empty() : description;
 			tags = Set.copyOf(tags);
+		}
+
+		public LifeStateDefinition(
+			final Identifier id,
+			final Identifier game,
+			final RichText name,
+			final Optional<RichText> description,
+			final Set<Identifier> tags
+		) {
+			this(id, game, name, description, tags, new TabStyle(Optional.empty(), Optional.empty()));
 		}
 	}
 
@@ -103,7 +223,8 @@ public final class GameDefinitions {
 		STRING,
 		IDENTIFIER,
 		SINGLE_CHOICE,
-		MULTI_CHOICE
+		MULTI_CHOICE,
+		EXCLUSIVE_CHOICE
 	}
 
 	public enum FieldScope {
@@ -143,6 +264,39 @@ public final class GameDefinitions {
 		}
 	}
 
+	public enum ReservationScope {
+		GAME_INSTANCE
+	}
+
+	public record ExclusiveChoiceOption(
+		String value,
+		RichText name,
+		Optional<RichText> description,
+		Optional<Identifier> icon,
+		Optional<Identifier> previewPage
+	) {
+		public ExclusiveChoiceOption {
+			description = description == null ? Optional.empty() : description;
+			icon = icon == null ? Optional.empty() : icon;
+			previewPage = previewPage == null ? Optional.empty() : previewPage;
+		}
+	}
+
+	public record ExclusiveChoiceDefinition(
+		ReservationScope reservationScope,
+		boolean releaseWhenRoleMismatch,
+		boolean showOccupant,
+		List<ExclusiveChoiceOption> options
+	) {
+		public ExclusiveChoiceDefinition {
+			options = List.copyOf(options);
+		}
+
+		public List<String> values() {
+			return this.options.stream().map(ExclusiveChoiceOption::value).toList();
+		}
+	}
+
 	public record FieldDefinition(
 		Identifier id,
 		Identifier game,
@@ -159,7 +313,8 @@ public final class GameDefinitions {
 		Set<Identifier> phases,
 		Optional<Identifier> visibleWhen,
 		FieldMigrationStrategy migration,
-		FieldConstraints constraints
+		FieldConstraints constraints,
+		Optional<ExclusiveChoiceDefinition> exclusiveChoice
 	) {
 		public FieldDefinition {
 			description = description == null ? Optional.empty() : description;
@@ -167,6 +322,46 @@ public final class GameDefinitions {
 			roles = Set.copyOf(roles);
 			phases = Set.copyOf(phases);
 			visibleWhen = visibleWhen == null ? Optional.empty() : visibleWhen;
+			exclusiveChoice = exclusiveChoice == null ? Optional.empty() : exclusiveChoice;
+		}
+
+		public FieldDefinition(
+			final Identifier id,
+			final Identifier game,
+			final int version,
+			final RichText name,
+			final Optional<RichText> description,
+			final FieldScope scope,
+			final FieldType type,
+			final boolean required,
+			final Optional<String> defaultJson,
+			final EditPolicy editableBy,
+			final boolean invalidatesReady,
+			final Set<Identifier> roles,
+			final Set<Identifier> phases,
+			final Optional<Identifier> visibleWhen,
+			final FieldMigrationStrategy migration,
+			final FieldConstraints constraints
+		) {
+			this(
+				id,
+				game,
+				version,
+				name,
+				description,
+				scope,
+				type,
+				required,
+				defaultJson,
+				editableBy,
+				invalidatesReady,
+				roles,
+				phases,
+				visibleWhen,
+				migration,
+				constraints,
+				Optional.empty()
+			);
 		}
 	}
 
@@ -251,7 +446,16 @@ public final class GameDefinitions {
 		}
 	}
 
-	public record ConfirmNode(String id, Identifier page, String next) implements FlowNode {
+	public record ConfirmNode(
+		String id,
+		Identifier page,
+		String next,
+		Optional<String> back
+	) implements FlowNode {
+		public ConfirmNode {
+			back = back == null ? Optional.empty() : back;
+		}
+
 		@Override
 		public NodeScope scope() {
 			return NodeScope.PLAYER;
@@ -259,7 +463,9 @@ public final class GameDefinitions {
 
 		@Override
 		public List<String> outgoing() {
-			return List.of(this.next);
+			return this.back
+				.map(value -> List.of(this.next, value))
+				.orElseGet(() -> List.of(this.next));
 		}
 	}
 

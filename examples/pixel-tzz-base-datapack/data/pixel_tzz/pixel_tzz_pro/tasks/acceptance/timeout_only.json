@@ -1,0 +1,72 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "kind": "main",
+  "name": {
+    "text": "2D 验收 · 仅超时任务"
+  },
+  "description": {
+    "text": "10 秒、只能等待倒计时结束的验收任务，不提供提前完成入口。"
+  },
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": false
+  },
+  "completion_policy": "timeout_only",
+  "duration_ticks": 200,
+  "counts_toward_game_time": true,
+  "live_visibility": {
+    "future": "teaser",
+    "history": "hidden",
+    "candidate_visibility": "none"
+  },
+  "recap_visibility": "participants",
+  "callbacks": {
+    "on_start": "pixel_tzz:acceptance_2d/timeline/capture_context",
+    "on_timeout": "pixel_tzz:acceptance_2d/timeline/timeout_final_task",
+    "on_settled": "pixel_tzz:acceptance_2d/timeline/capture_result"
+  },
+  "results": [
+    {
+      "id": "finished",
+      "name": {
+        "text": "仅超时任务完成"
+      },
+      "semantic": "success",
+      "recap": {
+        "text": "任务到时后由任务超时回调提交唯一合法结果。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/capture_result",
+      "route": {
+        "end_phase": "pixel_tzz:ended",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "最终回顾准备 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "deadline_reached",
+      "name": {
+        "text": "仅超时任务到达时限"
+      },
+      "policy": "once",
+      "allowed_states": [
+        "settling"
+      ],
+      "recap_visibility": "participants"
+    }
+  ],
+  "statistics": []
+}

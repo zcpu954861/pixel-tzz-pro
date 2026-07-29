@@ -33,6 +33,7 @@ public record ConsoleSnapshotS2CPayload(
 	Optional<Identifier> phaseId,
 	String gameNameJson,
 	String phaseNameJson,
+	List<PhaseEntry> phaseRoute,
 	boolean adminEligible,
 	boolean currentPlayerHost,
 	Optional<HostInfo> host,
@@ -54,8 +55,11 @@ public record ConsoleSnapshotS2CPayload(
 	public static final int MAX_FLOW_STATUS_LENGTH = 32;
 	public static final int MAX_MEMBER_STATUS_LENGTH = 32;
 	public static final int MAX_NODE_ID_LENGTH = 128;
+	public static final int MAX_MEMBER_FIELD_STATUS_LENGTH = 32;
 	public static final int MAX_ACTIONS = 128;
 	public static final int MAX_MEMBERS = 64;
+	public static final int MAX_MEMBER_FIELDS = 8;
+	public static final int MAX_PHASES = 64;
 	public static final int MAX_DIAGNOSTICS = 50;
 	public static final Type<ConsoleSnapshotS2CPayload> TYPE = new Type<>(
 		PixelTzzPro.id("console_snapshot_s2c")
@@ -82,6 +86,10 @@ public record ConsoleSnapshotS2CPayload(
 		}
 		gameNameJson = requireBounded(gameNameJson, MAX_TEXT_LENGTH, "gameNameJson");
 		phaseNameJson = requireBounded(phaseNameJson, MAX_TEXT_LENGTH, "phaseNameJson");
+		phaseRoute = boundedCopy(phaseRoute, MAX_PHASES, "phaseRoute");
+		if (phaseRoute.stream().map(PhaseEntry::phaseId).distinct().count() != phaseRoute.size()) {
+			throw new IllegalArgumentException("phaseRoute contains duplicate phase IDs");
+		}
 		host = Objects.requireNonNull(host, "host");
 		players = boundedCopy(players, MAX_MEMBERS, "players");
 		if (players.stream().map(Target::playerId).distinct().count() != players.size()) {
@@ -105,6 +113,7 @@ public record ConsoleSnapshotS2CPayload(
 			readOptionalIdentifier(buffer, "phaseId"),
 			buffer.readUtf(MAX_TEXT_LENGTH),
 			buffer.readUtf(MAX_TEXT_LENGTH),
+			readList(buffer, MAX_PHASES, "phaseRoute", PhaseEntry::read),
 			buffer.readBoolean(),
 			buffer.readBoolean(),
 			readOptional(buffer, HostInfo::read),
@@ -128,6 +137,7 @@ public record ConsoleSnapshotS2CPayload(
 		writeOptionalIdentifier(buffer, this.phaseId);
 		buffer.writeUtf(this.gameNameJson, MAX_TEXT_LENGTH);
 		buffer.writeUtf(this.phaseNameJson, MAX_TEXT_LENGTH);
+		writeList(buffer, this.phaseRoute, PhaseEntry::write);
 		buffer.writeBoolean(this.adminEligible);
 		buffer.writeBoolean(this.currentPlayerHost);
 		writeOptional(buffer, this.host, HostInfo::write);
@@ -165,6 +175,44 @@ public record ConsoleSnapshotS2CPayload(
 			buffer.writeUUID(value.playerId);
 			buffer.writeUtf(value.name, MAX_PLAYER_NAME_LENGTH);
 			buffer.writeBoolean(value.online);
+		}
+	}
+
+	/**
+	 * One server-ordered point on the host console's global game-phase rail.
+	 *
+	 * <p>The relation is presentation-safe metadata rather than client-derived authority. Known
+	 * values are {@code completed}, {@code current}, and {@code future}.</p>
+	 */
+	public record PhaseEntry(Identifier phaseId, String nameJson, String relation) {
+		public PhaseEntry {
+			phaseId = requireIdentifier(phaseId, "phaseEntry.phaseId");
+			nameJson = requireBounded(nameJson, MAX_TEXT_LENGTH, "phaseEntry.nameJson");
+			relation = local(relation, MAX_STATUS_LENGTH, "phaseEntry.relation");
+			if (
+				!relation.equals("completed")
+					&& !relation.equals("current")
+					&& !relation.equals("future")
+			) {
+				throw new IllegalArgumentException("unknown phase relation " + relation);
+			}
+		}
+
+		private static PhaseEntry read(final RegistryFriendlyByteBuf buffer) {
+			return new PhaseEntry(
+				readIdentifier(buffer, "phaseEntry.phaseId"),
+				buffer.readUtf(MAX_TEXT_LENGTH),
+				buffer.readUtf(MAX_STATUS_LENGTH)
+			);
+		}
+
+		private static void write(
+			final RegistryFriendlyByteBuf buffer,
+			final PhaseEntry value
+		) {
+			writeIdentifier(buffer, value.phaseId);
+			buffer.writeUtf(value.nameJson, MAX_TEXT_LENGTH);
+			buffer.writeUtf(value.relation, MAX_STATUS_LENGTH);
 		}
 	}
 
@@ -327,6 +375,7 @@ public record ConsoleSnapshotS2CPayload(
 		String status,
 		String currentNodeId,
 		String currentNodeNameJson,
+		List<MemberFieldSummary> fields,
 		boolean blocked
 	) {
 		public MemberSummary {
@@ -342,6 +391,10 @@ public record ConsoleSnapshotS2CPayload(
 				MAX_TEXT_LENGTH,
 				"member.currentNodeNameJson"
 			);
+			fields = boundedCopy(fields, MAX_MEMBER_FIELDS, "member.fields");
+			if (fields.stream().map(MemberFieldSummary::fieldId).distinct().count() != fields.size()) {
+				throw new IllegalArgumentException("member.fields contains duplicate field IDs");
+			}
 		}
 
 		private static MemberSummary read(final RegistryFriendlyByteBuf buffer) {
@@ -350,6 +403,7 @@ public record ConsoleSnapshotS2CPayload(
 				buffer.readUtf(MAX_MEMBER_STATUS_LENGTH),
 				buffer.readUtf(MAX_NODE_ID_LENGTH),
 				buffer.readUtf(MAX_TEXT_LENGTH),
+				readList(buffer, MAX_MEMBER_FIELDS, "member.fields", MemberFieldSummary::read),
 				buffer.readBoolean()
 			);
 		}
@@ -362,7 +416,68 @@ public record ConsoleSnapshotS2CPayload(
 			buffer.writeUtf(value.status, MAX_MEMBER_STATUS_LENGTH);
 			buffer.writeUtf(value.currentNodeId, MAX_NODE_ID_LENGTH);
 			buffer.writeUtf(value.currentNodeNameJson, MAX_TEXT_LENGTH);
+			writeList(buffer, value.fields, MemberFieldSummary::write);
 			buffer.writeBoolean(value.blocked);
+		}
+	}
+
+	/**
+	 * Bounded, display-only field progress exposed to the host for an active forced-flow member.
+	 *
+	 * <p>The server sends registered rich-text names instead of raw stored values. The status is
+	 * intentionally generic so future data packs can reuse the same host surface for other
+	 * exclusive selections without teaching the client about hunter spawn points.</p>
+	 */
+	public record MemberFieldSummary(
+		Identifier fieldId,
+		String fieldNameJson,
+		String valueNameJson,
+		String status
+	) {
+		public MemberFieldSummary {
+			fieldId = requireIdentifier(fieldId, "member.field.fieldId");
+			fieldNameJson = requireBounded(
+				fieldNameJson,
+				MAX_TEXT_LENGTH,
+				"member.field.fieldNameJson"
+			);
+			valueNameJson = requireBounded(
+				valueNameJson,
+				MAX_TEXT_LENGTH,
+				"member.field.valueNameJson"
+			);
+			status = local(status, MAX_MEMBER_FIELD_STATUS_LENGTH, "member.field.status");
+			if (
+				!status.equals("unselected")
+					&& !status.equals("held")
+					&& !status.equals("locked")
+			) {
+				throw new IllegalArgumentException("member.field.status is not recognized");
+			}
+			if (status.equals("unselected") != valueNameJson.isEmpty()) {
+				throw new IllegalArgumentException(
+					"only an unselected member field may omit its value name"
+				);
+			}
+		}
+
+		private static MemberFieldSummary read(final RegistryFriendlyByteBuf buffer) {
+			return new MemberFieldSummary(
+				readIdentifier(buffer, "member.field.fieldId"),
+				buffer.readUtf(MAX_TEXT_LENGTH),
+				buffer.readUtf(MAX_TEXT_LENGTH),
+				buffer.readUtf(MAX_MEMBER_FIELD_STATUS_LENGTH)
+			);
+		}
+
+		private static void write(
+			final RegistryFriendlyByteBuf buffer,
+			final MemberFieldSummary value
+		) {
+			writeIdentifier(buffer, value.fieldId);
+			buffer.writeUtf(value.fieldNameJson, MAX_TEXT_LENGTH);
+			buffer.writeUtf(value.valueNameJson, MAX_TEXT_LENGTH);
+			buffer.writeUtf(value.status, MAX_MEMBER_FIELD_STATUS_LENGTH);
 		}
 	}
 

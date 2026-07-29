@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "surface": "host",
+  "section": "primary",
+  "order": 30,
+  "label": {
+    "text": "进入玩家初始化阶段"
+  },
+  "description": {
+    "text": "完成开局设置后进入初始化阶段；该操作不会自动发起流程。"
+  },
+  "color": "#6EAED8",
+  "phases": [
+    "pixel_tzz:setup"
+  ],
+  "target": {
+    "mode": "none"
+  },
+  "confirmation": {
+    "title": {
+      "text": "确认进入玩家初始化阶段"
+    },
+    "consequences": [
+      {
+        "text": "当前阶段将从开局设置推进为玩家初始化。"
+      },
+      {
+        "text": "通用初始化仍需由主持人明确发起，不会自动弹给玩家。"
+      },
+      {
+        "text": "完成全部必需流程后，主持人还需单独进入准备阶段。"
+      }
+    ]
+  },
+  "operation": {
+    "type": "transition_phase",
+    "phase": "pixel_tzz:initializing"
+  }
+}

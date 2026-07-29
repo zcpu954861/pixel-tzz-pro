@@ -9,6 +9,8 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload.Operation;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload.FieldValue;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
@@ -54,6 +56,8 @@ public final class ClientPageState {
 	private static long nextFlowRequestSequence;
 	private static PendingFlowAction pendingFlowAction;
 	private static OperationResultS2CPayload flowActionResult;
+	private static PendingExclusiveChoiceMutation pendingExclusiveChoiceMutation;
+	private static OperationResultS2CPayload exclusiveChoiceMutationResult;
 	private static OperationCode fatalFlowBlock;
 	private static long revision;
 
@@ -263,6 +267,7 @@ public final class ClientPageState {
 					sameFlowPage ? Math.max(localNextFlowSequence, serverNext) : serverNext
 				)
 				.orElse(0L);
+			acceptExclusiveMutationBundle(activePage);
 			pageStatus = resources.requiredMissing() ? PageStatus.RESOURCE_ERROR : PageStatus.READY;
 			pageMessage = resources.requiredMissing()
 				? "缺少页面必需资源，已进入安全错误页"
@@ -344,6 +349,83 @@ public final class ClientPageState {
 		);
 	}
 
+	public static synchronized ExclusiveMutationSubmission mutateExclusiveChoice(
+		final Identifier fieldId,
+		final Operation operation,
+		final Optional<String> value
+	) {
+		Objects.requireNonNull(fieldId, "fieldId");
+		Objects.requireNonNull(operation, "operation");
+		Objects.requireNonNull(value, "value");
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+				|| pageStatus != PageStatus.READY
+		) {
+			return ExclusiveMutationSubmission.rejected(
+				"当前页面不是可修改的强制流程页面"
+			);
+		}
+		PageBundleS2CPayload.FieldSchema field = activePage.fields.get(fieldId);
+		if (field == null || !"exclusive_choice".equals(field.type())) {
+			return ExclusiveMutationSubmission.rejected("当前页面没有该独占选择字段");
+		}
+		if (pendingFlowAction != null || pendingExclusiveChoiceMutation != null) {
+			return ExclusiveMutationSubmission.rejected("上一项操作仍在等待服务端确认");
+		}
+		if (!ClientPlayNetworking.canSend(ExclusiveChoiceMutationC2SPayload.TYPE)) {
+			return ExclusiveMutationSubmission.rejected("独占选择同步协议当前不可用");
+		}
+		FlowContext flow = activePage.flowContext.orElseThrow();
+		long sequence = nextFlowRequestSequence;
+		try {
+			ExclusiveChoiceMutationC2SPayload payload =
+				new ExclusiveChoiceMutationC2SPayload(
+					new StatefulRequest(
+						NetworkProtocol.CURRENT_VERSION,
+						sequence,
+						Optional.of(activePage.page.game()),
+						activePage.generation,
+						activePage.stateRevision,
+						Optional.of(flow.flowInstanceId()),
+						Optional.of(activePage.instanceId)
+					),
+					flow.flowId(),
+					flow.flowVersion(),
+					flow.nodeId(),
+					flow.instanceRevision(),
+					flow.memberRevision(),
+					fieldId,
+					operation,
+					value
+				);
+			ClientPlayNetworking.send(payload);
+		} catch (RuntimeException error) {
+			return ExclusiveMutationSubmission.rejected(
+				truncate(
+					error.getMessage() == null
+						? error.getClass().getSimpleName()
+						: error.getMessage(),
+					256
+				)
+			);
+		}
+		nextFlowRequestSequence = sequence + 1L;
+		pendingExclusiveChoiceMutation = new PendingExclusiveChoiceMutation(
+			sequence,
+			activePage.instanceId,
+			fieldId,
+			operation,
+			value,
+			flow.memberRevision(),
+			false,
+			false
+		);
+		exclusiveChoiceMutationResult = null;
+		revision++;
+		return ExclusiveMutationSubmission.sent(sequence);
+	}
+
 	public static synchronized FlowSubmission submitFlowAction(
 		final String actionId,
 		final List<FieldValue> fieldValues
@@ -357,7 +439,7 @@ public final class ClientPageState {
 		) {
 			return FlowSubmission.rejected("当前页面不是可提交的强制流程页面");
 		}
-		if (pendingFlowAction != null) {
+		if (pendingFlowAction != null || pendingExclusiveChoiceMutation != null) {
 			return FlowSubmission.rejected("上一项操作仍在等待服务端确认");
 		}
 		if (!ClientPlayNetworking.canSend(FlowActionC2SPayload.TYPE)) {
@@ -405,15 +487,31 @@ public final class ClientPageState {
 	public static synchronized void acceptOperationResult(
 		final OperationResultS2CPayload payload
 	) {
+		boolean flowResult = pendingFlowAction != null
+			&& pendingFlowAction.requestSequence == payload.requestSequence();
+		boolean exclusiveResult = pendingExclusiveChoiceMutation != null
+			&& pendingExclusiveChoiceMutation.requestSequence == payload.requestSequence();
 		if (
 			!NetworkProtocol.isCompatible(payload.protocolVersion())
-				|| pendingFlowAction == null
-				|| pendingFlowAction.requestSequence != payload.requestSequence()
+				|| (!flowResult && !exclusiveResult)
 		) {
 			return;
 		}
-		pendingFlowAction = null;
-		flowActionResult = payload;
+		if (flowResult) {
+			pendingFlowAction = null;
+			flowActionResult = payload;
+		} else {
+			exclusiveChoiceMutationResult = payload;
+			if (payload.success()) {
+				PendingExclusiveChoiceMutation accepted =
+					pendingExclusiveChoiceMutation.withResultAccepted();
+				pendingExclusiveChoiceMutation = accepted.authoritativeBundleAccepted
+					? null
+					: accepted;
+			} else {
+				pendingExclusiveChoiceMutation = null;
+			}
+		}
 		if (
 			activePage != null
 				&& activePage.purpose == PagePurpose.FORCED_FLOW
@@ -447,8 +545,34 @@ public final class ClientPageState {
 		return Optional.of(result);
 	}
 
+	public static synchronized Optional<OperationResultS2CPayload>
+		consumeExclusiveChoiceMutationResult(final long requestSequence) {
+		if (
+			exclusiveChoiceMutationResult == null
+				|| exclusiveChoiceMutationResult.requestSequence() != requestSequence
+				|| (
+					pendingExclusiveChoiceMutation != null
+						&& pendingExclusiveChoiceMutation.requestSequence == requestSequence
+				)
+		) {
+			return Optional.empty();
+		}
+		OperationResultS2CPayload result = exclusiveChoiceMutationResult;
+		exclusiveChoiceMutationResult = null;
+		return Optional.of(result);
+	}
+
 	public static synchronized boolean flowActionPending() {
 		return pendingFlowAction != null;
+	}
+
+	public static synchronized boolean exclusiveChoiceMutationPending() {
+		return pendingExclusiveChoiceMutation != null;
+	}
+
+	public static synchronized boolean exclusiveChoiceMutationPending(final Identifier fieldId) {
+		return pendingExclusiveChoiceMutation != null
+			&& pendingExclusiveChoiceMutation.fieldId.equals(fieldId);
 	}
 
 	public static synchronized boolean acceptForcedRelease(
@@ -526,6 +650,21 @@ public final class ClientPageState {
 
 	public static synchronized int cacheBytes() {
 		return CACHE.byteSize();
+	}
+
+	private static void acceptExclusiveMutationBundle(final ActivePage page) {
+		if (
+			pendingExclusiveChoiceMutation == null
+				|| !pendingExclusiveChoiceMutation.pageInstanceId.equals(page.instanceId)
+				|| page.flowContext.isEmpty()
+				|| page.flowContext.orElseThrow().memberRevision()
+					<= pendingExclusiveChoiceMutation.memberRevision
+		) {
+			return;
+		}
+		PendingExclusiveChoiceMutation accepted =
+			pendingExclusiveChoiceMutation.withAuthoritativeBundleAccepted();
+		pendingExclusiveChoiceMutation = accepted.resultAccepted ? null : accepted;
 	}
 
 	private static void sendResourceReport(final ActivePage page) {
@@ -626,6 +765,8 @@ public final class ClientPageState {
 		nextFlowRequestSequence = 0L;
 		pendingFlowAction = null;
 		flowActionResult = null;
+		pendingExclusiveChoiceMutation = null;
+		exclusiveChoiceMutationResult = null;
 	}
 
 	private static String decodeUtf8(final byte[] bytes, final String document) {
@@ -737,6 +878,61 @@ public final class ClientPageState {
 		}
 	}
 
+	public record ExclusiveMutationSubmission(
+		boolean sent,
+		long requestSequence,
+		String message
+	) {
+		private static ExclusiveMutationSubmission sent(final long sequence) {
+			return new ExclusiveMutationSubmission(true, sequence, "");
+		}
+
+		private static ExclusiveMutationSubmission rejected(final String message) {
+			return new ExclusiveMutationSubmission(false, -1L, message);
+		}
+	}
+
 	private record PendingFlowAction(long requestSequence, java.util.UUID pageInstanceId) {
+	}
+
+	private record PendingExclusiveChoiceMutation(
+		long requestSequence,
+		java.util.UUID pageInstanceId,
+		Identifier fieldId,
+		Operation operation,
+		Optional<String> value,
+		long memberRevision,
+		boolean resultAccepted,
+		boolean authoritativeBundleAccepted
+	) {
+		private PendingExclusiveChoiceMutation {
+			value = Objects.requireNonNull(value, "value");
+		}
+
+		private PendingExclusiveChoiceMutation withResultAccepted() {
+			return new PendingExclusiveChoiceMutation(
+				this.requestSequence,
+				this.pageInstanceId,
+				this.fieldId,
+				this.operation,
+				this.value,
+				this.memberRevision,
+				true,
+				this.authoritativeBundleAccepted
+			);
+		}
+
+		private PendingExclusiveChoiceMutation withAuthoritativeBundleAccepted() {
+			return new PendingExclusiveChoiceMutation(
+				this.requestSequence,
+				this.pageInstanceId,
+				this.fieldId,
+				this.operation,
+				this.value,
+				this.memberRevision,
+				this.resultAccepted,
+				true
+			);
+		}
 	}
 }

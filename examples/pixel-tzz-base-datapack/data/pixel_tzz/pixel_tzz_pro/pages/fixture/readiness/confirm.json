@@ -1,0 +1,279 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "确认玩家准备"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_readiness_confirmation",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 10,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "runner_dossier",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 5,
+            "padding": {
+              "vertical": 9,
+              "horizontal": 11
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "runner_eyebrow",
+              "text": {
+                "text": "PLAYER READINESS / 玩家就绪确认"
+              }
+            },
+            {
+              "type": "text",
+              "style": "runner_title",
+              "text": {
+                "text": "锁定本局参赛状态"
+              }
+            },
+            {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "gap": 8,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "player_head",
+                  "uuid": {
+                    "bind": "viewer.uuid"
+                  },
+                  "name": {
+                    "bind": "viewer.name"
+                  },
+                  "online": {
+                    "bind": "viewer.online"
+                  },
+                  "show_status": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 28
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 28
+                    }
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 2
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "runner_title",
+                      "text": {
+                        "bind": "viewer.name"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "concat": [
+                          {
+                            "text": "身份  "
+                          },
+                          {
+                            "bind": "viewer.role_name"
+                          },
+                          {
+                            "text": "   ·   队伍  "
+                          },
+                          {
+                            "bind": "viewer.team_name",
+                            "fallback": {
+                              "text": "未分队"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "warning_panel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "content"
+          }
+        },
+        "child": {
+          "type": "column",
+          "layout": {
+            "gap": 5,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "warning_eyebrow",
+              "text": {
+                "text": "LOCKED CHECKLIST / 锁定清单"
+              }
+            },
+            {
+              "type": "text",
+              "style": "rule_body",
+              "text": {
+                "text": "确认后你将进入已准备状态，不能主动取消。身份、队伍或关键个人数据发生变化时，服务端会要求你重新确认。"
+              },
+              "wrap": true,
+              "max_lines": 4,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            },
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "掉线会清除准备；重连后本页将自动恢复。全员准备不会自动开局。"
+              },
+              "wrap": true,
+              "max_lines": 3,
+              "overflow": "ellipsis",
+              "text_align": "left"
+            }
+          ]
+        }
+      },
+      {
+        "type": "spacer",
+        "layout": {
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 6,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "text",
+            "style": "utility_label",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              }
+            },
+            "text": {
+              "text": "READINESS GATE  ·  确认后锁定准备状态"
+            }
+          },
+          {
+            "type": "button",
+            "id": "confirm_readiness",
+            "style": "primary_button",
+            "layout": {
+              "width": {
+                "mode": "fixed",
+                "value": 184
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  }
+                }
+              }
+            },
+            "label": {
+              "text": "确认并锁定准备"
+            },
+            "action": {
+              "type": "flow",
+              "name": "confirm"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

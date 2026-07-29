@@ -1,13 +1,20 @@
 package io.github.zcpu954861.pixeltzzpro.network.payload;
 
+import static io.github.zcpu954861.pixeltzzpro.network.payload.PayloadCodecUtil.readIdentifier;
+import static io.github.zcpu954861.pixeltzzpro.network.payload.PayloadCodecUtil.requireIdentifier;
+import static io.github.zcpu954861.pixeltzzpro.network.payload.PayloadCodecUtil.writeIdentifier;
+
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
+import java.util.Objects;
+import java.util.Optional;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.Identifier;
 
 public record SessionSnapshotS2CPayload(
 	int protocolVersion,
-	String phase,
+	Optional<Identifier> phaseId,
 	boolean adminEligible,
 	boolean hostAssigned,
 	boolean currentPlayerHost,
@@ -22,7 +29,6 @@ public record SessionSnapshotS2CPayload(
 	String definitionDiagnostic,
 	boolean animateLoad
 ) implements CustomPacketPayload {
-	private static final int MAX_PHASE_LENGTH = 32;
 	private static final int MAX_DEFINITION_STATUS_LENGTH = 32;
 	private static final int MAX_DEFINITION_DIAGNOSTIC_LENGTH = 1_024;
 	public static final Type<SessionSnapshotS2CPayload> TYPE = new Type<>(PixelTzzPro.id("session_snapshot_s2c"));
@@ -31,10 +37,17 @@ public record SessionSnapshotS2CPayload(
 		SessionSnapshotS2CPayload::new
 	);
 
+	public SessionSnapshotS2CPayload {
+		phaseId = Objects.requireNonNull(phaseId, "phaseId");
+		phaseId.ifPresent(value -> requireIdentifier(value, "phaseId"));
+	}
+
 	private SessionSnapshotS2CPayload(final RegistryFriendlyByteBuf buffer) {
 		this(
 			buffer.readVarInt(),
-			buffer.readUtf(MAX_PHASE_LENGTH),
+			buffer.readBoolean()
+				? Optional.of(readIdentifier(buffer, "phaseId"))
+				: Optional.empty(),
 			buffer.readBoolean(),
 			buffer.readBoolean(),
 			buffer.readBoolean(),
@@ -53,7 +66,8 @@ public record SessionSnapshotS2CPayload(
 
 	private void write(final RegistryFriendlyByteBuf buffer) {
 		buffer.writeVarInt(this.protocolVersion);
-		buffer.writeUtf(this.phase, MAX_PHASE_LENGTH);
+		buffer.writeBoolean(this.phaseId.isPresent());
+		this.phaseId.ifPresent(value -> writeIdentifier(buffer, value));
 		buffer.writeBoolean(this.adminEligible);
 		buffer.writeBoolean(this.hostAssigned);
 		buffer.writeBoolean(this.currentPlayerHost);

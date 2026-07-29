@@ -21,10 +21,13 @@ import io.github.zcpu954861.pixeltzzpro.client.ui.widget.ConsoleButton;
 import io.github.zcpu954861.pixeltzzpro.client.ui.widget.ConsoleButton.Variant;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.RepeatVirtualization;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -44,6 +47,8 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 	private long observedRevision = Long.MIN_VALUE;
 	private int firstVisible;
 	private int visibleRows;
+	private final List<ConsoleButton> actionButtons = new ArrayList<>();
+	private String widgetStructureKey = "";
 	private final Set<String> excludedOperationTypes;
 
 	ActionCatalogScreen(final Screen parent) {
@@ -66,6 +71,7 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 	@Override
 	protected void rebuildWidgets() {
 		this.clearWidgets();
+		this.actionButtons.clear();
 		List<ActionEntry> actions = actions();
 		int x = panelX();
 		int y = panelY();
@@ -73,7 +79,12 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 		int height = panelHeight();
 		int listTop = y + 65;
 		int footerTop = y + height - 46;
-		this.visibleRows = Math.max(1, (footerTop - listTop) / (ROW_HEIGHT + ROW_GAP));
+		int viewportHeight = Math.max(1, footerTop - listTop);
+		this.visibleRows = RepeatVirtualization.fullyVisibleRows(
+			viewportHeight,
+			ROW_HEIGHT,
+			ROW_GAP
+		);
 		this.firstVisible = Math.clamp(
 			this.firstVisible,
 			0,
@@ -87,6 +98,7 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 			index++
 		) {
 			ActionEntry action = actions.get(index);
+			int visibleActionIndex = index;
 			int rowY = listTop + (index - this.firstVisible) * (ROW_HEIGHT + ROW_GAP);
 			ConsoleButton open = new ConsoleButton(
 				x + width - actionWidth - 22,
@@ -98,15 +110,16 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 						? "正在审阅…"
 						: action.enabled() ? "审阅并执行" : "当前不可用"
 				),
-				button -> dispatchAction(action),
+				button -> dispatchVisibleAction(visibleActionIndex),
 				action.enabled() && action.requiresConfirmation() ? Variant.DANGER : Variant.NORMAL
 			);
-			open.active = action.enabled() && !ClientConsoleState.pending();
+			open.active = action.enabled();
 			Component reason = action.enabled()
 				? ConsoleText.parse(action.descriptionJson(), action.operationId().toString())
 				: ConsoleText.parse(action.disabledReasonJson(), "服务端未提供禁用原因");
 			open.setTooltip(Tooltip.create(reason));
 			this.addRenderableWidget(open);
+			this.actionButtons.add(open);
 		}
 
 		int footerY = y + height - 35;
@@ -119,7 +132,7 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 			button -> ClientConsoleState.requestConsole(),
 			Variant.NORMAL
 		);
-		refresh.active = !ClientConsoleState.pending();
+		refresh.active = true;
 		this.addRenderableWidget(refresh);
 
 		ConsoleButton back = new ConsoleButton(
@@ -133,6 +146,8 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 		);
 		this.addRenderableWidget(back);
 		this.setInitialFocus(back);
+		this.widgetStructureKey = widgetStructureKey(actions);
+		this.observedRevision = ClientConsoleState.revision();
 	}
 
 	@Override
@@ -144,8 +159,106 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 		long revision = ClientConsoleState.revision();
 		if (this.observedRevision != revision) {
 			this.observedRevision = revision;
-			rebuildWidgets();
+			List<ActionEntry> actions = actions();
+			int nextFirstVisible = Math.clamp(
+				this.firstVisible,
+				0,
+				Math.max(0, actions.size() - this.visibleRows)
+			);
+			if (nextFirstVisible != this.firstVisible) {
+				this.firstVisible = nextFirstVisible;
+				rebuildWidgets();
+			} else if (!this.widgetStructureKey.equals(widgetStructureKey(actions))) {
+				rebuildWidgets();
+			} else {
+				refreshActionButtons(actions);
+			}
 		}
+	}
+
+	private void refreshActionButtons(final List<ActionEntry> actions) {
+		for (int index = 0; index < this.actionButtons.size(); index++) {
+			int actionIndex = this.firstVisible + index;
+			if (actionIndex >= actions.size()) {
+				break;
+			}
+			ActionEntry action = actions.get(actionIndex);
+			ConsoleButton button = this.actionButtons.get(index);
+			button.setMessage(
+				Component.literal(
+					actionRouting(action.operationId())
+						? "正在审阅…"
+						: action.enabled() ? "审阅并执行" : "当前不可用"
+				)
+			);
+			button.active = action.enabled();
+			Component reason = action.enabled()
+				? ConsoleText.parse(action.descriptionJson(), action.operationId().toString())
+				: ConsoleText.parse(action.disabledReasonJson(), "服务端未提供禁用原因");
+			button.setTooltip(Tooltip.create(reason));
+		}
+	}
+
+	private void dispatchVisibleAction(final int actionIndex) {
+		List<ActionEntry> current = actions();
+		if (actionIndex >= 0 && actionIndex < current.size()) {
+			dispatchAction(current.get(actionIndex));
+		}
+	}
+
+	private String widgetStructureKey(final List<ActionEntry> actions) {
+		int end = Math.min(actions.size(), this.firstVisible + this.visibleRows);
+		StringBuilder key = new StringBuilder()
+			.append(this.firstVisible)
+			.append('|')
+			.append(Math.max(0, end - this.firstVisible));
+		for (int index = this.firstVisible; index < end; index++) {
+			key.append('|').append(actions.get(index).requiresConfirmation());
+		}
+		return key.toString();
+	}
+
+	@Override
+	public boolean mouseClicked(final MouseButtonEvent event, final boolean doubleClick) {
+		if (navigationLocked()) {
+			return true;
+		}
+		if (revealPartialRow(event.x(), event.y())) {
+			return true;
+		}
+		return super.mouseClicked(event, doubleClick);
+	}
+
+	/**
+	 * The bottom edge deliberately exposes the next row when the viewport has spare pixels. Clicking
+	 * that preview scrolls it fully into view instead of leaving a visible but inert fragment.
+	 */
+	private boolean revealPartialRow(final double mouseX, final double mouseY) {
+		List<ActionEntry> actions = actions();
+		int x = panelX();
+		int y = panelY();
+		int width = panelWidth();
+		int height = panelHeight();
+		int listTop = y + 65;
+		int listBottom = y + height - 46;
+		int partialIndex = this.firstVisible + this.visibleRows;
+		int partialTop = listTop + this.visibleRows * (ROW_HEIGHT + ROW_GAP);
+		if (
+			partialIndex >= actions.size()
+				|| partialTop >= listBottom
+				|| mouseX < x + 18
+				|| mouseX >= x + width - 18
+				|| mouseY < partialTop
+				|| mouseY >= listBottom
+		) {
+			return false;
+		}
+		this.firstVisible = Math.min(
+			this.firstVisible + 1,
+			Math.max(0, actions.size() - this.visibleRows)
+		);
+		rebuildWidgets();
+		return true;
 	}
 
 	@Override
@@ -237,48 +350,62 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 
 			int actionWidth = Math.min(112, Math.max(82, width / 5));
 			int textWidth = Math.max(32, width - actionWidth - 72);
-			for (
-				int index = this.firstVisible;
-				index < Math.min(actions.size(), this.firstVisible + this.visibleRows);
-				index++
-			) {
-				ActionEntry action = actions.get(index);
-				int rowY = listTop + (index - this.firstVisible) * (ROW_HEIGHT + ROW_GAP);
-				int accent = actionColor(action.color());
-				int rowColor = action.enabled() ? 0xD51C2833 : 0xA5172028;
-				graphics.fill(x + 18, rowY, x + width - 18, rowY + ROW_HEIGHT, rowColor);
-				graphics.outline(
-					x + 18,
-					rowY,
-					width - 36,
-					ROW_HEIGHT,
-					action.enabled() ? withAlpha(accent, 135) : withAlpha(MUTED_TEXT, 80)
-				);
-				graphics.fill(x + 18, rowY, x + 21, rowY + ROW_HEIGHT, accent);
-				Component label = ConsoleText.parse(action.labelJson(), action.operationId().toString());
-				graphics.text(
-					this.font,
-					this.font.plainSubstrByWidth(label.getString(), textWidth),
-					x + 29,
-					rowY + 8,
-					action.enabled() ? MAIN_TEXT : SECONDARY_TEXT,
-					true
-				);
-				String meta = action.enabled()
-					? sectionName(action.section())
-						+ (action.requiresConfirmation() ? "  ·  需要二次确认" : "  ·  可直接执行")
-					: "不可用 // " + ConsoleText.parse(
-						action.disabledReasonJson(),
-						"服务端未提供原因"
-					).getString();
-				graphics.text(
-					this.font,
-					this.font.plainSubstrByWidth(meta, textWidth),
-					x + 29,
-					rowY + 23,
-					action.enabled() ? accent : DANGER,
-					false
-				);
+			graphics.enableScissor(x + 13, listTop, x + width - 13, listBottom);
+			try {
+				int viewportHeight = Math.max(1, listBottom - listTop);
+				boolean hasPartialRow = viewportHeight
+					> this.visibleRows * (ROW_HEIGHT + ROW_GAP);
+				int renderCount = this.visibleRows
+					+ (
+						hasPartialRow && this.firstVisible + this.visibleRows < actions.size()
+							? 1
+							: 0
+					);
+				for (
+					int index = this.firstVisible;
+					index < Math.min(actions.size(), this.firstVisible + renderCount);
+					index++
+				) {
+					ActionEntry action = actions.get(index);
+					int rowY = listTop + (index - this.firstVisible) * (ROW_HEIGHT + ROW_GAP);
+					int accent = actionColor(action.color());
+					int rowColor = action.enabled() ? 0xD51C2833 : 0xA5172028;
+					graphics.fill(x + 18, rowY, x + width - 18, rowY + ROW_HEIGHT, rowColor);
+					graphics.outline(
+						x + 18,
+						rowY,
+						width - 36,
+						ROW_HEIGHT,
+						action.enabled() ? withAlpha(accent, 135) : withAlpha(MUTED_TEXT, 80)
+					);
+					graphics.fill(x + 18, rowY, x + 21, rowY + ROW_HEIGHT, accent);
+					Component label = ConsoleText.parse(action.labelJson(), action.operationId().toString());
+					graphics.text(
+						this.font,
+						this.font.plainSubstrByWidth(label.getString(), textWidth),
+						x + 29,
+						rowY + 8,
+						action.enabled() ? MAIN_TEXT : SECONDARY_TEXT,
+						true
+					);
+					String meta = action.enabled()
+						? sectionName(action.section())
+							+ (action.requiresConfirmation() ? "  ·  需要二次确认" : "  ·  可直接执行")
+						: "不可用 // " + ConsoleText.parse(
+							action.disabledReasonJson(),
+							"服务端未提供原因"
+						).getString();
+					graphics.text(
+						this.font,
+						this.font.plainSubstrByWidth(meta, textWidth),
+						x + 29,
+						rowY + 23,
+						action.enabled() ? accent : DANGER,
+						false
+					);
+				}
+			} finally {
+				graphics.disableScissor();
 			}
 			drawScrollBar(graphics, x, y, width, listTop, listBottom, actions.size());
 			drawFeedback(graphics, x, y, width, height);

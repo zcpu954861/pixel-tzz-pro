@@ -2,6 +2,8 @@ package io.github.zcpu954861.pixeltzzpro;
 
 import io.github.zcpu954861.pixeltzzpro.network.NetworkPayloads;
 import io.github.zcpu954861.pixeltzzpro.server.PixelTzzServerRuntime;
+import io.github.zcpu954861.pixeltzzpro.server.TimelineCommands;
+import io.github.zcpu954861.pixeltzzpro.server.TimelineServerRuntime;
 import net.fabricmc.api.ModInitializer;
 import net.minecraft.resources.Identifier;
 import org.slf4j.Logger;
@@ -18,6 +20,8 @@ public final class PixelTzzPro implements ModInitializer {
 	public void onInitialize() {
 		NetworkPayloads.register();
 		PixelTzzServerRuntime.register();
+		TimelineServerRuntime.register();
+		TimelineCommands.register();
 		LOGGER.info("全员逃走中-扩展 foundation initialized");
 	}
 

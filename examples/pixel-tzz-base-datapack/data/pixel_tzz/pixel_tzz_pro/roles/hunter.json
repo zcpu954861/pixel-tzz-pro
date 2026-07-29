@@ -5,16 +5,21 @@
     "text": "猎人"
   },
   "description": {
-    "text": "由主持人指定并完成独立初始化的后台身份。"
+    "text": "由主持人指定，并在独立初始化中锁定唯一出生点。"
   },
+  "initialization_flow": "pixel_tzz:hunter_initialization",
   "tags": [
     "pixel_tzz:backstage",
-    "pixel_tzz:disconnect_notice"
+    "pixel_tzz:disconnect_notice",
+    "pixel_tzz:hunter",
+    "pixel_tzz:ready_participant",
+    "pixel_tzz:active_participant"
   ],
   "tab": {
     "prefix": {
-      "text": "[猎人]"
+      "text": "[猎人] "
     },
-    "color": "#E94F64"
+    "color": "#E94F64",
+    "sort_order": 100
   }
 }

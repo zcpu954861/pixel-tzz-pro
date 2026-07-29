@@ -28,10 +28,11 @@ public final class WorldStateColdStartSelfCheck {
 				"Cold-start codec check"
 			)
 		);
-		WorldStateV2 state = WorldStateV2.initial().withAudit(audit);
-		var encoded = WorldStateV2.CODEC.encodeStart(JsonOps.INSTANCE, state).getOrThrow();
-		WorldStateV2 decoded = WorldStateV2.CODEC.parse(JsonOps.INSTANCE, encoded).getOrThrow();
-		check(decoded.audit().recentEvents().getFirst().type() == firstTouch, "cold codec round-trip");
+		WorldStateV3 initial = WorldStateV3.initial();
+		WorldStateV3 state = initial.withCore(initial.core().withAudit(audit));
+		var encoded = WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, state).getOrThrow();
+		WorldStateV3 decoded = WorldStateV3.CODEC.parse(JsonOps.INSTANCE, encoded).getOrThrow();
+		check(decoded.core().audit().recentEvents().getFirst().type() == firstTouch, "cold codec round-trip");
 		System.out.println("WORLD_STATE_COLD_START_SELF_CHECK=PASS");
 	}
 

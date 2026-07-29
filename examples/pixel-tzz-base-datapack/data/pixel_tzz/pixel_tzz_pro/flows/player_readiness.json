@@ -1,0 +1,62 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "玩家准备"
+  },
+  "entry": "confirm",
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:ready_participant"
+    ],
+    "exclude_host": true,
+    "online_only": false
+  },
+  "required": true,
+  "host_bossbar": {
+    "name": [
+      {
+        "text": "{event}",
+        "color": "yellow"
+      },
+      {
+        "text": ": ",
+        "color": "gray"
+      },
+      {
+        "text": "{completed}",
+        "color": "green"
+      },
+      {
+        "text": "/{total}",
+        "color": "white"
+      }
+    ],
+    "color": "yellow",
+    "style": "progress",
+    "priority": 300,
+    "completion_feedback": {
+      "name": {
+        "text": "玩家准备: 全员就绪",
+        "color": "green"
+      },
+      "color": "green",
+      "hold_ticks": 50,
+      "fade_ticks": 16,
+      "sound": "minecraft:entity.player.levelup"
+    }
+  },
+  "nodes": [
+    {
+      "id": "confirm",
+      "type": "confirm",
+      "page": "pixel_tzz:fixture/readiness/confirm",
+      "next": "done"
+    },
+    {
+      "id": "done",
+      "type": "complete"
+    }
+  ]
+}

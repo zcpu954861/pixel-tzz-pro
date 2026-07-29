@@ -6,6 +6,19 @@ plugins {
 version = project.mod_version
 group = project.maven_group
 def testClientUsername = providers.gradleProperty("pixelTzzUsername").getOrElse("Player972")
+def knownTestClientRunDirs = [
+	"Player972": "run/client",
+	"PlayerB": "run/client-b",
+	"PlayerC": "run/client-c",
+	"PlayerD": "run/client-PlayerD",
+	"PlayerE": "run/client-PlayerE"
+]
+def testClientRunDir = knownTestClientRunDirs.getOrDefault(
+	testClientUsername,
+	"run/client-${testClientUsername.replaceAll("[^A-Za-z0-9._-]", "_")}"
+)
+def testClientWindowWidth = providers.gradleProperty("pixelTzzWindowWidth").getOrElse("2560")
+def testClientWindowHeight = providers.gradleProperty("pixelTzzWindowHeight").getOrElse("1440")
 
 base {
 	archivesName = project.archives_base_name
@@ -36,8 +49,12 @@ loom {
 
 	runs {
 		client {
-			runDir "run/client"
-			programArgs "--username", testClientUsername
+			runDir testClientRunDir
+			programArgs(
+				"--username", testClientUsername,
+				"--width", testClientWindowWidth,
+				"--height", testClientWindowHeight
+			)
 		}
 		server {
 			runDir "run/server"
@@ -112,6 +129,15 @@ tasks.register("foundationSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("subtitleQueueTimelineSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the queued operation-subtitle complete-text hold check."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.SubtitleQueueTimelineSelfCheck"
+	workingDir project.projectDir
+}
+
 tasks.register("pageFrameworkSelfCheck", JavaExec) {
 	group = "verification"
 	description = "Runs the client-neutral data-driven page framework checks."
@@ -154,7 +180,7 @@ tasks.register("forcedFlowAuthoritySelfCheck", JavaExec) {
 
 tasks.register("statePersistenceSelfCheck", JavaExec) {
 	group = "verification"
-	description = "Runs schema-v2 persistence, migration, and recovery checks."
+	description = "Runs schema-v3 persistence, migration, recovery, and timeline checkpoint checks."
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "io.github.zcpu954861.pixeltzzpro.state.StatePersistenceSelfCheck"
@@ -164,7 +190,7 @@ tasks.register("statePersistenceSelfCheck", JavaExec) {
 
 tasks.register("worldStateColdStartSelfCheck", JavaExec) {
 	group = "verification"
-	description = "Runs the schema-v2 codec check from the real migration-first class initialization order."
+	description = "Runs the schema-v3 codec check from the real migration-first class initialization order."
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "io.github.zcpu954861.pixeltzzpro.state.WorldStateColdStartSelfCheck"
@@ -172,12 +198,12 @@ tasks.register("worldStateColdStartSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
-tasks.register("protocolV7SelfCheck", JavaExec) {
+tasks.register("protocolV10SelfCheck", JavaExec) {
 	group = "verification"
-	description = "Runs the bounded protocol-v7 codec and trust-boundary checks."
+	description = "Runs the bounded protocol-v10 codec and trust-boundary checks."
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV7SelfCheck"
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV10SelfCheck"
 	workingDir project.projectDir
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
@@ -198,6 +224,116 @@ tasks.register("flowCallbackAuthoritySelfCheck", JavaExec) {
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("taskCallbackRunnerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the task callback macro and bound-player-field checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TaskCallbackRunnerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("taskCallbackLedgerAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs prepared, succeeded, failed, retry, and outcome-unknown task callback ledger checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TaskCallbackLedgerAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("taskFactAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs task event, recap statistic, and persistence fact checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TaskFactAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs single-task timeline, dual-clock, result, settlement, and intermission checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineServerRuntimeSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs timeline callback recovery, phase routing, and frozen-participant coordinator checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineServerRuntimeSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineViewSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs timeline view authority, clock projection, and responsive layout checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineViewSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("exclusiveChoiceAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs exclusive hold, conflict, atomic reselection, lock, and release checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.ExclusiveChoiceAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineControlOperationSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs dynamic host timeline-control operation identifier and direct-action checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineControlOperationSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineApprovalAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs host approval, pre-start requirements, participant freeze, and atomic timeline creation checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("timelineCommandsSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the bounded task command value parser checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.TimelineCommandsSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("worldResetAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the two explicit Pixel TZZ reset-boundary checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.WorldResetAuthoritySelfCheck"
 	workingDir project.projectDir
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
@@ -242,6 +378,24 @@ tasks.register("worldActivityInitializationSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("phaseTransitionAuthoritySelfCheck", JavaExec) {
+	dependsOn testClasses
+	group = "verification"
+	description = "Checks data-driven host phase transitions, stale requests, and state preservation."
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PhaseTransitionAuthoritySelfCheck"
+}
+
+tasks.register("readinessAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs player readiness open, confirmation, disconnect invalidation, reconnect, and audience reconciliation checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.ReadinessAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
 tasks.register("tabListDisplaySelfCheck", JavaExec) {
 	group = "verification"
 	description = "Runs the TAB role-visibility and stable ordering checks."
@@ -256,4 +410,4 @@ tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
-check.dependsOn foundationSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV7SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, tabListDisplaySelfCheck
+check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV10SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck
