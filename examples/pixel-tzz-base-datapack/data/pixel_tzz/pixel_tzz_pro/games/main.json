@@ -1,7 +1,7 @@
 {
   "format_version": 1,
-  "api_version": 2,
-  "content_version": 2,
+  "api_version": 3,
+  "content_version": 3,
   "name": {
     "text": "全员逃走中 · 2D 验收夹具"
   },
@@ -32,5 +32,10 @@
         "field": "pixel_tzz:hunter_spawn"
       }
     ]
+  },
+  "player_terminal": {
+    "default_page": "pixel_tzz:player/home",
+    "history_enabled": true,
+    "history_source": "tasks"
   }
 }

@@ -1,0 +1,348 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "事件回顾"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_help_history",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_doc_gold",
+        "child": {
+          "type": "row",
+          "layout": {
+            "gap": 12,
+            "padding": {
+              "vertical": 11,
+              "horizontal": 13
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "ui_icon_gold",
+              "text": {
+                "text": "▤"
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_brand",
+                  "text": {
+                    "text": "GUIDE 03 / 事件回顾"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "回看本局已经发生的事"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "左侧时间线负责选择事件，右侧只展开当前记录的公开详情。"
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "gap": 9,
+          "cross_align": "stretch"
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_doc_gold",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1.2
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "一条记录怎样出现"
+                  }
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_brand",
+                      "text": {
+                        "text": "●"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "事件先在游戏中真实发生"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_gold",
+                  "direction": "vertical",
+                  "thickness": 1,
+                  "layout": {
+                    "height": {
+                      "mode": "fixed",
+                      "value": 16
+                    },
+                    "margin": {
+                      "left": 4
+                    }
+                  }
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_brand",
+                      "text": {
+                        "text": "●"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "再到达数据包声明的公开时机"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_gold",
+                  "direction": "vertical",
+                  "thickness": 1,
+                  "layout": {
+                    "height": {
+                      "mode": "fixed",
+                      "value": 16
+                    },
+                    "margin": {
+                      "left": 4
+                    }
+                  }
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_brand",
+                      "text": {
+                        "text": "●"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "最后检查当前玩家是否可以回顾"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "spacer",
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                },
+                {
+                  "type": "button",
+                  "id": "history_guide_open_archive",
+                  "style": "primary_button",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  },
+                  "label": {
+                    "text": "现在浏览过去事件"
+                  },
+                  "action": {
+                    "type": "registered",
+                    "action": "pixel_tzz:open_history"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_article_main",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 7,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_brand",
+                  "text": {
+                    "text": "WHAT YOU CAN REVIEW"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "详情由数据包逐项决定"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "一条记录可以公开发生时刻、所属任务、触发者、结果与正文，也可以只给出简短摘要。"
+                  },
+                  "wrap": true,
+                  "max_lines": 5,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "spacer",
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "过去事件不会暴露未来路线，也不会把主持人后台审计混入玩家回顾。"
+                  },
+                  "wrap": true,
+                  "max_lines": 4,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

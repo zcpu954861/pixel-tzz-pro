@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "task_id"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "tasks": [
+    "pixel_tzz:acceptance/warmup",
+    "pixel_tzz:acceptance/main_branch",
+    "pixel_tzz:acceptance/timeout_only"
+  ]
+}

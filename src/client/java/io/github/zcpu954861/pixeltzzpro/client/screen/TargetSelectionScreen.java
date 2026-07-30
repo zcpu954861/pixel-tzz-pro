@@ -447,11 +447,11 @@ final class TargetSelectionScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.max(1, Math.min(720, this.width - 12));
+		return Math.max(1, Math.min(720, designWidth() - 12));
 	}
 
 	private int panelHeight() {
-		return Math.max(1, Math.min(430, this.height - 12));
+		return Math.max(1, Math.min(430, designHeight() - 12));
 	}
 
 	private int footerHeight() {
@@ -459,11 +459,11 @@ final class TargetSelectionScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

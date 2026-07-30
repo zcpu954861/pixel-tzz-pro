@@ -25,8 +25,21 @@ import net.minecraft.resources.Identifier;
 public final class BindingContextDocument {
 	public static final int MAX_UTF8_BYTES = 65_536;
 	public static final int MAX_BINDINGS_PER_ROOT = 4_096;
+	public static final int MAX_PERSONAL_METADATA_NAME_LENGTH = 256;
 	private static final int MAX_JSON_DEPTH = 32;
 	private static final Set<String> ROOTS = Set.of(
+		"viewer",
+		"session",
+		"flow",
+		"task",
+		"history",
+		"detail",
+		"fields",
+		"flow_fields",
+		"personal",
+		"personal_meta"
+	);
+	private static final Set<String> REQUIRED_LEGACY_ROOTS = Set.of(
 		"viewer",
 		"session",
 		"flow",
@@ -79,13 +92,22 @@ public final class BindingContextDocument {
 				throw new IllegalArgumentException("unknown binding root " + name);
 			}
 		}
-		for (String required : ROOTS) {
+		for (String required : REQUIRED_LEGACY_ROOTS) {
 			JsonElement value = root.get(required);
 			if (value == null || !value.isJsonObject()) {
 				throw new IllegalArgumentException("binding root " + required + " must be an object");
 			}
+		}
+		for (String present : ROOTS) {
+			JsonElement value = root.get(present);
+			if (value == null) {
+				continue;
+			}
+			if (!value.isJsonObject()) {
+				throw new IllegalArgumentException("binding root " + present + " must be an object");
+			}
 			if (value.getAsJsonObject().size() > MAX_BINDINGS_PER_ROOT) {
-				throw new IllegalArgumentException("binding root " + required + " is too large");
+				throw new IllegalArgumentException("binding root " + present + " is too large");
 			}
 		}
 
@@ -93,9 +115,81 @@ public final class BindingContextDocument {
 		copyProperties(root.getAsJsonObject("viewer"), builder::viewer);
 		copyProperties(root.getAsJsonObject("session"), builder::session);
 		copyProperties(root.getAsJsonObject("flow"), builder::flow);
+		copyOptionalProperties(root, "task", builder::task);
+		copyOptionalProperties(root, "history", builder::history);
+		copyOptionalProperties(root, "detail", builder::detail);
 		copyIdentifiers(root.getAsJsonObject("fields"), builder::field);
 		copyIdentifiers(root.getAsJsonObject("flow_fields"), builder::flowField);
+		copyOptionalIdentifiers(root, "personal", builder::personal);
+		copyPersonalMetadata(root.getAsJsonObject("personal_meta"), builder);
 		return builder.build();
+	}
+
+	private static void copyPersonalMetadata(
+		final JsonObject object,
+		final BindingContext.Builder builder
+	) {
+		if (object == null) {
+			return;
+		}
+		object.entrySet().forEach(entry -> {
+			Identifier id = Identifier.tryParse(entry.getKey());
+			if (id == null || entry.getKey().indexOf(':') <= 0) {
+				throw new IllegalArgumentException(
+					"invalid personal metadata identifier " + entry.getKey()
+				);
+			}
+			if (!entry.getValue().isJsonObject()) {
+				throw new IllegalArgumentException(
+					"personal metadata " + entry.getKey() + " must be an object"
+				);
+			}
+			JsonObject metadata = entry.getValue().getAsJsonObject();
+			if (
+				metadata.isEmpty()
+					|| metadata.size() > 2
+					|| metadata.keySet()
+						.stream()
+						.anyMatch(key -> !key.equals("name") && !key.equals("value_name"))
+					|| metadata.entrySet()
+						.stream()
+						.anyMatch(value ->
+							!value.getValue().isJsonPrimitive()
+								|| !value.getValue().getAsJsonPrimitive().isString()
+								|| value.getValue().getAsString().length()
+									> MAX_PERSONAL_METADATA_NAME_LENGTH
+						)
+			) {
+				throw new IllegalArgumentException(
+					"personal metadata "
+						+ entry.getKey()
+						+ " may contain only bounded string name/value_name fields"
+				);
+			}
+			builder.personalMeta(id, metadata);
+		});
+	}
+
+	private static void copyOptionalProperties(
+		final JsonObject root,
+		final String name,
+		final java.util.function.BiConsumer<String, JsonElement> consumer
+	) {
+		JsonObject object = root.getAsJsonObject(name);
+		if (object != null) {
+			copyProperties(object, consumer);
+		}
+	}
+
+	private static void copyOptionalIdentifiers(
+		final JsonObject root,
+		final String name,
+		final java.util.function.BiConsumer<Identifier, JsonElement> consumer
+	) {
+		JsonObject object = root.getAsJsonObject(name);
+		if (object != null) {
+			copyIdentifiers(object, consumer);
+		}
 	}
 
 	private static JsonElement readStrictValue(

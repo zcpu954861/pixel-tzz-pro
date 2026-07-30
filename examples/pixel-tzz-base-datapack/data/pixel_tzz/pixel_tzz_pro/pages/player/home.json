@@ -1,0 +1,749 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "『全员逃走中』"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_terminal_home",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 10,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_mission_stage",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        },
+        "responsive": {
+          "compact": {
+            "layout": {
+              "height": {
+                "mode": "fixed",
+                "value": 84
+              }
+            }
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "gap": 14,
+            "padding": {
+              "vertical": 9,
+              "horizontal": 16
+            },
+            "cross_align": "center"
+          },
+          "responsive": {
+            "compact": {
+              "type": "column",
+              "layout": {
+                "gap": 7,
+                "cross_align": "stretch"
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 184
+                },
+                "gap": 5
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_mission_kicker",
+                  "text": {
+                    "text": "GAME PHASE / 游戏阶段"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "ui_phase_title",
+                  "text": {
+                    "concat": [
+                      {
+                        "text": "「"
+                      },
+                      {
+                        "bind": "session.phase_name",
+                        "fallback": {
+                          "text": "阶段尚未公开"
+                        }
+                      },
+                      {
+                        "text": "」"
+                      }
+                    ]
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "bind": "session.game_name",
+                    "fallback": {
+                      "text": "全员逃走中"
+                    }
+                  },
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                }
+              ]
+            },
+            {
+              "type": "divider",
+              "style": "ui_divider_cyan",
+              "direction": "vertical",
+              "thickness": 1,
+              "layout": {
+                "height": {
+                  "mode": "percent",
+                  "value": 0.66
+                }
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 5
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_mission_kicker",
+                  "text": {
+                    "text": "CURRENT MISSION / 当前任务"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.exists"
+                      },
+                      {
+                        "literal": true
+                      }
+                    ]
+                  },
+                  "text": {
+                    "bind": "task.name",
+                    "fallback": {
+                      "text": "任务内容尚未公开"
+                    }
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "text",
+                  "style": "status_label",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.exists"
+                      },
+                      {
+                        "literal": false
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "当前没有向你公开的进行中任务"
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.exists"
+                      },
+                      {
+                        "literal": true
+                      }
+                    ]
+                  },
+                  "text": {
+                    "bind": "task.description",
+                    "fallback": {
+                      "text": "进入任务页查看当前允许公开的目标和进度。"
+                    }
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 136
+                },
+                "gap": 6
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    }
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "MISSION ACCESS"
+                  },
+                  "text_align": "center"
+                },
+                {
+                  "type": "button",
+                  "id": "open_runner_task_from_home",
+                  "style": "secondary_button",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "task.exists"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "personal/pixel_tzz:player_role"
+                          },
+                          {
+                            "literal": "pixel_tzz:runner"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 34
+                    }
+                  },
+                  "label": {
+                    "text": "进入当前任务"
+                  },
+                  "action": {
+                    "type": "registered",
+                    "action": "pixel_tzz:open_runner_task"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                },
+                {
+                  "type": "button",
+                  "id": "open_hunter_task_from_home",
+                  "style": "danger_button",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "task.exists"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "personal/pixel_tzz:player_role"
+                          },
+                          {
+                            "literal": "pixel_tzz:hunter"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 34
+                    }
+                  },
+                  "label": {
+                    "text": "进入猎人任务"
+                  },
+                  "action": {
+                    "type": "registered",
+                    "action": "pixel_tzz:open_hunter_task"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "ui_nav_deck",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 118
+          }
+        },
+        "responsive": {
+          "compact": {
+            "layout": {
+              "height": {
+                "mode": "weight",
+                "value": 1
+              }
+            }
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "gap": 5,
+            "padding": {
+              "vertical": 4,
+              "horizontal": 6
+            },
+            "cross_align": "stretch"
+          },
+          "responsive": {
+            "compact": {
+              "type": "column",
+              "layout": {
+                "gap": 5,
+                "cross_align": "stretch"
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "card",
+              "style": "ui_portal_info",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "height": {
+                  "mode": "fill"
+                }
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                }
+              },
+              "child": {
+                "type": "column",
+                "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 12
+                }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_kicker_info",
+                    "text": {
+                      "text": "EVENT ARCHIVE"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "ui_portal_title_info",
+                    "text": {
+                      "text": "过去事件"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "utility_label",
+                    "text": {
+                      "concat": [
+                        {
+                          "text": "当前可回顾 "
+                        },
+                        {
+                          "bind": "history.count",
+                          "fallback": {
+                            "text": "0"
+                          }
+                        },
+                        {
+                          "text": " 条"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "type": "spacer",
+                    "layout": {
+                      "height": {
+                        "mode": "weight",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "id": "open_history_from_home",
+                    "style": "secondary_button",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "height": {
+                        "mode": "fixed",
+                        "value": 27
+                      }
+                    },
+                    "label": {
+                      "text": "浏览时间线"
+                    },
+                    "action": {
+                      "type": "registered",
+                      "action": "pixel_tzz:open_history"
+                    },
+                    "events": {
+                      "press": {
+                        "motion": "button_press",
+                        "sound": "button_press"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "card",
+              "style": "ui_portal_success",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "height": {
+                  "mode": "fill"
+                }
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                }
+              },
+              "child": {
+                "type": "column",
+                "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 12
+                }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_kicker_success",
+                    "text": {
+                      "text": "PERSONAL RECORD"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "ui_portal_title_success",
+                    "text": {
+                      "text": "个人信息"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "utility_label",
+                    "text": {
+                      "bind": "viewer.name",
+                      "fallback": {
+                        "text": "当前玩家"
+                      }
+                    },
+                    "max_lines": 1,
+                    "overflow": "ellipsis"
+                  },
+                  {
+                    "type": "spacer",
+                    "layout": {
+                      "height": {
+                        "mode": "weight",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "id": "open_profile_from_home",
+                    "style": "ui_button_success",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "height": {
+                        "mode": "fixed",
+                        "value": 27
+                      }
+                    },
+                    "label": {
+                      "text": "查看本人档案"
+                    },
+                    "action": {
+                      "type": "registered",
+                      "action": "pixel_tzz:open_profile"
+                    },
+                    "events": {
+                      "press": {
+                        "motion": "button_press",
+                        "sound": "button_press"
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            {
+              "type": "card",
+              "style": "ui_portal_brand",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "height": {
+                  "mode": "fill"
+                }
+              },
+              "responsive": {
+                "compact": {
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                }
+              },
+              "child": {
+                "type": "column",
+                "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 3,
+                "padding": {
+                  "vertical": 7,
+                  "horizontal": 12
+                }
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_kicker_brand",
+                    "text": {
+                      "text": "FIELD MANUAL"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "ui_portal_title_brand",
+                    "text": {
+                      "text": "终端指南"
+                    }
+                  },
+                  {
+                    "type": "text",
+                    "style": "utility_label",
+                    "text": {
+                      "text": "4 份可翻阅指南"
+                    }
+                  },
+                  {
+                    "type": "spacer",
+                    "layout": {
+                      "height": {
+                        "mode": "weight",
+                        "value": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "button",
+                    "id": "open_help_from_home",
+                    "style": "primary_button",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "height": {
+                        "mode": "fixed",
+                        "value": 27
+                      }
+                    },
+                    "label": {
+                      "text": "打开指南"
+                    },
+                    "action": {
+                      "type": "registered",
+                      "action": "pixel_tzz:open_help"
+                    },
+                    "events": {
+                      "press": {
+                        "motion": "button_press",
+                        "sound": "button_press"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -35,13 +35,13 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload.T
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.TickTimeFormatter;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TimelineViewLayout;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TimelineViewLayout.Layout;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -1625,14 +1625,16 @@ public class TimelineScreen extends TransitioningConsoleScreen {
 			return true;
 		}
 		Layout layout = layout();
+		double referenceX = referenceMouseX(mouseX);
+		double referenceY = referenceMouseY(mouseY);
 		int delta = (int)Math.round(-verticalAmount * 22.0);
-		if (contains(layout.route(), mouseX, mouseY)) {
+		if (contains(layout.route(), referenceX, referenceY)) {
 			this.routeScroll += delta;
 			clampScroll();
 			layoutRouteButtons();
 			return true;
 		}
-		if (contains(layout.detail(), mouseX, mouseY)) {
+		if (contains(layout.detail(), referenceX, referenceY)) {
 			this.detailScroll += delta;
 			clampScroll();
 			return true;
@@ -1642,11 +1644,13 @@ public class TimelineScreen extends TransitioningConsoleScreen {
 
 	@Override
 	public boolean mouseClicked(final MouseButtonEvent event, final boolean doubleClick) {
+		double referenceX = referenceMouseX(event.x());
+		double referenceY = referenceMouseY(event.y());
 		if (
 			!navigationLocked()
 				&& this.callbackModeToggle != null
-				&& contains(layout().detail(), event.x(), event.y())
-				&& contains(this.callbackModeToggle, event.x(), event.y())
+				&& contains(layout().detail(), referenceX, referenceY)
+				&& contains(this.callbackModeToggle, referenceX, referenceY)
 		) {
 			boolean previous = ClientUiPreferences.callbackAuditRaw();
 			this.callbackToggleFromRaw = previous;
@@ -1717,7 +1721,7 @@ public class TimelineScreen extends TransitioningConsoleScreen {
 	}
 
 	private Layout layout() {
-		return TimelineViewLayout.compute(this.width, this.height);
+		return TimelineViewLayout.compute(designWidth(), designHeight());
 	}
 
 	private static boolean contains(
@@ -1865,13 +1869,7 @@ public class TimelineScreen extends TransitioningConsoleScreen {
 	}
 
 	private static String formatTicks(final long ticks) {
-		long seconds = Math.max(0L, ticks) / 20L;
-		long hours = seconds / 3_600L;
-		long minutes = seconds % 3_600L / 60L;
-		long remainder = seconds % 60L;
-		return hours > 0L
-			? String.format(Locale.ROOT, "%d:%02d:%02d", hours, minutes, remainder)
-			: String.format(Locale.ROOT, "%02d:%02d", minutes, remainder);
+		return TickTimeFormatter.format(ticks);
 	}
 
 	@Override

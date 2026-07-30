@@ -1,0 +1,265 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "可见内容"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_help_visibility",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_doc_green",
+        "child": {
+          "type": "row",
+          "layout": {
+            "gap": 12,
+            "padding": {
+              "vertical": 11,
+              "horizontal": 13
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "ui_icon_green",
+              "text": {
+                "text": "▤"
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_success",
+                  "text": {
+                    "text": "GUIDE 02 / 可见内容"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "为什么每个人看到的不同"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "页面由数据包自由注册，但服务端始终按当前玩家裁剪内容。"
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "grid",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "columns": [
+            {
+              "mode": "weight",
+              "value": 1
+            },
+            {
+              "mode": "weight",
+              "value": 1
+            }
+          ],
+          "column_gap": 9,
+          "row_gap": 9
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_doc_green",
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 7,
+                "padding": {
+                  "vertical": 11,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "text": {
+                    "text": "会进入终端的内容"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 数据包明确授权给本人的字段"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 当前身份与阶段允许公开的任务"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 已经发生并到达公开时机的事件"
+                  }
+                },
+                {
+                  "type": "spacer",
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "身份、阶段或任务变化后，服务端会重新核验当前页面。"
+                  },
+                  "wrap": true,
+                  "max_lines": 3,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_doc_red",
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 7,
+                "padding": {
+                  "vertical": 11,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "hunter_title",
+                  "text": {
+                    "text": "不会下发到客户端的内容"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "hunter_divider",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 其他玩家的私有变量"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 尚未公开的任务路线与结果"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 主持人审计、后台回调与内部标识"
+                  }
+                },
+                {
+                  "type": "spacer",
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "看不到某项内容通常是公开策略，而不是页面同步失败。"
+                  },
+                  "wrap": true,
+                  "max_lines": 3,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

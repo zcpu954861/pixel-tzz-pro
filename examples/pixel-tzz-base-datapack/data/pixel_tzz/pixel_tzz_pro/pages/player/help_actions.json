@@ -1,0 +1,343 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "安全操作"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_help_actions",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 6,
+      "padding": {
+        "vertical": 12,
+        "horizontal": 14
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_doc_red",
+        "child": {
+          "type": "column",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 2,
+            "padding": {
+              "vertical": 7,
+              "horizontal": 11
+            }
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "ui_kicker_danger",
+              "text": {
+                "text": "SECURE ACTION PROTOCOL / 安全操作"
+              }
+            },
+            {
+              "type": "text",
+              "style": "progress_value",
+              "text": {
+                "text": "『按钮执行前后会发生什么』"
+              }
+            },
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "客户端只提交已注册按钮；身份、阶段、次数与实际执行始终由服务端复核。"
+              },
+              "wrap": true,
+              "max_lines": 2,
+              "overflow": "ellipsis"
+            }
+          ]
+        }
+      },
+      {
+        "type": "card",
+        "style": "ui_doc_red",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 42
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 8,
+            "padding": {
+              "vertical": 5,
+              "horizontal": 12
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 1,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_danger",
+                  "text": {
+                    "text": "01"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "玩家点击"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "style": "hunter_title",
+              "text": {
+                "text": ">"
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 1,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_danger",
+                  "text": {
+                    "text": "02"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "服务端复核"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "style": "hunter_title",
+              "text": {
+                "text": ">"
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 1,
+                "cross_align": "center"
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_danger",
+                  "text": {
+                    "text": "03"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "返回结果"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "grid",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "columns": [
+            {
+              "mode": "weight",
+              "value": 1
+            },
+            {
+              "mode": "weight",
+              "value": 1
+            }
+          ],
+          "column_gap": 9,
+          "row_gap": 9
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_article_main",
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "服务端会检查"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 当前页面与按钮是否仍然有效"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 身份、阶段、任务与受众是否匹配"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "● 使用次数、冷却与请求是否重复"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_doc_red",
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "你会得到明确结果"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "成功、暂时不可用或执行失败会使用不同反馈；快速双击不会让同一个请求执行两次。"
+                  },
+                  "wrap": true,
+                  "max_lines": 4,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider"
+                },
+                {
+                  "type": "button",
+                  "id": "help_actions_acceptance_ping",
+                  "style": "secondary_button",
+                  "label": {
+                    "text": "运行一次终端自检"
+                  },
+                  "action": {
+                    "type": "registered",
+                    "action": "pixel_tzz:acceptance_ping"
+                  },
+                  "events": {
+                    "press": {
+                      "motion": "button_press",
+                      "sound": "button_press"
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "高风险操作仍会先显示二次确认，并写明影响对象和实际后果。"
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

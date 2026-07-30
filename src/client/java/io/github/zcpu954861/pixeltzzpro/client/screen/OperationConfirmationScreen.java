@@ -16,6 +16,7 @@ import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.wi
 
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState.OperationResultContext;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState;
 import io.github.zcpu954861.pixeltzzpro.client.animation.OperationSubtitleAnimator;
 import io.github.zcpu954861.pixeltzzpro.client.ui.widget.ConsoleButton;
 import io.github.zcpu954861.pixeltzzpro.client.ui.widget.ConsoleButton.Variant;
@@ -56,6 +57,15 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 		this.returnTo = returnTo;
 		this.action = action;
 		ClientConsoleState.confirmation().ifPresent(this::rememberReview);
+	}
+
+	@Override
+	boolean requiresCurrentHost() {
+		return !this.action.operationType().equals("player_action")
+			&& !ClientPageState.isTerminalHostControlOperation(
+				this.action.operationType(),
+				this.action.operationId()
+			);
 	}
 
 	@Override
@@ -182,6 +192,17 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 			if (result.successfulCommit(this.action.operationId())) {
 				String message = result.message().isBlank() ? "操作已成功完成" : result.message();
 				ClientConsoleState.clearResult();
+				if (this.action.operationType().equals("player_action")) {
+					OperationSubtitleAnimator.enqueue(message);
+					closeToParent();
+					return;
+				}
+				if (
+					this.returnTo instanceof DataDrivenPageScreen terminal
+						&& terminal.isNormalTerminalScreen()
+				) {
+					io.github.zcpu954861.pixeltzzpro.client.ClientPageState.closeActivePage();
+				}
 				OperationSubtitleAnimator.enqueue(message);
 				closeToHud();
 				return;
@@ -192,6 +213,15 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 			) {
 				this.submitted = false;
 				refreshExpiredAndSubmit();
+				return;
+			}
+			if (this.action.operationType().equals("player_action")) {
+				String message = result.message().isBlank()
+					? "本次玩家终端操作未执行"
+					: result.message();
+				ClientConsoleState.clearResult();
+				OperationSubtitleAnimator.enqueue(message);
+				closeToParent();
 				return;
 			}
 			this.observedToken = confirmation == null ? null : confirmation.tokenId();
@@ -620,28 +650,28 @@ final class OperationConfirmationScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.max(1, Math.min(650, this.width - 12));
+		return Math.max(1, Math.min(650, designWidth() - 12));
 	}
 
 	private int panelHeight() {
 		ConfirmationS2CPayload confirmation = ClientConsoleState.confirmation().orElse(null);
 		if (confirmation == null) {
-			return Math.max(1, Math.min(220, this.height - 12));
+			return Math.max(1, Math.min(220, designHeight() - 12));
 		}
 		int consequences = Math.min(MAX_VISIBLE_CONSEQUENCES, confirmation.consequenceJson().size());
 		int targetBlock = confirmation.targets().isEmpty()
 			? 0
 			: confirmation.targets().size() == 1 ? TARGET_ROW_HEIGHT : TARGET_SUMMARY_HEIGHT;
 		int desired = 166 + targetBlock + consequences * CONSEQUENCE_HEIGHT;
-		return Math.max(1, Math.min(Math.clamp(desired, 250, 390), this.height - 12));
+		return Math.max(1, Math.min(Math.clamp(desired, 250, 390), designHeight() - 12));
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

@@ -1,0 +1,29 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "operation": {
+    "type": "run_function",
+    "function": "pixel_tzz:acceptance_3a/player/ping"
+  },
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "cooldown": {
+    "ticks": 40,
+    "scope": "player"
+  },
+  "execution_context": "player",
+  "feedback": {
+    "success": {
+      "text": "终端自检请求已记录"
+    },
+    "denied": {
+      "text": "当前不能执行终端自检"
+    },
+    "failed": {
+      "text": "终端自检函数执行失败"
+    }
+  },
+  "audit": "all"
+}

@@ -31,6 +31,7 @@ public final class PauseMenuEntry {
 			if (!(screen instanceof PauseScreen pauseScreen) || !pauseScreen.showsPauseMenu() || client.player == null) {
 				return;
 			}
+			ClientTimelineState.probe();
 
 			List<AbstractWidget> widgets = Screens.getWidgets(screen);
 			List<AbstractWidget> iconButtons = widgets
@@ -85,11 +86,15 @@ public final class PauseMenuEntry {
 				label(state.labelKey()),
 				button -> {
 					EntryState current = entryState();
-					client.gui.setScreen(
-						current.openRecap()
-							? new RecapScreen(parent)
-							: new ControlConsoleScreen(parent)
-					);
+					if (current.forcedFlow()) {
+						LivePageSupervisor.openCurrentForcedPage(client, parent);
+					} else if (current.currentPlayerHost()) {
+						client.gui.setScreen(new ControlConsoleScreen(parent));
+					} else if (current.recapAvailable()) {
+						client.gui.setScreen(new RecapScreen(parent));
+					} else {
+						LivePageSupervisor.openPlayerTerminal(client, parent);
+					}
 				}
 			)
 			.bounds(x, y, width, 20)
@@ -113,15 +118,22 @@ public final class PauseMenuEntry {
 
 	private static EntryState entryState() {
 		ClientSessionState.Snapshot snapshot = ClientSessionState.snapshot();
-		boolean openRecap = !snapshot.currentPlayerHost() && ClientTimelineState.recapAvailable();
-		String labelKey = openRecap
-			? "pixel_tzz_pro.menu.recap"
+		boolean forcedFlow = io.github.zcpu954861.pixeltzzpro.client.ClientPageState
+			.forcedPageActive();
+		boolean recapAvailable = ClientTimelineState.recapAvailable();
+		String labelKey = forcedFlow
+			? "pixel_tzz_pro.menu.forced"
 			: snapshot.currentPlayerHost()
 				? "pixel_tzz_pro.menu.host"
-				: snapshot.adminEligible()
-					? "pixel_tzz_pro.menu.admin"
-					: "pixel_tzz_pro.menu.open";
-		return new EntryState(labelKey, openRecap);
+				: recapAvailable
+					? "pixel_tzz_pro.menu.recap"
+					: "pixel_tzz_pro.menu.terminal";
+		return new EntryState(
+			labelKey,
+			forcedFlow,
+			snapshot.currentPlayerHost(),
+			recapAvailable
+		);
 	}
 
 	private static Component label(final String key) {
@@ -131,13 +143,22 @@ public final class PauseMenuEntry {
 	private static Tooltip tooltip(final EntryState state) {
 		return Tooltip.create(
 			Component.translatable(
-				state.openRecap()
-					? "pixel_tzz_pro.menu.recap.tooltip"
-					: "pixel_tzz_pro.menu.open.tooltip"
+				state.forcedFlow()
+					? "pixel_tzz_pro.menu.forced.tooltip"
+					: state.currentPlayerHost()
+						? "pixel_tzz_pro.menu.open.tooltip"
+						: state.recapAvailable()
+							? "pixel_tzz_pro.menu.recap.tooltip"
+							: "pixel_tzz_pro.menu.terminal.tooltip"
 			)
 		);
 	}
 
-	private record EntryState(String labelKey, boolean openRecap) {
+	private record EntryState(
+		String labelKey,
+		boolean forcedFlow,
+		boolean currentPlayerHost,
+		boolean recapAvailable
+	) {
 	}
 }

@@ -41,6 +41,9 @@ import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ExclusiveMutationSubmission;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.FlowSubmission;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.PageStatus;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.TerminalSubmission;
+import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
+import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState;
 import io.github.zcpu954861.pixeltzzpro.client.OperationFeedbackText;
 import io.github.zcpu954861.pixeltzzpro.client.ui.ClientResourcePreflight.Diagnostic;
 import io.github.zcpu954861.pixeltzzpro.client.ui.page.PageRenderPlanBuilder;
@@ -55,6 +58,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ActionType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetReference;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Direction;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.DividerContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.EventBinding;
@@ -66,6 +70,8 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.NodeDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.NodeType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PlayerHeadContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ProgressContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.RepeatContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ResponsiveTier;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SoundCue;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.StyleState;
@@ -80,11 +86,19 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.ExclusiveOptionState;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.TerminalContext;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload.Intent;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.PlacedNode;
 import io.github.zcpu954861.pixeltzzpro.ui.layout.UiLayoutEngine.Rect;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.ConsoleScreenViewport;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageRenderProjection;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.TerminalFooterLayout;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.TerminalHeaderLayout;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.TerminalShellViewport;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TextLineWrapper;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingRuntime;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.UiMotionRuntime;
@@ -153,6 +167,52 @@ public final class DataDrivenPageScreen extends Screen {
 	private static final int SOUND_LIMIT_MILLIS = 120;
 	private static final int SCROLL_STEP = 24;
 	private static final int MAX_DEBUG_DETAILS = 4;
+	private static final int LIVE_PAGE_INSET = 12;
+	private static final long CAROUSEL_TRANSITION_MILLIS = 220L;
+	private static final long REDUCED_CAROUSEL_TRANSITION_MILLIS = 110L;
+	private static final long TERMINAL_FEEDBACK_HOLD_MILLIS = 3_200L;
+	private static final long TERMINAL_FEEDBACK_FADE_MILLIS = 420L;
+	private static final String TERMINAL_FOOTER_NAVIGATION_ID =
+		"terminal_footer_navigation";
+	private static final int MAX_PERSISTED_CAROUSEL_SELECTIONS = 256;
+	private static final Map<CarouselSelectionKey, String> CAROUSEL_SELECTIONS =
+		new LinkedHashMap<>();
+	private static final Identifier CLAIM_HOST_OPERATION = Identifier.parse(
+		"pixel-tzz-pro:host/claim"
+	);
+	private static final Identifier TAKEOVER_HOST_OPERATION = Identifier.parse(
+		"pixel-tzz-pro:host/takeover"
+	);
+	private static final ActionEntry CLAIM_HOST_ACTION = new ActionEntry(
+		"claim_host",
+		CLAIM_HOST_OPERATION,
+		"system",
+		-110,
+		"{\"text\":\"认领主持人\"}",
+		"{\"text\":\"成为该世界唯一的全员逃走中主持人。\"}",
+		"#D7B45A",
+		true,
+		"",
+		"none",
+		0,
+		0,
+		true
+	);
+	private static final ActionEntry TAKEOVER_HOST_ACTION = new ActionEntry(
+		"takeover_host",
+		TAKEOVER_HOST_OPERATION,
+		"system",
+		-100,
+		"{\"text\":\"接管主持人\"}",
+		"{\"text\":\"以至少 2 级 OP 权限接管离线或失去控制的主持人。\"}",
+		"#E94F64",
+		true,
+		"",
+		"none",
+		0,
+		0,
+		true
+	);
 	private static final UUID FALLBACK_UUID = new UUID(0L, 0L);
 
 	private final Screen parent;
@@ -160,6 +220,12 @@ public final class DataDrivenPageScreen extends Screen {
 	private final BindingRuntime bindings = new BindingRuntime(DataDrivenPageScreen::translate);
 	private final Map<String, Integer> scrollOffsets = new LinkedHashMap<>();
 	private final Map<String, WidgetBinding> pageWidgets = new LinkedHashMap<>();
+	private final Map<String, TerminalNavigationBinding> terminalRootNavigationWidgets =
+		new LinkedHashMap<>();
+	private final Set<String> terminalFooterNavigationKeys = new HashSet<>();
+	private List<String> terminalRootNavigationNodeKeys = List.of();
+	private final Map<String, CarouselRuntime> carouselStates = new LinkedHashMap<>();
+	private final Map<String, CarouselControls> carouselControls = new LinkedHashMap<>();
 	private final Map<AbstractWidget, ExclusiveChoicePresentation> exclusiveChoicePresentations =
 		new IdentityHashMap<>();
 	private final Map<String, PlacedNode> placedNodes = new LinkedHashMap<>();
@@ -181,6 +247,9 @@ public final class DataDrivenPageScreen extends Screen {
 	private String renderFailure = "";
 	private String lastRequestEnvelope = "";
 	private UiEvent lastRequestOutcome = UiEvent.SUCCESS;
+	private String terminalFeedbackMessage = "";
+	private UiEvent terminalFeedbackOutcome = UiEvent.SUCCESS;
+	private long terminalFeedbackUntilMillis;
 	private UUID motionInstanceId;
 	private long requestSequence;
 	private long motionSequence;
@@ -193,6 +262,10 @@ public final class DataDrivenPageScreen extends Screen {
 	private boolean safetyDiagnosticsExpanded;
 	private long pendingActionSequence = -1L;
 	private String pendingActionNodeKey = "";
+	private boolean pendingActionIsTerminal;
+	private long pendingTerminalChromeSequence = -1L;
+	private boolean pendingTakeoverReview;
+	private long pendingTakeoverSequence = -1L;
 	private long pendingExclusiveMutationSequence = -1L;
 	private Identifier pendingExclusiveMutationField;
 	private String pendingExclusiveMutationOption = "";
@@ -201,8 +274,21 @@ public final class DataDrivenPageScreen extends Screen {
 	private int viewportY;
 	private int viewportWidth;
 	private int viewportHeight;
+	private int pageLayoutWidth;
+	private int pageLayoutHeight;
 	private int pageContentWidth;
 	private int pageContentHeight;
+	private int terminalShellX;
+	private int terminalShellY;
+	private int terminalShellWidth;
+	private int terminalShellHeight;
+	private TerminalShellViewport.Layout terminalShellViewport =
+		TerminalShellViewport.fit(1, 1);
+	private int terminalFooterHeight = TerminalFooterLayout.NONE_HEIGHT;
+	private ConsoleButton terminalExitButton;
+	private ConsoleButton terminalBackButton;
+	private ConsoleButton terminalTakeoverButton;
+	private double referencePageScale = 1.0;
 	private double pageScale = 1.0;
 	private String draggingScrollKey;
 	private double dragStartMouse;
@@ -216,6 +302,12 @@ public final class DataDrivenPageScreen extends Screen {
 
 	public boolean isLivePageScreen() {
 		return !this.session.previewChrome();
+	}
+
+	boolean isNormalTerminalScreen() {
+		return isLivePageScreen()
+			&& this.active != null
+			&& this.active.purpose() == PagePurpose.NORMAL;
 	}
 
 	public Screen returnScreen() {
@@ -282,12 +374,33 @@ public final class DataDrivenPageScreen extends Screen {
 				// Interactive widgets narrate themselves; layout-only nodes have no stable prose.
 			}
 		}
-		for (RenderNode child : node.children()) {
+		List<RenderNode> narratedChildren = node.type() == NodeType.CAROUSEL
+			? selectedCarouselNarrationChildren(node)
+			: node.children();
+		for (RenderNode child : narratedChildren) {
 			if (target.size() >= 16) {
 				break;
 			}
 			collectNarration(child, target);
 		}
+	}
+
+	private List<RenderNode> selectedCarouselNarrationChildren(final RenderNode node) {
+		CarouselRuntime state = this.carouselStates.get(node.key());
+		if (state == null) {
+			return node.children().isEmpty()
+				? List.of()
+				: List.of(node.children().getFirst());
+		}
+		return node.children()
+			.stream()
+			.filter(child ->
+				child.definition() != null
+					&& child.definition().id().filter(state.selectedId()::equals).isPresent()
+			)
+			.findFirst()
+			.map(List::of)
+			.orElse(List.of());
 	}
 
 	@Override
@@ -304,15 +417,32 @@ public final class DataDrivenPageScreen extends Screen {
 			.orElse(null);
 		this.clearWidgets();
 		this.pageWidgets.clear();
+		this.terminalRootNavigationWidgets.clear();
+		this.terminalFooterNavigationKeys.clear();
+		this.terminalRootNavigationNodeKeys = List.of();
+		this.carouselControls.clear();
 		this.exclusiveChoicePresentations.clear();
 		this.placedNodes.clear();
 		this.resolvedStyles.clear();
 		this.bindingContextCache.clear();
+		this.terminalExitButton = null;
+		this.terminalBackButton = null;
+		this.terminalTakeoverButton = null;
 		this.renderFailure = "";
+		ActivePage previousActive = this.active;
 		this.active = ClientPageState.activePage().orElse(null);
-		resetMotionStateIfInstanceChanged();
+		boolean preserveStableTerminalMotion = shouldPreserveStableTerminalMotion(
+			previousActive,
+			this.active
+		);
+		resetMotionStateIfInstanceChanged(preserveStableTerminalMotion);
 		rememberPageProjection();
 
+		if (isTerminalLoading()) {
+			this.plan = null;
+			layoutTerminalLoadingWidgets();
+			return;
+		}
 		if (isSafetyPage()) {
 			this.plan = null;
 			layoutSafetyWidgets();
@@ -330,16 +460,24 @@ public final class DataDrivenPageScreen extends Screen {
 				this.font,
 				this.active,
 				contextWithLocalUi(this.session.context(this.active)),
-				this.session.responsiveTier(),
-				this.viewportWidth,
-				this.viewportHeight,
+				pageResponsiveTier(),
+				this.pageLayoutWidth,
+				this.pageLayoutHeight,
 				this.scrollOffsets,
 				this.session.defaultFont()
 			);
 			indexPlaced(this.plan.layout().root());
+			applyTerminalNavigationPlan(analyzeTerminalNavigation(this.plan));
+			reconcileCarouselStates();
 			updatePageFit();
+			if (preserveStableTerminalMotion) {
+				this.shownNodeKeys.retainAll(this.plan.nodes().keySet());
+			}
 			initializeShowMotions();
 			buildPageWidgets(this.plan.layout().root());
+			if (normalTerminalPage()) {
+				layoutTerminalChrome();
+			}
 			if (this.active.purpose() == PagePurpose.FORCED_FLOW) {
 				ClientPageState.reportRenderReady(this.active.instanceId());
 			}
@@ -362,10 +500,13 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 
 		if (this.session.previewChrome()) {
-			int backWidth = Math.min(104, Math.max(72, this.width - 24));
+			int backWidth = Math.min(
+				104,
+				Math.max(72, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
+			);
 			ConsoleButton back = new ConsoleButton(
-				this.width - backWidth - 12,
-				this.height - 30,
+				ConsoleScreenViewport.REFERENCE_WIDTH - backWidth - 12,
+				ConsoleScreenViewport.REFERENCE_HEIGHT - 30,
 				backWidth,
 				22,
 				Component.literal("返回页面目录"),
@@ -383,21 +524,46 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 	}
 
-	private void resetMotionStateIfInstanceChanged() {
+	private static boolean shouldPreserveStableTerminalMotion(
+		final ActivePage previous,
+		final ActivePage current
+	) {
+		if (
+			previous == null
+				|| current == null
+				|| previous.purpose() != PagePurpose.NORMAL
+				|| current.purpose() != PagePurpose.NORMAL
+				|| !previous.page().id().equals(current.page().id())
+				|| !previous.page().equals(current.page())
+				|| !previous.theme().equals(current.theme())
+				|| !previous.fields().equals(current.fields())
+		) {
+			return false;
+		}
+		return previous.terminalContext()
+			.map(TerminalContext::sessionId)
+			.equals(current.terminalContext().map(TerminalContext::sessionId));
+	}
+
+	private void resetMotionStateIfInstanceChanged(final boolean preserveStableTerminalMotion) {
 		UUID currentInstance = this.active == null ? null : this.active.instanceId();
 		if (Objects.equals(this.motionInstanceId, currentInstance)) {
 			return;
 		}
 		this.motionInstanceId = currentInstance;
 		this.motionPlaybacks.clear();
-		this.shownNodeKeys.clear();
+		if (!preserveStableTerminalMotion) {
+			this.shownNodeKeys.clear();
+			this.lastSoundTimes.clear();
+		}
 		this.hoveredNodeKeys.clear();
 		this.focusedNodeKeys.clear();
 		this.pendingSounds.clear();
-		this.lastSoundTimes.clear();
 		this.motionSequence = 0L;
 		this.closing = false;
 		this.serverReleased = false;
+		this.terminalFeedbackMessage = "";
+		this.terminalFeedbackUntilMillis = 0L;
 		Map<String, String> colors = new HashMap<>(
 			BuiltInUiResources.defaultTheme().tokens().colors()
 		);
@@ -424,6 +590,170 @@ public final class DataDrivenPageScreen extends Screen {
 			|| !this.renderFailure.isEmpty();
 	}
 
+	private boolean isTerminalLoading() {
+		if (
+			this.session.previewChrome()
+				|| this.active != null
+				|| ClientPageState.pagePurpose() != PagePurpose.NORMAL
+		) {
+			return false;
+		}
+		return ClientPageState.pageStatus() == PageStatus.LOADING
+			|| ClientPageState.activePage()
+				.map(page -> page.purpose() == PagePurpose.NORMAL)
+				.orElse(false);
+	}
+
+	private boolean normalTerminalPage() {
+		return this.active != null && this.active.purpose() == PagePurpose.NORMAL;
+	}
+
+	private int terminalRootNavigationDefinitionCount() {
+		if (
+			!normalTerminalPage()
+				|| this.active.terminalContext()
+					.map(TerminalContext::stackDepth)
+					.orElse(1) != 1
+		) {
+			return 0;
+		}
+		List<NodeDefinition> containers = directNodeChildren(this.active.page().root())
+			.stream()
+			.filter(node ->
+				node.id().filter(TERMINAL_FOOTER_NAVIGATION_ID::equals).isPresent()
+			)
+			.toList();
+		if (containers.size() != 1) {
+			return 0;
+		}
+		if (!(containers.getFirst().content() instanceof ChildrenContent children)) {
+			return 0;
+		}
+		int count = children.children().size();
+		return count >= 1 && count <= TerminalFooterLayout.MAX_ROOT_NAVIGATION_ITEMS
+			? count
+			: 0;
+	}
+
+	private TerminalNavigationPlan analyzeTerminalNavigation(
+		final RenderPlan renderPlan
+	) {
+		List<RenderNode> reserved = renderPlan.nodes()
+			.values()
+			.stream()
+			.filter(node ->
+				node.definition() != null
+					&& node.definition()
+						.id()
+						.filter(TERMINAL_FOOTER_NAVIGATION_ID::equals)
+						.isPresent()
+			)
+			.toList();
+		if (reserved.isEmpty()) {
+			return TerminalNavigationPlan.empty();
+		}
+		if (reserved.size() != 1) {
+			throw new IllegalArgumentException(
+				"ordinary terminal pages may declare only one terminal_footer_navigation container"
+			);
+		}
+		RenderNode container = reserved.getFirst();
+		boolean directRootChild = renderPlan.root()
+			.children()
+			.stream()
+			.anyMatch(child -> child.key().equals(container.key()));
+		if (!directRootChild) {
+			throw new IllegalArgumentException(
+				"terminal_footer_navigation must be a direct child of the page root"
+			);
+		}
+		if (!(container.definition().content() instanceof ChildrenContent children)) {
+			throw new IllegalArgumentException(
+				"terminal_footer_navigation must directly contain registered buttons"
+			);
+		}
+		List<NodeDefinition> registeredDefinitions = children.children();
+		if (
+			registeredDefinitions.isEmpty()
+				|| registeredDefinitions.size()
+					> TerminalFooterLayout.MAX_ROOT_NAVIGATION_ITEMS
+		) {
+			throw new IllegalArgumentException(
+				"terminal_footer_navigation must declare between 1 and "
+					+ TerminalFooterLayout.MAX_ROOT_NAVIGATION_ITEMS
+					+ " buttons"
+			);
+		}
+		for (NodeDefinition definition : registeredDefinitions) {
+			if (
+				!(definition.content() instanceof ButtonContent button)
+					|| definition.id().filter(id -> !id.isBlank()).isEmpty()
+					|| button.action().type() != ActionType.REGISTERED
+					|| button.action().registeredAction().isEmpty()
+			) {
+				throw new IllegalArgumentException(
+					"terminal_footer_navigation accepts only stable registered buttons"
+				);
+			}
+		}
+		Set<String> subtreeKeys = new HashSet<>();
+		collectRenderNodeKeys(container, subtreeKeys);
+		if (!normalTerminalPage()) {
+			return new TerminalNavigationPlan(List.of(), Set.copyOf(subtreeKeys));
+		}
+		int stackDepth = this.active.terminalContext()
+			.map(TerminalContext::stackDepth)
+			.orElse(1);
+		if (stackDepth != 1) {
+			throw new IllegalArgumentException(
+				"terminal_footer_navigation is only valid on an ordinary terminal root page"
+			);
+		}
+		List<String> buttonKeys = container.children()
+			.stream()
+			.map(child -> {
+				if (
+					child.definition() == null
+						|| !(child.definition().content() instanceof ButtonContent)
+				) {
+					throw new IllegalArgumentException(
+						"visible terminal footer navigation entries must remain buttons"
+					);
+				}
+				return child.key();
+			})
+			.toList();
+		if (buttonKeys.size() > TerminalFooterLayout.MAX_ROOT_NAVIGATION_ITEMS) {
+			throw new IllegalArgumentException(
+				"visible terminal footer navigation exceeds the supported item limit"
+			);
+		}
+		return new TerminalNavigationPlan(buttonKeys, Set.copyOf(subtreeKeys));
+	}
+
+	private void applyTerminalNavigationPlan(final TerminalNavigationPlan navigation) {
+		this.terminalRootNavigationNodeKeys = navigation.buttonKeys();
+		this.terminalFooterNavigationKeys.clear();
+		this.terminalFooterNavigationKeys.addAll(navigation.subtreeKeys());
+	}
+
+	private static void collectRenderNodeKeys(
+		final RenderNode node,
+		final Set<String> target
+	) {
+		target.add(node.key());
+		node.children().forEach(child -> collectRenderNodeKeys(child, target));
+	}
+
+	private static List<NodeDefinition> directNodeChildren(final NodeDefinition node) {
+		return switch (node.content()) {
+			case ChildrenContent children -> children.children();
+			case SingleChildContent child -> List.of(child.child());
+			case RepeatContent repeat -> List.of(repeat.template());
+			default -> List.of();
+		};
+	}
+
 	private boolean forcedPage() {
 		return !this.serverReleased
 			&& (
@@ -436,7 +766,7 @@ public final class DataDrivenPageScreen extends Screen {
 		List<ToolSpec> tools = toolSpecs();
 		int x = 14;
 		int y = 12;
-		int right = Math.max(24, this.width - 14);
+		int right = Math.max(24, ConsoleScreenViewport.REFERENCE_WIDTH - 14);
 		for (ToolSpec spec : tools) {
 			if (x > 14 && x + spec.width() > right) {
 				x = 14;
@@ -509,18 +839,21 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void calculateViewport() {
-		int availableWidth = Math.max(1, this.width - 32);
+		int availableWidth = Math.max(1, ConsoleScreenViewport.REFERENCE_WIDTH - 32);
 		int requestedWidth = switch (this.session.viewport()) {
 			case COMPACT -> COMPACT_VIEWPORT_WIDTH;
 			case STANDARD -> STANDARD_VIEWPORT_WIDTH;
 			case WIDE -> WIDE_VIEWPORT_WIDTH;
 		};
 		this.viewportWidth = Math.min(availableWidth, requestedWidth);
-		this.viewportX = (this.width - this.viewportWidth) / 2;
+		this.viewportX = (ConsoleScreenViewport.REFERENCE_WIDTH - this.viewportWidth) / 2;
 		int contentTop = this.toolbarHeight + VIEWPORT_HEADER_HEIGHT;
 		int availableHeight = Math.max(
 			1,
-			this.height - contentTop - FOOTER_HEIGHT - OUTER_MARGIN
+			ConsoleScreenViewport.REFERENCE_HEIGHT
+				- contentTop
+				- FOOTER_HEIGHT
+				- OUTER_MARGIN
 		);
 		int requestedHeight = switch (this.session.viewport()) {
 			case COMPACT -> COMPACT_VIEWPORT_HEIGHT;
@@ -529,14 +862,265 @@ public final class DataDrivenPageScreen extends Screen {
 		};
 		this.viewportHeight = Math.min(availableHeight, requestedHeight);
 		this.viewportY = contentTop + Math.max(0, availableHeight - this.viewportHeight) / 2;
+		this.pageLayoutWidth = this.viewportWidth;
+		this.pageLayoutHeight = this.viewportHeight;
+	}
+
+	private ResponsiveTier pageResponsiveTier() {
+		return normalTerminalPage()
+			? ResponsiveTier.STANDARD
+			: this.session.responsiveTier();
 	}
 
 	private void layoutLiveViewport() {
 		this.toolbarHeight = 0;
-		this.viewportWidth = Math.max(1, Math.min(620, this.width - 24));
-		this.viewportHeight = Math.max(1, Math.min(360, this.height - 24));
-		this.viewportX = (this.width - this.viewportWidth) / 2;
-		this.viewportY = (this.height - this.viewportHeight) / 2;
+		if (normalTerminalPage()) {
+			this.terminalShellViewport = TerminalShellViewport.fit(this.width, this.height);
+			this.terminalShellWidth = this.terminalShellViewport.width();
+			this.terminalShellHeight = this.terminalShellViewport.height();
+			this.terminalShellX = this.terminalShellViewport.x();
+			this.terminalShellY = this.terminalShellViewport.y();
+			boolean hostControl = this.active.terminalContext()
+				.map(TerminalContext::takeoverAllowed)
+				.orElse(false);
+			int stackDepth = this.active.terminalContext()
+				.map(TerminalContext::stackDepth)
+				.orElse(1);
+			int rootNavigationItems = terminalRootNavigationDefinitionCount();
+			this.terminalFooterHeight = TerminalFooterLayout.resolve(
+				0,
+				0,
+				TerminalShellViewport.REFERENCE_WIDTH,
+				TerminalShellViewport.REFERENCE_HEIGHT,
+				hostControl,
+				stackDepth,
+				rootNavigationItems
+			).footerHeight();
+			Rect pageViewport = this.terminalShellViewport.pageViewport(
+				TerminalHeaderLayout.HEIGHT,
+				this.terminalFooterHeight
+			);
+			this.viewportX = pageViewport.x();
+			this.viewportY = pageViewport.y();
+			this.viewportWidth = pageViewport.width();
+			this.viewportHeight = pageViewport.height();
+			this.pageLayoutWidth = TerminalShellViewport.REFERENCE_WIDTH
+				- TerminalShellViewport.CONTENT_INSET * 2;
+			this.pageLayoutHeight = TerminalShellViewport.REFERENCE_HEIGHT
+				- TerminalHeaderLayout.HEIGHT
+				- this.terminalFooterHeight;
+			return;
+		}
+		ConsoleScreenViewport.Layout canvas = ConsoleScreenViewport.fit(this.width, this.height);
+		Rect pageViewport = canvas.map(
+			new Rect(
+				LIVE_PAGE_INSET,
+				LIVE_PAGE_INSET,
+				ConsoleScreenViewport.REFERENCE_WIDTH - LIVE_PAGE_INSET * 2,
+				ConsoleScreenViewport.REFERENCE_HEIGHT - LIVE_PAGE_INSET * 2
+			)
+		);
+		this.viewportX = pageViewport.x();
+		this.viewportY = pageViewport.y();
+		this.viewportWidth = pageViewport.width();
+		this.viewportHeight = pageViewport.height();
+		this.pageLayoutWidth = ConsoleScreenViewport.REFERENCE_WIDTH - LIVE_PAGE_INSET * 2;
+		this.pageLayoutHeight = ConsoleScreenViewport.REFERENCE_HEIGHT - LIVE_PAGE_INSET * 2;
+	}
+
+	private void layoutTerminalLoadingWidgets() {
+		this.terminalShellViewport = TerminalShellViewport.fit(this.width, this.height);
+		this.terminalShellWidth = this.terminalShellViewport.width();
+		this.terminalShellHeight = this.terminalShellViewport.height();
+		this.terminalShellX = this.terminalShellViewport.x();
+		this.terminalShellY = this.terminalShellViewport.y();
+		this.terminalFooterHeight = TerminalFooterLayout.NONE_HEIGHT;
+	}
+
+	private void layoutTerminalChrome() {
+		TerminalContext terminal = this.active.terminalContext().orElseThrow();
+		boolean hostControl = terminal.takeoverAllowed();
+		TerminalFooterLayout.Layout footer = TerminalFooterLayout.resolve(
+			0,
+			0,
+			TerminalShellViewport.REFERENCE_WIDTH,
+			TerminalShellViewport.REFERENCE_HEIGHT,
+			hostControl,
+			terminal.stackDepth(),
+			this.terminalRootNavigationNodeKeys.size()
+		);
+		this.terminalFooterHeight = footer.footerHeight();
+		footer.exit().map(this.terminalShellViewport::map).ifPresent(exit -> {
+			this.terminalExitButton = new ConsoleButton(
+				exit.x(),
+				exit.y(),
+				exit.width(),
+				exit.height(),
+				Component.translatable("pixel_tzz_pro.terminal.exit"),
+				button -> onClose(),
+				Variant.NAVIGATION
+			);
+			this.terminalExitButton.setPresentationScale(
+				(float)this.terminalShellViewport.scale()
+			);
+			this.terminalExitButton.setTooltip(
+				Tooltip.create(
+					Component.translatable("pixel_tzz_pro.terminal.exit.tooltip")
+				)
+			);
+			this.addRenderableWidget(this.terminalExitButton);
+		});
+		footer.navigation().map(this.terminalShellViewport::map).ifPresent(navigation -> {
+			this.terminalBackButton = new ConsoleButton(
+				navigation.x(),
+				navigation.y(),
+				navigation.width(),
+				navigation.height(),
+				Component.translatable("pixel_tzz_pro.terminal.back"),
+				button -> terminalBackOrClose(),
+				Variant.NAVIGATION
+			);
+			this.terminalBackButton.setPresentationScale(
+				(float)this.terminalShellViewport.scale()
+			);
+			this.terminalBackButton.active = !ClientPageState.terminalIntentPending(Intent.BACK);
+			this.addRenderableWidget(this.terminalBackButton);
+		});
+		if (
+			footer.rootNavigation().size()
+				!= this.terminalRootNavigationNodeKeys.size()
+		) {
+			throw new IllegalStateException(
+				"terminal footer navigation geometry does not match its registered buttons"
+			);
+		}
+		for (int index = 0; index < this.terminalRootNavigationNodeKeys.size(); index++) {
+			String nodeKey = this.terminalRootNavigationNodeKeys.get(index);
+			RenderNode node = this.plan.nodes().get(nodeKey);
+			if (
+				node == null
+					|| !(node.definition().content() instanceof ButtonContent content)
+			) {
+				throw new IllegalStateException(
+					"terminal footer navigation button disappeared from the render plan"
+				);
+			}
+			Rect referenceBounds = footer.rootNavigation().get(index);
+			Rect bounds = this.terminalShellViewport.map(referenceBounds);
+			ConsoleButton button = new ConsoleButton(
+				bounds.x(),
+				bounds.y(),
+				bounds.width(),
+				bounds.height(),
+				node.styledText(),
+				pressed -> {
+					RenderNode currentNode = currentRenderNode(nodeKey, node);
+					ButtonContent currentContent =
+						currentNode.definition().content() instanceof ButtonContent refreshed
+							? refreshed
+							: content;
+					triggerUiEvent(currentNode, UiEvent.PRESS, currentNode.key());
+					handleAction(currentNode, currentContent.action());
+				},
+				buttonVariant(node, content.action()),
+				eventSound(node, UiEvent.PRESS).isEmpty(),
+				(state, fallback) -> buttonAppearance(
+					currentRenderNode(nodeKey, node),
+					state,
+					fallback
+				)
+			);
+			button.setPresentationScale((float)this.terminalShellViewport.scale());
+			button.active = actionEnabled(node, content);
+			updateButtonTooltip(button, node, content);
+			this.terminalRootNavigationWidgets.put(
+				nodeKey,
+				new TerminalNavigationBinding(button, nodeKey, referenceBounds)
+			);
+			this.addRenderableWidget(button);
+		}
+		if (footer.hostControl().isPresent()) {
+			boolean claim = !ClientSessionState.snapshot().hostAssigned();
+			Rect host = this.terminalShellViewport.map(
+				footer.hostControl().orElseThrow()
+			);
+			this.terminalTakeoverButton = new ConsoleButton(
+				host.x(),
+				host.y(),
+				host.width(),
+				host.height(),
+				Component.translatable(
+					claim
+						? "pixel_tzz_pro.terminal.claim"
+						: "pixel_tzz_pro.terminal.takeover"
+				),
+				button -> prepareHostControlReview(),
+				Variant.NORMAL
+			);
+			this.terminalTakeoverButton.setPresentationScale(
+				(float)this.terminalShellViewport.scale()
+			);
+			this.terminalTakeoverButton.active = !this.pendingTakeoverReview
+				&& !ClientPageState.terminalSyncPending();
+			this.terminalTakeoverButton.setTooltip(
+				Tooltip.create(
+					Component.translatable(
+						claim
+							? "pixel_tzz_pro.terminal.claim.tooltip"
+							: "pixel_tzz_pro.terminal.takeover.tooltip"
+					)
+				)
+			);
+			this.addRenderableWidget(this.terminalTakeoverButton);
+		}
+	}
+
+	private void terminalBackOrClose() {
+		TerminalContext terminal = this.active == null
+			? null
+			: this.active.terminalContext().orElse(null);
+		if (terminal == null || terminal.stackDepth() <= 1) {
+			return;
+		}
+		TerminalSubmission submission = ClientPageState.submitTerminalBack();
+		if (!submission.sent()) {
+			showTerminalFeedback(submission.message(), false);
+			return;
+		}
+		this.pendingTerminalChromeSequence = submission.requestSequence();
+	}
+
+	private void prepareHostControlReview() {
+		ActionEntry action = hostControlAction();
+		boolean claim = action.operationType().equals("claim_host");
+		TerminalSubmission submission = ClientPageState.submitTerminalHostControl(
+			action.operationId()
+		);
+		if (!submission.sent()) {
+			String message = submission.message().isBlank()
+				? claim ? "未能开始主持人认领审阅。" : "未能开始主持人接管审阅。"
+				: submission.message();
+			showTerminalFeedback(message, false);
+			return;
+		}
+		this.pendingTakeoverReview = true;
+		this.pendingTakeoverSequence = submission.requestSequence();
+		this.lastRequestEnvelope = claim
+			? "正在向服务端申请认领主持人审阅…"
+			: "正在向服务端申请接管主持人审阅…";
+	}
+
+	private static ActionEntry hostControlAction() {
+		boolean claim = !ClientSessionState.snapshot().hostAssigned();
+		String operationType = claim ? "claim_host" : "takeover_host";
+		Identifier operationId = claim ? CLAIM_HOST_OPERATION : TAKEOVER_HOST_OPERATION;
+		return ClientConsoleState.snapshot()
+			.stream()
+			.flatMap(snapshot -> snapshot.actions().stream())
+			.filter(action -> action.operationType().equals(operationType))
+			.filter(action -> action.operationId().equals(operationId))
+			.findFirst()
+			.orElse(claim ? CLAIM_HOST_ACTION : TAKEOVER_HOST_ACTION);
 	}
 
 	private void updatePageFit() {
@@ -549,21 +1133,36 @@ public final class DataDrivenPageScreen extends Screen {
 			root.bounds().bottom(),
 			root.contentBounds().y() + root.contentHeight()
 		);
-		this.pageScale = this.session.previewChrome()
-			? 1.0
-			: UiLayoutEngine.fitScale(
-				this.pageContentWidth,
-				this.pageContentHeight,
-				this.viewportWidth,
-				this.viewportHeight
-			);
+		if (this.session.previewChrome()) {
+			this.referencePageScale = 1.0;
+			this.pageScale = 1.0;
+			return;
+		}
+		if (normalTerminalPage()) {
+			this.referencePageScale = 1.0;
+			this.pageScale = this.terminalShellViewport.scale();
+			return;
+		}
+		this.referencePageScale = UiLayoutEngine.fitScale(
+			this.pageContentWidth,
+			this.pageContentHeight,
+			this.pageLayoutWidth,
+			this.pageLayoutHeight
+		);
+		this.pageScale = this.referencePageScale * consoleCanvas().scale();
 	}
 
 	private void layoutSafetyWidgets() {
-		int panelWidth = Math.max(1, Math.min(620, this.width - 24));
-		int panelHeight = Math.max(1, Math.min(330, this.height - 24));
-		int x = (this.width - panelWidth) / 2;
-		int y = (this.height - panelHeight) / 2;
+		int panelWidth = Math.max(
+			1,
+			Math.min(620, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
+		);
+		int panelHeight = Math.max(
+			1,
+			Math.min(330, ConsoleScreenViewport.REFERENCE_HEIGHT - 24)
+		);
+		int x = (ConsoleScreenViewport.REFERENCE_WIDTH - panelWidth) / 2;
+		int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - panelHeight) / 2;
 		int buttonY = y + panelHeight - 38;
 		if (forcedPage()) {
 			layoutForcedSafetyWidgets(x, panelWidth, buttonY);
@@ -665,16 +1264,194 @@ public final class DataDrivenPageScreen extends Screen {
 		placed.children().forEach(this::indexPlaced);
 	}
 
+	private void reconcileCarouselStates() {
+		Map<String, CarouselRuntime> reconciled = new LinkedHashMap<>();
+		for (PlacedNode placed : this.placedNodes.values()) {
+			if (placed.type() != NodeType.CAROUSEL || placed.children().isEmpty()) {
+				continue;
+			}
+			List<CarouselChild> children = carouselChildren(placed);
+			if (children.isEmpty()) {
+				continue;
+			}
+			CarouselSelectionKey persistenceKey = carouselSelectionKey(placed);
+			CarouselRuntime previous = this.carouselStates.get(placed.key());
+			String selectedId = previous == null
+				? rememberedCarouselSelection(persistenceKey).orElse(children.getFirst().id())
+				: previous.selectedId();
+			String requestedSelection = selectedId;
+			if (
+				children.stream().noneMatch(child -> child.id().equals(requestedSelection))
+			) {
+				selectedId = children.getFirst().id();
+			}
+			CarouselRuntime state = previous == null
+				? new CarouselRuntime(selectedId)
+				: previous.reconcile(selectedId, children);
+			reconciled.put(placed.key(), state);
+			rememberCarouselSelection(persistenceKey, state.selectedId());
+		}
+		this.carouselStates.clear();
+		this.carouselStates.putAll(reconciled);
+	}
+
 	private void buildPageWidgets(final PlacedNode placed) {
+		if (this.terminalFooterNavigationKeys.contains(placed.key())) {
+			return;
+		}
 		RenderNode node = this.plan.nodes().get(placed.key());
 		if (node != null && !node.synthetic() && node.definition() != null) {
 			if (node.definition().content() instanceof ButtonContent button) {
 				addButtonWidget(placed, node, button);
 			} else if (node.definition().content() instanceof FieldInputContent input) {
 				addFieldWidgets(placed, node, input);
+			} else if (node.type() == NodeType.CAROUSEL) {
+				addCarouselWidgets(placed, node);
 			}
 		}
 		placed.children().forEach(this::buildPageWidgets);
+	}
+
+	private void addCarouselWidgets(final PlacedNode placed, final RenderNode node) {
+		List<CarouselChild> children = carouselChildren(placed);
+		if (children.size() <= 1) {
+			return;
+		}
+		CarouselControlRects controls = carouselControlRects(placed);
+		ConsoleButton previous = new ConsoleButton(
+			screenX(controls.previous().x()),
+			screenY(controls.previous().y()),
+			controls.previous().width(),
+			controls.previous().height(),
+			Component.literal("‹"),
+			button -> changeCarousel(placed.key(), -1),
+			Variant.NORMAL
+		);
+		previous.setTooltip(Tooltip.create(Component.literal("上一份文档")));
+		ConsoleButton next = new ConsoleButton(
+			screenX(controls.next().x()),
+			screenY(controls.next().y()),
+			controls.next().width(),
+			controls.next().height(),
+			Component.literal("›"),
+			button -> changeCarousel(placed.key(), 1),
+			Variant.NORMAL
+		);
+		next.setTooltip(Tooltip.create(Component.literal("下一份文档")));
+		addPageWidget(
+			node.key() + "/carousel-previous",
+			previous,
+			placed,
+			node
+		);
+		addPageWidget(node.key() + "/carousel-next", next, placed, node);
+		this.carouselControls.put(
+			placed.key(),
+			new CarouselControls(previous, next)
+		);
+	}
+
+	private static CarouselControlRects carouselControlRects(final PlacedNode placed) {
+		Rect content = placed.contentBounds();
+		int width = Math.min(26, Math.max(20, content.width() / 10));
+		int height = Math.min(30, Math.max(22, content.height() / 5));
+		int y = content.y() + Math.max(0, (content.height() - height) / 2);
+		int inset = Math.min(8, Math.max(3, content.width() / 40));
+		return new CarouselControlRects(
+			new Rect(content.x() + inset, y, width, height),
+			new Rect(
+				Math.max(content.x() + inset, content.right() - inset - width),
+				y,
+				width,
+				height
+			)
+		);
+	}
+
+	private void changeCarousel(final String carouselKey, final int direction) {
+		PlacedNode placed = this.placedNodes.get(carouselKey);
+		CarouselRuntime state = this.carouselStates.get(carouselKey);
+		if (placed == null || state == null || direction == 0 || state.transitioning()) {
+			return;
+		}
+		List<CarouselChild> children = carouselChildren(placed);
+		if (children.size() <= 1) {
+			return;
+		}
+		int current = indexOfCarouselChild(children, state.selectedId());
+		int next = Math.floorMod(current + Integer.signum(direction), children.size());
+		String selectedId = children.get(next).id();
+		state.select(selectedId, Integer.signum(direction), Util.getMillis());
+		rememberCarouselSelection(carouselSelectionKey(placed), selectedId);
+		CarouselControls controls = this.carouselControls.get(carouselKey);
+		if (controls != null) {
+			controls.previous().active = false;
+			controls.next().active = false;
+		}
+	}
+
+	private static int indexOfCarouselChild(
+		final List<CarouselChild> children,
+		final String selectedId
+	) {
+		for (int index = 0; index < children.size(); index++) {
+			if (children.get(index).id().equals(selectedId)) {
+				return index;
+			}
+		}
+		return 0;
+	}
+
+	private List<CarouselChild> carouselChildren(final PlacedNode placed) {
+		List<CarouselChild> result = new ArrayList<>();
+		for (PlacedNode child : placed.children()) {
+			RenderNode node = this.plan == null ? null : this.plan.nodes().get(child.key());
+			if (node == null || node.definition() == null || node.definition().id().isEmpty()) {
+				continue;
+			}
+			result.add(new CarouselChild(node.definition().id().orElseThrow(), child));
+		}
+		return List.copyOf(result);
+	}
+
+	private CarouselSelectionKey carouselSelectionKey(final PlacedNode placed) {
+		UUID sessionId = this.active == null
+			? FALLBACK_UUID
+			: this.active.terminalContext()
+				.map(TerminalContext::sessionId)
+				.orElse(this.active.instanceId());
+		Identifier pageId = this.active == null
+			? Identifier.parse("pixel-tzz-pro:missing")
+			: this.active.page().id();
+		RenderNode node = this.plan == null ? null : this.plan.nodes().get(placed.key());
+		String carouselId = node == null || node.definition() == null
+			? placed.key()
+			: node.definition().id().orElse(placed.key());
+		return new CarouselSelectionKey(sessionId, pageId, carouselId);
+	}
+
+	private static Optional<String> rememberedCarouselSelection(
+		final CarouselSelectionKey key
+	) {
+		synchronized (CAROUSEL_SELECTIONS) {
+			return Optional.ofNullable(CAROUSEL_SELECTIONS.get(key));
+		}
+	}
+
+	private static void rememberCarouselSelection(
+		final CarouselSelectionKey key,
+		final String childId
+	) {
+		synchronized (CAROUSEL_SELECTIONS) {
+			CAROUSEL_SELECTIONS.remove(key);
+			CAROUSEL_SELECTIONS.put(key, childId);
+			while (CAROUSEL_SELECTIONS.size() > MAX_PERSISTED_CAROUSEL_SELECTIONS) {
+				CarouselSelectionKey oldest = CAROUSEL_SELECTIONS.keySet()
+					.iterator()
+					.next();
+				CAROUSEL_SELECTIONS.remove(oldest);
+			}
+		}
 	}
 
 	private void addButtonWidget(
@@ -690,16 +1467,32 @@ public final class DataDrivenPageScreen extends Screen {
 			Math.max(20, bounds.height()),
 			node.styledText(),
 			pressed -> {
-				triggerUiEvent(node, UiEvent.PRESS, node.key());
-				handleAction(node, content.action());
+				RenderNode currentNode = currentRenderNode(node.key(), node);
+				ButtonContent currentContent =
+					currentNode.definition().content() instanceof ButtonContent refreshed
+						? refreshed
+						: content;
+				triggerUiEvent(currentNode, UiEvent.PRESS, currentNode.key());
+				handleAction(currentNode, currentContent.action());
 			},
 			buttonVariant(node, content.action()),
 			eventSound(node, UiEvent.PRESS).isEmpty(),
-			(state, fallback) -> buttonAppearance(node, state, fallback)
+			(state, fallback) -> buttonAppearance(
+				currentRenderNode(node.key(), node),
+				state,
+				fallback
+			)
 		);
 		button.active = actionEnabled(node, content);
 		updateButtonTooltip(button, node, content);
 		addPageWidget(node.key(), button, placed, node);
+	}
+
+	private RenderNode currentRenderNode(final String key, final RenderNode fallback) {
+		if (this.plan == null) {
+			return fallback;
+		}
+		return this.plan.nodes().getOrDefault(key, fallback);
 	}
 
 	private Variant buttonVariant(final RenderNode node, final UiAction action) {
@@ -737,7 +1530,20 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private boolean actionEnabled(final RenderNode node, final ButtonContent content) {
-		return evaluateEnabled(node, content);
+		if (!evaluateEnabled(node, content)) {
+			return false;
+		}
+		if (
+			normalTerminalPage()
+				&& (
+					content.action().type() == ActionType.REGISTERED
+						|| content.action().type() == ActionType.HISTORY_DETAIL
+				)
+		) {
+			String nodeId = node.definition().id().orElse("");
+			return !nodeId.isBlank() && !ClientPageState.terminalIntentPending(nodeId);
+		}
+		return true;
 	}
 
 	private void updateButtonTooltip(
@@ -1225,7 +2031,29 @@ public final class DataDrivenPageScreen extends Screen {
 				triggerActionOutcome(node, true);
 				return;
 			}
-			submitFlowAction(node, action);
+			if (
+				action.type() == ActionType.FLOW
+					&& this.active.purpose() == PagePurpose.FORCED_FLOW
+			) {
+				submitFlowAction(node, action);
+				return;
+			}
+			if (
+				action.type() == ActionType.REGISTERED
+					&& this.active.purpose() == PagePurpose.NORMAL
+			) {
+				submitTerminalAction(node, action);
+				return;
+			}
+			if (
+				action.type() == ActionType.HISTORY_DETAIL
+					&& this.active.purpose() == PagePurpose.NORMAL
+			) {
+				submitHistoryDetail(node);
+				return;
+			}
+			this.lastRequestEnvelope = "当前页面用途不允许该动作类型。";
+			triggerActionOutcome(node, false);
 			return;
 		}
 		String name = action.name().orElse("");
@@ -1234,6 +2062,22 @@ public final class DataDrivenPageScreen extends Screen {
 				if (forcedPage()) {
 					this.lastRequestEnvelope = "强制流程只能由匹配的服务端释放状态关闭。";
 					triggerActionOutcome(node, false);
+					return;
+				}
+				if (
+					this.active.purpose() == PagePurpose.NORMAL
+						&& this.active.terminalContext().orElseThrow().stackDepth() > 1
+						&& name.equals("back")
+				) {
+					TerminalSubmission submission = ClientPageState.submitTerminalBack();
+					if (!submission.sent()) {
+						this.lastRequestEnvelope = submission.message();
+						triggerActionOutcome(node, false);
+						return;
+					}
+					this.pendingActionSequence = submission.requestSequence();
+					this.pendingActionNodeKey = node.key();
+					this.pendingActionIsTerminal = true;
 					return;
 				}
 				triggerActionOutcome(node, true);
@@ -1282,7 +2126,54 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 		this.pendingActionSequence = submission.requestSequence();
 		this.pendingActionNodeKey = node.key();
+		this.pendingActionIsTerminal = false;
 		this.lastRequestEnvelope = "动作已发送，正在等待服务端确认…";
+	}
+
+	private void submitTerminalAction(final RenderNode node, final UiAction action) {
+		String nodeId = node.definition().id().orElse("");
+		Identifier actionId = action.registeredAction().orElse(null);
+		if (nodeId.isBlank() || actionId == null) {
+			showTerminalFeedback("终端注册动作缺少稳定节点 ID 或动作 ID。", false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		TerminalSubmission submission = ClientPageState.submitTerminalAction(nodeId, actionId);
+		if (!submission.sent()) {
+			showTerminalFeedback("动作未发送: " + submission.message(), false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		this.pendingActionSequence = submission.requestSequence();
+		this.pendingActionNodeKey = node.key();
+		this.pendingActionIsTerminal = true;
+		this.lastRequestEnvelope = "动作已发送，正在等待服务端确认…";
+	}
+
+	private void submitHistoryDetail(final RenderNode node) {
+		String nodeId = node.definition().id().orElse("");
+		String recordKey = node.context()
+			.resolve("item.id")
+			.flatMap(DataDrivenPageScreen::primitiveString)
+			.orElse("");
+		if (nodeId.isBlank() || recordKey.isBlank()) {
+			showTerminalFeedback("历史详情动作缺少稳定节点 ID 或权威记录键。", false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		TerminalSubmission submission = ClientPageState.submitTerminalHistoryDetail(
+			nodeId,
+			recordKey
+		);
+		if (!submission.sent()) {
+			showTerminalFeedback("详情未打开: " + submission.message(), false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		this.pendingActionSequence = submission.requestSequence();
+		this.pendingActionNodeKey = node.key();
+		this.pendingActionIsTerminal = true;
+		this.lastRequestEnvelope = "正在核验这条历史记录…";
 	}
 
 	private List<FieldValue> currentFieldValues() {
@@ -1329,6 +2220,18 @@ public final class DataDrivenPageScreen extends Screen {
 		}
 	}
 
+	private void showTerminalFeedback(final String message, final boolean success) {
+		String resolved = message == null ? "" : message.strip();
+		this.lastRequestEnvelope = resolved;
+		this.lastRequestOutcome = success ? UiEvent.SUCCESS : UiEvent.ERROR;
+		if (!normalTerminalPage() || resolved.isEmpty()) {
+			return;
+		}
+		this.terminalFeedbackMessage = resolved;
+		this.terminalFeedbackOutcome = this.lastRequestOutcome;
+		this.terminalFeedbackUntilMillis = Util.getMillis() + TERMINAL_FEEDBACK_HOLD_MILLIS;
+	}
+
 	private void updateLocalActionValue(final RenderNode node, final boolean value) {
 		updateLocalActionValue(node, new JsonPrimitive(value));
 	}
@@ -1357,9 +2260,18 @@ public final class DataDrivenPageScreen extends Screen {
 		long now = Util.getMillis();
 		playPendingSounds(now);
 		consumeActionResult();
+		consumeTerminalChromeResult();
 		consumeExclusiveMutationResult();
+		tickTakeoverReview();
+		tickTerminalActionReview();
+		if (this.minecraft != null && this.minecraft.gui.screen() != this) {
+			return;
+		}
 		if (this.observedRevision != ClientPageState.revision()) {
 			if (pageProjectionChanged()) {
+				if (applyTerminalBindingUpdateInPlace()) {
+					return;
+				}
 				rebuild();
 				return;
 			}
@@ -1375,6 +2287,8 @@ public final class DataDrivenPageScreen extends Screen {
 			return;
 		}
 		refreshButtonStates();
+		refreshTerminalChromeStates();
+		refreshCarouselControlStates();
 		refreshInteractionEvents();
 		ensureFocusedWidgetVisible();
 		if (this.pendingPlanRefresh && !hasFocusedEditBox()) {
@@ -1387,21 +2301,105 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.pendingActionSequence < 0L) {
 			return;
 		}
-		ClientPageState.consumeFlowActionResult(this.pendingActionSequence)
+		(this.pendingActionIsTerminal
+			? ClientPageState.consumeTerminalIntentResult(this.pendingActionSequence)
+			: ClientPageState.consumeFlowActionResult(this.pendingActionSequence))
 			.ifPresent(result -> {
 				RenderNode node = this.plan == null
 					? null
 					: this.plan.nodes().get(this.pendingActionNodeKey);
 				this.pendingActionSequence = -1L;
 				this.pendingActionNodeKey = "";
-				this.lastRequestEnvelope = OperationFeedbackText.resolve(
+				this.pendingActionIsTerminal = false;
+				String feedback = OperationFeedbackText.resolve(
 					result.code(),
 					result.message()
 				);
+				showTerminalFeedback(feedback, result.success());
 				if (node != null) {
 					triggerActionOutcome(node, result.success());
 				}
 			});
+	}
+
+	private void consumeTerminalChromeResult() {
+		if (this.pendingTerminalChromeSequence < 0L) {
+			return;
+		}
+		ClientPageState.consumeTerminalIntentResult(this.pendingTerminalChromeSequence)
+			.ifPresent(result -> {
+				this.pendingTerminalChromeSequence = -1L;
+				showTerminalFeedback(
+					OperationFeedbackText.resolve(result.code(), result.message()),
+					result.success()
+				);
+			});
+	}
+
+	private void tickTakeoverReview() {
+		if (!this.pendingTakeoverReview || this.minecraft == null) {
+			return;
+		}
+		ActionEntry action = hostControlAction();
+		if (
+			ClientConsoleState.confirmation()
+				.filter(value -> value.operationId().equals(action.operationId()))
+				.isPresent()
+		) {
+			this.pendingTakeoverReview = false;
+			this.pendingTakeoverSequence = -1L;
+			this.minecraft.gui.setScreen(new OperationConfirmationScreen(this, action));
+			return;
+		}
+		if (this.pendingTakeoverSequence < 0L) {
+			return;
+		}
+		ClientPageState.consumeTerminalIntentResult(this.pendingTakeoverSequence)
+			.ifPresent(result -> {
+				this.pendingTakeoverSequence = -1L;
+				this.pendingTakeoverReview = false;
+				showTerminalFeedback(
+					OperationFeedbackText.resolve(result.code(), result.message()),
+					result.success()
+				);
+			});
+	}
+
+	private void tickTerminalActionReview() {
+		if (
+			!this.pendingActionIsTerminal
+				|| this.pendingActionSequence < 0L
+				|| this.minecraft == null
+		) {
+			return;
+		}
+		ConfirmationS2CPayload confirmation = ClientConsoleState.confirmation()
+			.filter(value -> value.operationType().equals("player_action"))
+			.filter(value -> value.requestSequence() == this.pendingActionSequence)
+			.orElse(null);
+		if (confirmation == null) {
+			return;
+		}
+		ActionEntry action = new ActionEntry(
+			confirmation.operationType(),
+			confirmation.operationId(),
+			"terminal",
+			0,
+			confirmation.titleJson(),
+			new JsonPrimitive(confirmation.contextSummary()).toString(),
+			"#d9b85f",
+			true,
+			"",
+			"none",
+			0,
+			0,
+			true
+		);
+		this.pendingActionSequence = -1L;
+		this.pendingActionNodeKey = "";
+		this.pendingActionIsTerminal = false;
+		this.lastRequestEnvelope = "请审阅本次操作将产生的影响。";
+		this.minecraft.gui.setScreen(new OperationConfirmationScreen(this, action));
 	}
 
 	private void consumeExclusiveMutationResult() {
@@ -1430,9 +2428,55 @@ public final class DataDrivenPageScreen extends Screen {
 				binding.widget() instanceof ConsoleButton button
 					&& binding.node().definition().content() instanceof ButtonContent content
 			) {
+				button.setMessage(binding.node().styledText());
 				button.active = actionEnabled(binding.node(), content);
 				updateButtonTooltip(button, binding.node(), content);
 			}
+		}
+	}
+
+	private void refreshTerminalChromeStates() {
+		if (this.terminalBackButton != null) {
+			this.terminalBackButton.active = !ClientPageState.terminalIntentPending(Intent.BACK);
+		}
+		if (this.terminalTakeoverButton != null) {
+			this.terminalTakeoverButton.active = !this.pendingTakeoverReview
+				&& !ClientPageState.terminalSyncPending();
+		}
+		for (TerminalNavigationBinding binding : this.terminalRootNavigationWidgets.values()) {
+			RenderNode node = this.plan == null
+				? null
+				: this.plan.nodes().get(binding.nodeKey());
+			if (
+				node == null
+					|| !(node.definition().content() instanceof ButtonContent content)
+			) {
+				binding.button().active = false;
+				continue;
+			}
+			binding.button().setMessage(node.styledText());
+			binding.button().active = actionEnabled(node, content);
+			updateButtonTooltip(binding.button(), node, content);
+		}
+	}
+
+	private void refreshCarouselControlStates() {
+		long now = Util.getMillis();
+		for (Map.Entry<String, CarouselControls> entry : this.carouselControls.entrySet()) {
+			CarouselRuntime state = this.carouselStates.get(entry.getKey());
+			PlacedNode placed = this.placedNodes.get(entry.getKey());
+			int count = placed == null ? 0 : carouselChildren(placed).size();
+			if (state != null) {
+				state.progress(
+					now,
+					this.session.reducedMotion()
+						? REDUCED_CAROUSEL_TRANSITION_MILLIS
+						: CAROUSEL_TRANSITION_MILLIS
+				);
+			}
+			boolean enabled = count > 1 && state != null && !state.transitioning();
+			entry.getValue().previous().active = enabled;
+			entry.getValue().next().active = enabled;
 		}
 	}
 
@@ -1448,6 +2492,17 @@ public final class DataDrivenPageScreen extends Screen {
 			}
 			if (binding.widget().isFocused()) {
 				nowFocused.add(binding.node().key());
+			}
+		}
+		for (TerminalNavigationBinding binding : this.terminalRootNavigationWidgets.values()) {
+			if (!binding.button().visible || !binding.button().active) {
+				continue;
+			}
+			if (binding.button().isHovered()) {
+				nowHovered.add(binding.nodeKey());
+			}
+			if (binding.button().isFocused()) {
+				nowFocused.add(binding.nodeKey());
 			}
 		}
 		dispatchInteractionChanges(
@@ -1633,39 +2688,615 @@ public final class DataDrivenPageScreen extends Screen {
 		final int mouseY,
 		final float tickProgress
 	) {
-		if (isSafetyPage()) {
-			renderSafetyPage(graphics);
+		if (isTerminalLoading()) {
+			renderTerminalLoading(graphics);
 			super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
 			return;
 		}
+		if (isSafetyPage()) {
+			ConsoleScreenViewport.Layout canvas = consoleCanvas();
+			graphics.pose().pushMatrix();
+			graphics.pose().translate(canvas.x(), canvas.y());
+			graphics.pose().scale((float)canvas.scale(), (float)canvas.scale());
+			try {
+				renderSafetyPage(graphics);
+				super.extractRenderState(
+					graphics,
+					(int)Math.floor(canvas.toReferenceX(mouseX)),
+					(int)Math.floor(canvas.toReferenceY(mouseY)),
+					tickProgress
+				);
+			} finally {
+				graphics.pose().popMatrix();
+			}
+			return;
+		}
 
-		if (this.session.previewChrome()) {
-			renderToolbarFrame(graphics);
-			renderViewportFrame(graphics);
+		ConsoleScreenViewport.Layout previewCanvas = this.session.previewChrome()
+			? consoleCanvas()
+			: null;
+		int renderMouseX = mouseX;
+		int renderMouseY = mouseY;
+		if (previewCanvas != null) {
+			renderMouseX = (int)Math.floor(previewCanvas.toReferenceX(mouseX));
+			renderMouseY = (int)Math.floor(previewCanvas.toReferenceY(mouseY));
+			graphics.pose().pushMatrix();
+			graphics.pose().translate(previewCanvas.x(), previewCanvas.y());
+			graphics.pose().scale(
+				(float)previewCanvas.scale(),
+				(float)previewCanvas.scale()
+			);
 		}
-		MotionLayout motionLayout = buildMotionLayout(Util.getMillis());
-		this.currentMotionLayout = motionLayout;
 		try {
-			renderForcedViewportFrame(graphics, motionLayout);
-			drawNode(graphics, this.plan.layout().root(), motionLayout);
-			graphics.nextStratum();
-			drawPageWidgets(graphics, mouseX, mouseY, tickProgress, motionLayout);
-			drawScrollbars(graphics, motionLayout);
-			if (this.session.debugLayout()) {
-				graphics.nextStratum();
-				drawDebugOverlay(graphics, mouseX, mouseY, motionLayout);
-			}
-			if (this.session.previewChrome() && !this.lastRequestEnvelope.isEmpty()) {
-				graphics.nextStratum();
-				drawRequestEnvelope(graphics);
-			}
 			if (this.session.previewChrome()) {
-				renderFooter(graphics);
+				renderToolbarFrame(graphics);
+				renderViewportFrame(graphics);
+			} else if (normalTerminalPage()) {
+				renderTerminalShell(graphics);
 			}
-			super.extractRenderState(graphics, mouseX, mouseY, tickProgress);
+			MotionLayout motionLayout = buildMotionLayout(Util.getMillis());
+			this.currentMotionLayout = motionLayout;
+			try {
+				renderForcedViewportFrame(graphics, motionLayout);
+				drawNode(graphics, this.plan.layout().root(), motionLayout);
+				graphics.nextStratum();
+				drawPageWidgets(
+					graphics,
+					renderMouseX,
+					renderMouseY,
+					tickProgress,
+					motionLayout
+				);
+				drawScrollbars(graphics, motionLayout);
+				if (normalTerminalPage()) {
+					graphics.nextStratum();
+					drawTerminalFeedback(graphics);
+				}
+				if (this.session.debugLayout()) {
+					graphics.nextStratum();
+					drawDebugOverlay(
+						graphics,
+						renderMouseX,
+						renderMouseY,
+						motionLayout
+					);
+				}
+				if (
+					this.session.previewChrome()
+						&& !this.lastRequestEnvelope.isEmpty()
+				) {
+					graphics.nextStratum();
+					drawRequestEnvelope(graphics);
+				}
+				if (this.session.previewChrome()) {
+					renderFooter(graphics);
+				}
+				super.extractRenderState(
+					graphics,
+					renderMouseX,
+					renderMouseY,
+					tickProgress
+				);
+			} finally {
+				this.currentMotionLayout = null;
+			}
 		} finally {
-			this.currentMotionLayout = null;
+			if (previewCanvas != null) {
+				graphics.pose().popMatrix();
+			}
 		}
+	}
+
+	private void renderTerminalLoading(final GuiGraphicsExtractor graphics) {
+		layoutTerminalLoadingWidgets();
+		withTerminalReferenceCanvas(
+			graphics,
+			() -> renderTerminalLoadingReference(graphics)
+		);
+	}
+
+	private void renderTerminalLoadingReference(final GuiGraphicsExtractor graphics) {
+		renderTerminalShellFrame(graphics);
+		int badgeWidth = terminalSyncBadgeWidth(true, false);
+		TerminalHeaderLayout.Layout header = TerminalHeaderLayout.resolve(
+			0,
+			0,
+			TerminalShellViewport.REFERENCE_WIDTH,
+			badgeWidth
+		);
+		drawTerminalHeaderModules(graphics, header);
+		graphics.text(
+			this.font,
+			Component.translatable("pixel_tzz_pro.terminal.title"),
+			header.brand().x() + 7,
+			header.brand().y() + 7,
+			SUCCESS,
+			false
+		);
+		if (!header.compact()) {
+			graphics.text(
+				this.font,
+				Component.translatable("pixel_tzz_pro.terminal.subtitle"),
+				header.brand().x() + 7,
+				header.brand().y() + 20,
+				MUTED_TEXT,
+				false
+			);
+		}
+		graphics.text(
+			this.font,
+			Component.translatable("pixel_tzz_pro.terminal.loading"),
+			header.identity().x(),
+			header.identity().y() + 9,
+			MAIN_TEXT,
+			false
+		);
+		drawTerminalSyncBadge(graphics, true, false, header.sync());
+		int centerY = TerminalShellViewport.REFERENCE_HEIGHT / 2;
+		graphics.text(
+			this.font,
+			Component.translatable("pixel_tzz_pro.terminal.loading"),
+			24,
+			centerY,
+			MAIN_TEXT,
+			false
+		);
+		graphics.fill(
+			24,
+			centerY + 18,
+			TerminalShellViewport.REFERENCE_WIDTH - 24,
+			centerY + 20,
+			withAlpha(INFO_CYAN, 90)
+		);
+	}
+
+	private void renderTerminalShell(final GuiGraphicsExtractor graphics) {
+		withTerminalReferenceCanvas(
+			graphics,
+			() -> renderTerminalShellReference(graphics)
+		);
+	}
+
+	private void renderTerminalShellReference(final GuiGraphicsExtractor graphics) {
+		renderTerminalShellFrame(graphics);
+		boolean syncPending = ClientPageState.terminalSyncPending()
+			|| this.pendingTakeoverReview;
+		boolean synchronizedState = ClientPageState.pageStatus() == PageStatus.READY;
+		TerminalHeaderLayout.Layout header = TerminalHeaderLayout.resolve(
+			0,
+			0,
+			TerminalShellViewport.REFERENCE_WIDTH,
+			terminalSyncBadgeWidth(syncPending, synchronizedState)
+		);
+		drawTerminalHeaderModules(graphics, header);
+		graphics.text(
+			this.font,
+			Component.translatable("pixel_tzz_pro.terminal.title"),
+			header.brand().x() + 7,
+			header.brand().y() + 7,
+			SUCCESS,
+			false
+		);
+		if (!header.compact()) {
+			graphics.text(
+				this.font,
+				Component.translatable("pixel_tzz_pro.terminal.subtitle"),
+				header.brand().x() + 7,
+				header.brand().y() + 20,
+				MUTED_TEXT,
+				false
+			);
+		}
+		drawTerminalViewerIdentity(graphics, header);
+		if (header.page().width() >= 8) {
+			String pageTitle = this.active.page().title().plainText();
+			if (header.page().width() >= 78) {
+				graphics.text(
+					this.font,
+					Component.translatable("pixel_tzz_pro.terminal.current_view"),
+					header.page().x() + 9,
+					header.page().y() + 6,
+					withAlpha(INFO_CYAN, 150),
+					false
+				);
+			}
+			graphics.text(
+				this.font,
+				PlayerIdentityRenderer.ellipsize(
+					this.font,
+					pageTitle,
+					Math.max(1, header.page().width() - 18)
+				),
+				header.page().x() + 9,
+				header.page().y() + 20,
+				0xFFE5F5F6,
+				false
+			);
+		}
+		drawTerminalSyncBadge(
+			graphics,
+			syncPending,
+			synchronizedState,
+			header.sync()
+		);
+	}
+
+	private void withTerminalReferenceCanvas(
+		final GuiGraphicsExtractor graphics,
+		final Runnable renderer
+	) {
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(this.terminalShellX, this.terminalShellY);
+		graphics.pose().scale(
+			(float)this.terminalShellViewport.scale(),
+			(float)this.terminalShellViewport.scale()
+		);
+		try {
+			renderer.run();
+		} finally {
+			graphics.pose().popMatrix();
+		}
+	}
+
+	/**
+	 * Gives every ordinary-player terminal page the same authored header hierarchy without
+	 * requiring a data pack to repeat decorative chrome.
+	 *
+	 * <p>The header uses one continuous instrument band. Brand and identity stay visually quiet;
+	 * only the current-page plate and synchronization badge receive contained frames. This avoids
+	 * a collection of unrelated short rails that reads like a layout debug overlay.</p>
+	 */
+	private void drawTerminalHeaderModules(
+		final GuiGraphicsExtractor graphics,
+		final TerminalHeaderLayout.Layout header
+	) {
+		Rect brand = header.brand();
+		if (brand.width() >= 2 && brand.height() >= 2) {
+			graphics.fill(
+				brand.x(),
+				brand.y(),
+				Math.min(brand.right(), brand.x() + 2),
+				brand.bottom(),
+				withAlpha(BRAND_GOLD, 204)
+			);
+		}
+
+		Rect page = header.page();
+		if (page.width() >= 2 && page.height() >= 2) {
+			graphics.fill(page.x(), page.y() + 2, page.right(), page.bottom() - 2, 0x8F182933);
+			graphics.fill(
+				page.x(),
+				page.y() + 2,
+				Math.min(page.right(), page.x() + 3),
+				page.bottom() - 2,
+				withAlpha(INFO_CYAN, 190)
+			);
+		}
+	}
+
+	private void drawTerminalViewerIdentity(
+		final GuiGraphicsExtractor graphics,
+		final TerminalHeaderLayout.Layout header
+	) {
+		UUID viewerId = terminalBindingString("viewer.uuid")
+			.flatMap(DataDrivenPageScreen::parseUuid)
+			.orElse(FALLBACK_UUID);
+		boolean online = terminalBindingBoolean("viewer.online").orElse(true);
+		Rect avatar = header.avatar();
+		if (avatar.width() >= 8) {
+			PlayerIdentityRenderer.drawHead(
+				graphics,
+				viewerId,
+				online,
+				avatar.x(),
+				avatar.y(),
+				Math.min(avatar.width(), avatar.height())
+			);
+		}
+		Rect identity = header.identity();
+		if (identity.width() < 8) {
+			return;
+		}
+		String name = terminalBindingString("viewer.name").orElse("玩家");
+		int identityTop = avatar.y() + Math.max(0, (avatar.height() - 22) / 2);
+		graphics.text(
+			this.font,
+			PlayerIdentityRenderer.ellipsize(this.font, name, identity.width()),
+			identity.x(),
+			identityTop,
+			MAIN_TEXT,
+			true
+		);
+		List<String> status = new ArrayList<>(2);
+		terminalBindingString("viewer.role_name")
+			.filter(value -> !value.isBlank())
+			.ifPresent(status::add);
+		terminalBindingString("viewer.life_state_name")
+			.filter(value -> !value.isBlank())
+			.filter(value -> status.stream().noneMatch(value::equals))
+			.ifPresent(status::add);
+		if (status.isEmpty()) {
+			boolean initialized = terminalBindingBoolean("viewer.initialized").orElse(false);
+			status.add(
+				Component.translatable(
+					initialized
+						? "pixel_tzz_pro.terminal.initialized"
+						: "pixel_tzz_pro.terminal.uninitialized"
+				).getString()
+			);
+		}
+		String statusText = String.join(" · ", status);
+		graphics.text(
+			this.font,
+			PlayerIdentityRenderer.ellipsize(this.font, statusText, identity.width()),
+			identity.x(),
+			identityTop + 13,
+			terminalIdentityColor(statusText),
+			false
+		);
+	}
+
+	private int terminalIdentityColor(final String value) {
+		String normalized = value.toLowerCase(Locale.ROOT);
+		if (
+			normalized.contains("猎人")
+				|| normalized.contains("死亡")
+				|| normalized.contains("淘汰")
+				|| normalized.contains("hunter")
+				|| normalized.contains("dead")
+		) {
+			return DANGER;
+		}
+		if (
+			normalized.contains("逃走者")
+				|| normalized.contains("存活")
+				|| normalized.contains("runner")
+				|| normalized.contains("alive")
+		) {
+			return SUCCESS;
+		}
+		if (normalized.contains("旁观") || normalized.contains("spectator")) {
+			return MUTED_TEXT;
+		}
+		return INFO_CYAN;
+	}
+
+	private Optional<String> terminalBindingString(final String path) {
+		if (this.active == null) {
+			return Optional.empty();
+		}
+		return this.active.serverContext()
+			.resolve(path)
+			.filter(JsonElement::isJsonPrimitive)
+			.map(JsonElement::getAsString);
+	}
+
+	private Optional<Boolean> terminalBindingBoolean(final String path) {
+		if (this.active == null) {
+			return Optional.empty();
+		}
+		return this.active.serverContext()
+			.resolve(path)
+			.filter(JsonElement::isJsonPrimitive)
+			.map(JsonElement::getAsBoolean);
+	}
+
+	private static Optional<UUID> parseUuid(final String value) {
+		try {
+			return Optional.of(UUID.fromString(value));
+		} catch (IllegalArgumentException error) {
+			return Optional.empty();
+		}
+	}
+
+	private void renderTerminalShellFrame(final GuiGraphicsExtractor graphics) {
+		int x = 0;
+		int y = 0;
+		int width = TerminalShellViewport.REFERENCE_WIDTH;
+		int height = TerminalShellViewport.REFERENCE_HEIGHT;
+		int right = width;
+		int bottom = height;
+
+		graphics.fill(x + 5, y + 6, right + 5, bottom + 6, 0x54000000);
+		graphics.outline(
+			x - 2,
+			y - 2,
+			width + 4,
+			height + 4,
+			withAlpha(0xFF0A1118, 232)
+		);
+		graphics.fill(
+			x,
+			y,
+			right,
+			bottom,
+			PANEL
+		);
+		graphics.outline(
+			x,
+			y,
+			width,
+			height,
+			withAlpha(SURFACE_BORDER, 238)
+		);
+		if (width > 10 && height > 10) {
+			graphics.outline(
+				x + 3,
+				y + 3,
+				width - 6,
+				height - 6,
+				withAlpha(0xFF233845, 178)
+			);
+		}
+		drawTerminalShellCorners(graphics, x, y, right, bottom);
+
+		int headerBottom = Math.min(bottom - 3, y + TerminalHeaderLayout.HEIGHT - 3);
+		if (width > 8 && headerBottom > y + 4) {
+			graphics.fill(x + 4, y + 4, right - 4, headerBottom, 0xE9111C24);
+		}
+		int headerRailY = Math.min(bottom - 2, y + TerminalHeaderLayout.HEIGHT - 4);
+		if (right - x > 12 && headerRailY >= y) {
+			graphics.fill(x + 6, headerRailY, right - 6, headerRailY + 2, 0xE30A141B);
+			graphics.fill(
+				x + 12,
+				headerRailY,
+				right - 12,
+				headerRailY + 1,
+				withAlpha(INFO_CYAN, 152)
+			);
+		}
+
+		if (this.terminalFooterHeight > 0) {
+			int footerY = bottom - this.terminalFooterHeight;
+			graphics.fill(
+				x + 3,
+				footerY - 1,
+				right - 3,
+				footerY + 2,
+				0xE60D171F
+			);
+			graphics.fill(
+				x + 12,
+				footerY,
+				right - 12,
+				footerY + 1,
+				withAlpha(SURFACE_BORDER, 188)
+			);
+		}
+	}
+
+	private static void drawTerminalShellCorners(
+		final GuiGraphicsExtractor graphics,
+		final int x,
+		final int y,
+		final int right,
+		final int bottom
+	) {
+		int width = right - x;
+		int height = bottom - y;
+		if (width < 4 || height < 4) {
+			return;
+		}
+		int horizontal = Math.max(4, Math.min(12, width / 6));
+		int vertical = Math.max(4, Math.min(9, height / 8));
+		int gold = withAlpha(BRAND_GOLD, 202);
+		int cyan = withAlpha(INFO_CYAN, 174);
+		graphics.fill(x, y, Math.min(right, x + horizontal), y + 2, gold);
+		graphics.fill(x, y, x + 2, Math.min(bottom, y + vertical), gold);
+		graphics.fill(Math.max(x, right - horizontal), bottom - 2, right, bottom, cyan);
+		graphics.fill(right - 2, Math.max(y, bottom - vertical), right, bottom, cyan);
+	}
+
+	private int terminalSyncBadgeWidth(
+		final boolean pending,
+		final boolean synchronizedState
+	) {
+		String key = pending
+			? "pixel_tzz_pro.terminal.syncing"
+			: synchronizedState
+				? "pixel_tzz_pro.terminal.synced"
+				: "pixel_tzz_pro.terminal.unsynced";
+		return this.font.width(Component.translatable(key).getString()) + 23;
+	}
+
+	private void drawTerminalSyncBadge(
+		final GuiGraphicsExtractor graphics,
+		final boolean pending,
+		final boolean synchronizedState,
+		final Rect bounds
+	) {
+		String key = pending
+			? "pixel_tzz_pro.terminal.syncing"
+			: synchronizedState
+				? "pixel_tzz_pro.terminal.synced"
+				: "pixel_tzz_pro.terminal.unsynced";
+		String label = Component.translatable(key).getString();
+		int color = pending ? WARNING : synchronizedState ? SUCCESS : DANGER;
+		int width = bounds.width();
+		int right = bounds.x() + bounds.width();
+		int x = bounds.x();
+		int y = bounds.y();
+		graphics.fill(x, y, right, y + 17, 0xD5202B35);
+		graphics.outline(x, y, width, 17, withAlpha(color, 190));
+		graphics.fill(x + 6, y + 6, x + 11, y + 11, color);
+		graphics.text(this.font, label, x + 15, y + 5, color, false);
+	}
+
+	private void drawTerminalFeedback(final GuiGraphicsExtractor graphics) {
+		withTerminalReferenceCanvas(
+			graphics,
+			() -> drawTerminalFeedbackReference(graphics)
+		);
+	}
+
+	private void drawTerminalFeedbackReference(final GuiGraphicsExtractor graphics) {
+		long remaining = this.terminalFeedbackUntilMillis - Util.getMillis();
+		if (remaining <= 0L || this.terminalFeedbackMessage.isBlank()) {
+			return;
+		}
+		double fade = remaining >= TERMINAL_FEEDBACK_FADE_MILLIS
+			? 1.0
+			: Math.clamp(remaining / (double)TERMINAL_FEEDBACK_FADE_MILLIS, 0.0, 1.0);
+		int accent = this.terminalFeedbackOutcome == UiEvent.ERROR ? DANGER : SUCCESS;
+		TerminalContext terminal = this.active.terminalContext().orElseThrow();
+		TerminalFooterLayout.Layout footer = TerminalFooterLayout.resolve(
+			0,
+			0,
+			TerminalShellViewport.REFERENCE_WIDTH,
+			TerminalShellViewport.REFERENCE_HEIGHT,
+			terminal.takeoverAllowed(),
+			terminal.stackDepth(),
+			this.terminalRootNavigationNodeKeys.size()
+		);
+		int height = 24;
+		int minimumWidth = 120;
+		int availableLeft = TerminalFooterLayout.SAFE_INSET;
+		int availableRight =
+			TerminalShellViewport.REFERENCE_WIDTH - TerminalFooterLayout.SAFE_INSET;
+		int y = -1;
+		if (terminal.stackDepth() > 1 && footer.navigation().isPresent()) {
+			Rect back = footer.navigation().orElseThrow();
+			int footerFeedbackRight = back.x() - 8;
+			if (footerFeedbackRight - availableLeft >= minimumWidth) {
+				availableRight = footerFeedbackRight;
+				y = back.y();
+			}
+		}
+		if (y < 0) {
+			int contentBottom = TerminalShellViewport.REFERENCE_HEIGHT
+				- footer.footerHeight();
+			int minimumY = TerminalHeaderLayout.HEIGHT + 6;
+			int maximumY = Math.max(
+				minimumY,
+				TerminalShellViewport.REFERENCE_HEIGHT - height - 4
+			);
+			y = Math.clamp(contentBottom - height - 8, minimumY, maximumY);
+		}
+		int available = Math.max(1, availableRight - availableLeft);
+		String text = PlayerIdentityRenderer.ellipsize(
+			this.font,
+			this.terminalFeedbackMessage,
+			Math.max(8, Math.min(360, available - 32))
+		);
+		int width = Math.max(
+			1,
+			Math.min(available, Math.max(minimumWidth, this.font.width(text) + 32))
+		);
+		int x = availableLeft + Math.max(0, available - width) / 2;
+		int surfaceAlpha = (int)Math.round(232.0 * fade);
+		int borderAlpha = (int)Math.round(210.0 * fade);
+		int textAlpha = (int)Math.round(255.0 * fade);
+		graphics.fill(x, y, x + width, y + height, withAlpha(SURFACE_RAISED, surfaceAlpha));
+		graphics.outline(x, y, width, height, withAlpha(accent, borderAlpha));
+		graphics.fill(x + 1, y + 1, x + 4, y + height - 1, withAlpha(accent, textAlpha));
+		graphics.text(
+			this.font,
+			text,
+			x + 12,
+			y + 8,
+			withAlpha(MAIN_TEXT, textAlpha),
+			false
+		);
 	}
 
 	private void renderForcedViewportFrame(
@@ -1716,16 +3347,28 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void renderToolbarFrame(final GuiGraphicsExtractor graphics) {
-		graphics.fill(OUTER_MARGIN, OUTER_MARGIN, this.width - OUTER_MARGIN, this.toolbarHeight, PANEL);
+		graphics.fill(
+			OUTER_MARGIN,
+			OUTER_MARGIN,
+			ConsoleScreenViewport.REFERENCE_WIDTH - OUTER_MARGIN,
+			this.toolbarHeight,
+			PANEL
+		);
 		graphics.outline(
 			OUTER_MARGIN,
 			OUTER_MARGIN,
-			this.width - OUTER_MARGIN * 2,
+			ConsoleScreenViewport.REFERENCE_WIDTH - OUTER_MARGIN * 2,
 			this.toolbarHeight - OUTER_MARGIN,
 			PANEL_BORDER
 		);
 		graphics.fill(OUTER_MARGIN, OUTER_MARGIN, OUTER_MARGIN + 3, this.toolbarHeight, BRAND_GOLD);
-		graphics.fill(OUTER_MARGIN + 3, OUTER_MARGIN, this.width - OUTER_MARGIN, OUTER_MARGIN + 1, INFO_CYAN);
+		graphics.fill(
+			OUTER_MARGIN + 3,
+			OUTER_MARGIN,
+			ConsoleScreenViewport.REFERENCE_WIDTH - OUTER_MARGIN,
+			OUTER_MARGIN + 1,
+			INFO_CYAN
+		);
 	}
 
 	private void renderViewportFrame(final GuiGraphicsExtractor graphics) {
@@ -1838,6 +3481,15 @@ public final class DataDrivenPageScreen extends Screen {
 					);
 				}
 			}
+			case CAROUSEL -> {
+				if (node == this.plan.root()) {
+					int background = motionColor.orElse(
+						styleColor(node, "background_color", PANEL)
+					);
+					graphics.fill(bounds.x(), bounds.y(), bounds.right(), bounds.bottom(), withOpacity(background, opacity));
+				}
+				drawCarouselIndicators(graphics, placed, node, content, opacity);
+			}
 			case ROW, COLUMN, GRID, FLOW, OVERLAY, REPEAT -> {
 				if (node == this.plan.root()) {
 					int background = motionColor.orElse(
@@ -1910,6 +3562,26 @@ public final class DataDrivenPageScreen extends Screen {
 				borderWidth,
 				opacity
 			);
+			case "portal" -> drawPortalFrame(
+				graphics,
+				bounds,
+				background,
+				border,
+				accent,
+				borderWidth,
+				detailSize,
+				opacity
+			);
+			case "manual" -> drawManualFrame(
+				graphics,
+				bounds,
+				background,
+				border,
+				accent,
+				borderWidth,
+				detailSize,
+				opacity
+			);
 			case "plain", "rail" -> {
 				graphics.fill(
 					bounds.x(),
@@ -1932,7 +3604,14 @@ public final class DataDrivenPageScreen extends Screen {
 		String accentEdge = UiStyleRuntime.stringValue(
 			styleValues(node),
 			"accent_edge"
-		).orElse(frameStyle.equals("plain") || frameStyle.equals("target") ? "none" : "left");
+		).orElse(
+			frameStyle.equals("plain")
+					|| frameStyle.equals("target")
+					|| frameStyle.equals("portal")
+					|| frameStyle.equals("manual")
+				? "none"
+				: "left"
+		);
 		drawAccentEdge(
 			graphics,
 			bounds,
@@ -2173,12 +3852,12 @@ public final class DataDrivenPageScreen extends Screen {
 		);
 		boolean shadow = styleBoolean(node, "shadow", true);
 		if (!text.wrap()) {
-			FormattedText value = node.styledText();
+			FormattedText value = textNodeComponent(node, node.text());
 			if (
 				text.overflow() == TextOverflow.ELLIPSIS
 					&& this.font.width(value) > content.width()
 			) {
-				Component ellipsis = styledText(node, "…");
+				Component ellipsis = textNodeComponent(node, "…");
 				int allowed = Math.max(0, content.width() - this.font.width(ellipsis));
 				value = FormattedText.composite(
 					this.font.substrByWidth(value, allowed),
@@ -2193,13 +3872,13 @@ public final class DataDrivenPageScreen extends Screen {
 		List<String> lines = TextLineWrapper.wrap(
 			node.text(),
 			Math.max(1, content.width()),
-			value -> this.font.width(styledText(node, value))
+			value -> this.font.width(textNodeComponent(node, value))
 		);
 		int maximum = text.maximumLines().orElse(lines.size());
 		int visible = Math.min(maximum, Math.min(lines.size(), Math.max(1, content.height() / this.font.lineHeight)));
 		for (int index = 0; index < visible; index++) {
 			FormattedCharSequence line = Language.getInstance()
-				.getVisualOrder(styledText(node, lines.get(index)));
+				.getVisualOrder(textNodeComponent(node, lines.get(index)));
 			int x = alignedTextX(text.alignment(), content, this.font.width(line));
 			graphics.text(
 				this.font,
@@ -2215,7 +3894,7 @@ public final class DataDrivenPageScreen extends Screen {
 				&& visible > 0
 				&& lines.size() > visible
 		) {
-			Component ellipsis = styledText(node, "…");
+			Component ellipsis = textNodeComponent(node, "…");
 			graphics.text(
 				this.font,
 				ellipsis,
@@ -2429,15 +4108,21 @@ public final class DataDrivenPageScreen extends Screen {
 		final float opacity,
 		final NodeFrame frame
 	) {
-		if (!(node.definition().content() instanceof ProgressContent progress)) {
+		if (
+			!(node.definition().content() instanceof ProgressContent progress)
+				|| content.width() <= 0
+				|| content.height() <= 0
+		) {
 			return;
 		}
 		double value = frame.progressValue()
 			.orElseGet(() -> evaluateNumber(progress.value(), node.context()).orElse(0.0));
 		double minimum = evaluateNumber(progress.minimum(), node.context()).orElse(0.0);
 		double maximum = evaluateNumber(progress.maximum(), node.context()).orElse(0.0);
-		int barY = node.text().isEmpty() ? content.y() : content.y() + this.font.lineHeight + 3;
-		int barHeight = Math.max(6, Math.min(12, content.bottom() - barY));
+		int requestedBarY = node.text().isEmpty()
+			? content.y()
+			: content.y() + this.font.lineHeight + 3;
+		int barY = Math.clamp(requestedBarY, content.y(), content.bottom());
 		if (!node.text().isEmpty()) {
 			graphics.text(
 				this.font,
@@ -2448,6 +4133,11 @@ public final class DataDrivenPageScreen extends Screen {
 				false
 			);
 		}
+		int barHeight = Math.min(12, content.bottom() - barY);
+		if (barHeight <= 0) {
+			return;
+		}
+		int barBottom = barY + barHeight;
 		int track = withOpacity(styleColor(node, "track_color", 0xFF17212B), opacity);
 		int border = styleColor(node, "border_color", SURFACE_BORDER);
 		int fill = withOpacity(
@@ -2455,7 +4145,7 @@ public final class DataDrivenPageScreen extends Screen {
 				.orElse(styleColor(node, "fill_color", BRAND_GOLD)),
 			opacity
 		);
-		graphics.fill(content.x(), barY, content.right(), barY + barHeight, track);
+		graphics.fill(content.x(), barY, content.right(), barBottom, track);
 		graphics.outline(
 			content.x(),
 			barY,
@@ -2465,55 +4155,82 @@ public final class DataDrivenPageScreen extends Screen {
 		);
 		if (maximum > minimum) {
 			double ratio = Math.clamp((value - minimum) / (maximum - minimum), 0.0, 1.0);
-			int innerWidth = Math.max(0, content.width() - 2);
+			int innerLeft = Math.min(content.right(), content.x() + 1);
+			int innerRight = Math.max(innerLeft, content.right() - 1);
+			int innerTop = Math.min(barBottom, barY + 1);
+			int innerBottom = Math.max(innerTop, barBottom - 1);
+			int innerWidth = innerRight - innerLeft;
 			int filled = (int)Math.round(innerWidth * ratio);
-			graphics.fill(
-				content.x() + 1,
-				barY + 1,
-				content.x() + 1 + filled,
-				barY + barHeight - 1,
-				fill
-			);
+			if (filled > 0 && innerBottom > innerTop) {
+				graphics.fill(
+					innerLeft,
+					innerTop,
+					Math.min(innerRight, innerLeft + filled),
+					innerBottom,
+					fill
+				);
+			}
 			int segments = Math.clamp(
 				Math.round(styleNumber(node, "segment_count", 1.0F)),
 				1,
 				64
 			);
 			int separator = withOpacity(border, opacity * 0.72F);
-			for (int index = 1; index < segments; index++) {
-				int separatorX = content.x() + 1 + (int)Math.round(innerWidth * index / (double)segments);
+			for (
+				int index = 1;
+				index < segments && innerWidth > 1 && innerBottom > innerTop;
+				index++
+			) {
+				int separatorX = Math.clamp(
+					innerLeft
+						+ (int)Math.round(innerWidth * index / (double)segments),
+					innerLeft,
+					innerRight - 1
+				);
 				graphics.fill(
 					separatorX,
-					barY + 1,
-					separatorX + 1,
-					barY + barHeight - 1,
+					innerTop,
+					Math.min(innerRight, separatorX + 1),
+					innerBottom,
 					separator
 				);
 			}
-			if (filled > 0 && filled < innerWidth) {
-				int markerX = content.x() + 1 + filled;
+			if (
+				filled > 0
+					&& filled < innerWidth
+					&& innerBottom > innerTop
+			) {
+				int markerX = Math.clamp(
+					innerLeft + filled,
+					innerLeft,
+					innerRight - 1
+				);
 				int marker = styleColor(node, "accent_color", BRAND_GOLD);
 				graphics.fill(
-					markerX - 1,
-					barY - 1,
-					markerX + 2,
-					barY + barHeight + 1,
+					Math.max(innerLeft, markerX - 1),
+					innerTop,
+					Math.min(innerRight, markerX + 2),
+					innerBottom,
 					withOpacity(marker, opacity * 0.30F)
 				);
 				graphics.fill(
 					markerX,
-					barY,
-					markerX + 1,
-					barY + barHeight,
+					innerTop,
+					Math.min(innerRight, markerX + 1),
+					innerBottom,
 					withOpacity(marker, opacity)
 				);
 			}
-		} else {
+		} else if (barHeight >= this.font.lineHeight && content.width() > 4) {
+			FormattedText unavailable = this.font.substrByWidth(
+				styledText(node, "暂无进度"),
+				content.width() - 4
+			);
 			graphics.text(
 				this.font,
-				styledText(node, "暂无进度"),
+				Language.getInstance().getVisualOrder(unavailable),
 				content.x() + 4,
-				barY + Math.max(0, (barHeight - this.font.lineHeight) / 2),
+				barY + (barHeight - this.font.lineHeight) / 2,
 				withOpacity(MUTED_TEXT, opacity),
 				false
 			);
@@ -2720,7 +4437,12 @@ public final class DataDrivenPageScreen extends Screen {
 				widget.extractRenderState(graphics, mouseX, mouseY, tickProgress);
 				ExclusiveChoicePresentation choice = this.exclusiveChoicePresentations.get(widget);
 				if (choice != null) {
-					drawExclusiveChoiceContent(graphics, widget, choice);
+					drawExclusiveChoiceContent(
+						graphics,
+						widget,
+						choice,
+						frame.transform().scale()
+					);
 				}
 			} finally {
 				graphics.disableScissor();
@@ -2735,6 +4457,526 @@ public final class DataDrivenPageScreen extends Screen {
 	 */
 	private boolean pageProjectionChanged() {
 		return this.observedPageProjection.differsFrom(currentPageProjection());
+	}
+
+	/**
+	 * Applies a binding-only NORMAL terminal refresh without reconstructing interactive widgets.
+	 *
+	 * <p>Text, progress, and other painted content use the replacement render plan immediately.
+	 * Existing buttons and inputs keep their hover/focus/motion state when the page definition,
+	 * terminal session, node keys and widget types remain stable. A same-page history selection may
+	 * still receive a fresh server page instance to invalidate delayed requests; button callbacks
+	 * resolve their current render node at click time, so retaining those widgets cannot submit the
+	 * previous record context. Binding text is allowed to change layout geometry: every surviving
+	 * widget receives a freshly derived layout rectangle and is moved through the same motion
+	 * transform as painted nodes. A structural repeat/list, node-type, or widget-type change returns
+	 * {@code false} so the normal rebuild path can create or remove the required controls without
+	 * replaying the stable page's enter animation.
+	 */
+	private boolean applyTerminalBindingUpdateInPlace() {
+		ActivePage current = ClientPageState.activePage().orElse(null);
+		/*
+		 * A Binding Delta or same-page detail selection may replace serverContext/stateRevision and
+		 * the server page instance. Keeping the terminal session, page, theme, generation, and field
+		 * schema exact guarantees that each retained widget's variant and field presentation still
+		 * describe the same control.
+		 */
+		if (
+			current == null
+				|| this.active == null
+				|| this.plan == null
+				|| current.purpose() != PagePurpose.NORMAL
+				|| ClientPageState.pageStatus() != PageStatus.READY
+				|| current.generation() != this.active.generation()
+				|| !current.page().id().equals(this.active.page().id())
+				|| !current.page().equals(this.active.page())
+				|| !current.theme().equals(this.active.theme())
+				|| !current.fields().equals(this.active.fields())
+				|| !current.terminalContext()
+					.map(TerminalContext::sessionId)
+					.equals(
+						this.active.terminalContext().map(TerminalContext::sessionId)
+					)
+		) {
+			return false;
+		}
+		this.active = current;
+		this.motionInstanceId = current.instanceId();
+		this.bindingContextCache.clear();
+		final RenderPlan replacement;
+		try {
+			replacement = PageRenderPlanBuilder.build(
+				this.font,
+				this.active,
+				contextWithLocalUi(this.session.context(this.active)),
+				pageResponsiveTier(),
+				this.pageLayoutWidth,
+				this.pageLayoutHeight,
+				this.scrollOffsets,
+				this.session.defaultFont()
+			);
+		} catch (RuntimeException error) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not apply an in-place player-terminal binding refresh for {}",
+				current.page().id(),
+				error
+			);
+			return false;
+		}
+		if (!replacement.nodes().keySet().equals(this.plan.nodes().keySet())) {
+			return false;
+		}
+		Map<String, PlacedNode> replacementPlaced = new LinkedHashMap<>();
+		indexPlaced(replacement.layout().root(), replacementPlaced);
+		if (!replacementPlaced.keySet().equals(this.placedNodes.keySet())) {
+			return false;
+		}
+		for (Map.Entry<String, RenderNode> entry : this.plan.nodes().entrySet()) {
+			RenderNode next = replacement.nodes().get(entry.getKey());
+			if (next == null || entry.getValue().type() != next.type()) {
+				return false;
+			}
+		}
+		for (Map.Entry<String, PlacedNode> entry : this.placedNodes.entrySet()) {
+			PlacedNode next = replacementPlaced.get(entry.getKey());
+			if (next == null || entry.getValue().type() != next.type()) {
+				return false;
+			}
+		}
+		final TerminalNavigationPlan replacementNavigation;
+		try {
+			replacementNavigation = analyzeTerminalNavigation(replacement);
+		} catch (RuntimeException error) {
+			return false;
+		}
+		if (
+			!replacementNavigation.buttonKeys()
+				.equals(this.terminalRootNavigationNodeKeys)
+		) {
+			return false;
+		}
+		Map<String, WidgetLayout> replacementWidgets = widgetLayouts(
+			replacement,
+			replacementPlaced,
+			replacementNavigation.subtreeKeys()
+		);
+		if (!replacementWidgets.keySet().equals(this.pageWidgets.keySet())) {
+			return false;
+		}
+		Map<String, WidgetBinding> refreshedBindings = new LinkedHashMap<>();
+		for (Map.Entry<String, WidgetBinding> entry : this.pageWidgets.entrySet()) {
+			WidgetBinding previous = entry.getValue();
+			WidgetLayout layout = replacementWidgets.get(entry.getKey());
+			if (
+				layout == null
+					|| !layout.kind().matches(previous.widget())
+					|| !layout.node().key().equals(previous.node().key())
+			) {
+				return false;
+			}
+			refreshedBindings.put(
+				entry.getKey(),
+				new WidgetBinding(
+					previous.widget(),
+					layout.placed(),
+					layout.node(),
+					layout.bounds()
+				)
+			);
+		}
+		this.plan = replacement;
+		this.placedNodes.clear();
+		this.placedNodes.putAll(replacementPlaced);
+		this.pageWidgets.clear();
+		this.pageWidgets.putAll(refreshedBindings);
+		applyTerminalNavigationPlan(replacementNavigation);
+		updatePageFit();
+		refreshButtonStates();
+		refreshTerminalChromeStates();
+		synchronizeWidgetBounds(buildMotionLayout(Util.getMillis()));
+		rememberPageProjection();
+		return true;
+	}
+
+	private static void indexPlaced(
+		final PlacedNode placed,
+		final Map<String, PlacedNode> target
+	) {
+		target.put(placed.key(), placed);
+		placed.children().forEach(child -> indexPlaced(child, target));
+	}
+
+	private Map<String, WidgetLayout> widgetLayouts(
+		final RenderPlan renderPlan,
+		final Map<String, PlacedNode> placed,
+		final Set<String> excludedKeys
+	) {
+		Map<String, WidgetLayout> result = new LinkedHashMap<>();
+		for (PlacedNode candidate : placed.values()) {
+			if (excludedKeys.contains(candidate.key())) {
+				continue;
+			}
+			RenderNode node = renderPlan.nodes().get(candidate.key());
+			if (node == null || node.synthetic() || node.definition() == null) {
+				continue;
+			}
+			if (node.definition().content() instanceof ButtonContent) {
+				Rect content = candidate.contentBounds();
+				result.put(
+					node.key(),
+					new WidgetLayout(
+						WidgetKind.BUTTON,
+						candidate,
+						node,
+						new Rect(
+							content.x(),
+							content.y(),
+							Math.max(1, content.width()),
+							Math.max(20, content.height())
+						)
+					)
+				);
+				continue;
+			}
+			if (node.type() == NodeType.CAROUSEL && candidate.children().size() > 1) {
+				CarouselControlRects controls = carouselControlRects(candidate);
+				result.put(
+					node.key() + "/carousel-previous",
+					new WidgetLayout(
+						WidgetKind.BUTTON,
+						candidate,
+						node,
+						controls.previous()
+					)
+				);
+				result.put(
+					node.key() + "/carousel-next",
+					new WidgetLayout(
+						WidgetKind.BUTTON,
+						candidate,
+						node,
+						controls.next()
+					)
+				);
+				continue;
+			}
+			if (!(node.definition().content() instanceof FieldInputContent input)) {
+				continue;
+			}
+			FieldSchema field = this.active.fields().get(input.field());
+			if (field == null || node.definition().id().isEmpty()) {
+				continue;
+			}
+			Rect area = fieldControlArea(candidate, input, field);
+			switch (field.type()) {
+				case "boolean" -> result.put(
+					node.key() + "/field-boolean",
+					new WidgetLayout(
+						WidgetKind.BUTTON,
+						candidate,
+						node,
+						new Rect(
+							area.x(),
+							area.y(),
+							Math.max(1, area.width()),
+							Math.min(24, Math.max(20, area.height()))
+						)
+					)
+				);
+				case "single_choice", "multi_choice" ->
+					addChoiceWidgetLayouts(result, candidate, node, field, area, false);
+				case "exclusive_choice" ->
+					addChoiceWidgetLayouts(result, candidate, node, field, area, true);
+				case "integer", "string", "identifier" -> result.put(
+					node.key() + "/field-edit",
+					new WidgetLayout(
+						WidgetKind.EDIT_BOX,
+						candidate,
+						node,
+						new Rect(
+							area.x(),
+							area.y(),
+							Math.max(1, area.width()),
+							Math.min(24, Math.max(20, area.height()))
+						)
+					)
+				);
+				default -> {
+					// The definition compiler prevents unsupported field controls.
+				}
+			}
+		}
+		return result;
+	}
+
+	private static void addChoiceWidgetLayouts(
+		final Map<String, WidgetLayout> target,
+		final PlacedNode placed,
+		final RenderNode node,
+		final FieldSchema field,
+		final Rect area,
+		final boolean exclusive
+	) {
+		int count = exclusive ? field.exclusiveOptions().size() : field.options().size();
+		if (count == 0) {
+			return;
+		}
+		int columns = PageRenderPlanBuilder.fieldChoiceColumns(field, area.width());
+		int rows = Math.ceilDiv(count, columns);
+		int gap = exclusive ? 6 : 4;
+		int buttonWidth = exclusive
+			? Math.max(80, (area.width() - gap * (columns - 1)) / columns)
+			: Math.max(28, (area.width() - gap * (columns - 1)) / columns);
+		int buttonHeight = exclusive
+			? Math.max(36, Math.min(48, (area.height() - gap * (rows - 1)) / rows))
+			: Math.max(20, Math.min(24, (area.height() - gap * (rows - 1)) / rows));
+		String keyPart = exclusive ? "/field-exclusive-choice-" : "/field-choice-";
+		for (int index = 0; index < count; index++) {
+			int column = index % columns;
+			int row = index / columns;
+			target.put(
+				node.key() + keyPart + index,
+				new WidgetLayout(
+					WidgetKind.BUTTON,
+					placed,
+					node,
+					new Rect(
+						area.x() + column * (buttonWidth + gap),
+						area.y() + row * (buttonHeight + gap),
+						buttonWidth,
+						buttonHeight
+					)
+				)
+			);
+		}
+	}
+
+	/**
+	 * A linked destination blade for ordinary-player navigation. Its clipped corners and short
+	 * signal rails create hierarchy without turning a sparse player page into a host dashboard.
+	 */
+	private static void drawPortalFrame(
+		final GuiGraphicsExtractor graphics,
+		final Rect bounds,
+		final int background,
+		final int border,
+		final int accent,
+		final int borderWidth,
+		final int detailSize,
+		final float opacity
+	) {
+		if (bounds.width() < 12 || bounds.height() < 12) {
+			graphics.fill(
+				bounds.x(),
+				bounds.y(),
+				bounds.right(),
+				bounds.bottom(),
+				withOpacity(background, opacity)
+			);
+			graphics.outline(
+				bounds.x(),
+				bounds.y(),
+				bounds.width(),
+				bounds.height(),
+				withOpacity(border, opacity)
+			);
+			return;
+		}
+		int cut = Math.min(
+			Math.max(5, detailSize),
+			Math.max(1, Math.min(bounds.width(), bounds.height()) / 4)
+		);
+		int fill = withOpacity(background, opacity);
+		int line = withOpacity(border, opacity);
+		int hot = withOpacity(accent, opacity);
+		graphics.fill(bounds.x() + cut, bounds.y(), bounds.right(), bounds.bottom() - cut, fill);
+		graphics.fill(bounds.x(), bounds.y() + cut, bounds.right() - cut, bounds.bottom(), fill);
+		graphics.fill(
+			bounds.x() + 2,
+			bounds.y() + 2,
+			bounds.right() - 2,
+			bounds.bottom() - 2,
+			fill
+		);
+		for (int index = 0; index < Math.max(1, borderWidth); index++) {
+			int x = bounds.x() + index;
+			int y = bounds.y() + index;
+			int right = bounds.right() - index;
+			int bottom = bounds.bottom() - index;
+			graphics.fill(x + cut, y, right, y + 1, hot);
+			graphics.fill(x, y + cut, x + 1, bottom, hot);
+			graphics.fill(x, y + cut, x + cut, y + cut + 1, line);
+			graphics.fill(x + cut - 1, y, x + cut, y + cut, line);
+			graphics.fill(x, bottom - 1, right - cut, bottom, line);
+			graphics.fill(right - cut, bottom - cut, right, bottom - cut + 1, line);
+			graphics.fill(right - cut, bottom - cut, right - cut + 1, bottom, line);
+			graphics.fill(right - 1, y, right, bottom - cut, line);
+		}
+		int pulse = Math.max(8, Math.min(bounds.width() / 3, 42));
+		graphics.fill(
+			bounds.x() + cut + 4,
+			bounds.y() + 4,
+			bounds.x() + cut + 4 + pulse,
+			bounds.y() + 5,
+			withOpacity(accent, opacity * 0.42F)
+		);
+		int markerLeft = Math.max(bounds.x() + 2, bounds.right() - 12);
+		graphics.fill(
+			markerLeft,
+			bounds.bottom() - cut - 4,
+			bounds.right() - 4,
+			bounds.bottom() - cut - 2,
+			withOpacity(accent, opacity * 0.72F)
+		);
+	}
+
+	/**
+	 * A resource-pack-independent document cover. Data packs control its colors and contents while
+	 * the mod supplies the physical cover, spine, page block and bookmark details.
+	 */
+	private static void drawManualFrame(
+		final GuiGraphicsExtractor graphics,
+		final Rect bounds,
+		final int background,
+		final int border,
+		final int accent,
+		final int borderWidth,
+		final int detailSize,
+		final float opacity
+	) {
+		if (bounds.width() < 18 || bounds.height() < 18) {
+			graphics.fill(
+				bounds.x(),
+				bounds.y(),
+				bounds.right(),
+				bounds.bottom(),
+				withOpacity(background, opacity)
+			);
+			graphics.outline(
+				bounds.x(),
+				bounds.y(),
+				bounds.width(),
+				bounds.height(),
+				withOpacity(border, opacity)
+			);
+			return;
+		}
+		int pageInset = Math.max(3, Math.min(6, detailSize));
+		int spine = Math.max(8, Math.min(14, bounds.width() / 5));
+		int coverRight = Math.max(bounds.x() + 1, bounds.right() - pageInset);
+		int coverBottom = Math.max(bounds.y() + 1, bounds.bottom() - pageInset);
+		int fill = withOpacity(background, opacity);
+		int line = withOpacity(border, opacity);
+		int hot = withOpacity(accent, opacity);
+		int page = withOpacity(0xFFD5D2BE, opacity * 0.72F);
+		int pageShadow = withOpacity(0xFF6C716C, opacity * 0.55F);
+
+		graphics.fill(
+			bounds.x() + pageInset,
+			bounds.y() + pageInset,
+			bounds.right(),
+			bounds.bottom(),
+			pageShadow
+		);
+		graphics.fill(bounds.x() + 2, bounds.y() + 2, coverRight, coverBottom, fill);
+		graphics.fill(
+			bounds.x() + 2,
+			bounds.y() + 2,
+			bounds.x() + spine,
+			coverBottom,
+			withOpacity(border, opacity * 0.62F)
+		);
+		graphics.fill(bounds.x() + spine, bounds.y() + 2, bounds.x() + spine + 1, coverBottom, hot);
+		graphics.fill(bounds.x() + 2, bounds.y() + 2, coverRight, bounds.y() + 5, hot);
+		for (int index = 0; index < Math.max(1, borderWidth); index++) {
+			graphics.outline(
+				bounds.x() + 2 + index,
+				bounds.y() + 2 + index,
+				Math.max(0, coverRight - bounds.x() - 2 - index * 2),
+				Math.max(0, coverBottom - bounds.y() - 2 - index * 2),
+				line
+			);
+		}
+		for (int offset = 1; offset < pageInset; offset += 2) {
+			graphics.fill(
+				coverRight,
+				bounds.y() + 5 + offset,
+				bounds.right(),
+				coverBottom + offset,
+				page
+			);
+			graphics.fill(
+				bounds.x() + spine,
+				coverBottom + offset,
+				coverRight,
+				bounds.bottom(),
+				page
+			);
+		}
+		int labelAvailable = Math.max(1, coverRight - bounds.x() - spine - 8);
+		int labelWidth = Math.max(1, Math.min(labelAvailable, Math.max(10, bounds.width() / 2)));
+		graphics.fill(
+			bounds.x() + spine + 5,
+			bounds.y() + 12,
+			bounds.x() + spine + 5 + labelWidth,
+			bounds.y() + 14,
+			withOpacity(accent, opacity * 0.58F)
+		);
+		graphics.fill(coverRight - 12, bounds.y() + 2, coverRight - 7, bounds.y() + 18, hot);
+		graphics.fill(coverRight - 11, bounds.y() + 18, coverRight - 9, bounds.y() + 21, hot);
+		graphics.fill(
+			bounds.x() + 5,
+			coverBottom - 13,
+			bounds.x() + spine - 3,
+			coverBottom - 10,
+			withOpacity(accent, opacity * 0.76F)
+		);
+	}
+
+	private void drawCarouselIndicators(
+		final GuiGraphicsExtractor graphics,
+		final PlacedNode placed,
+		final RenderNode node,
+		final Rect content,
+		final float opacity
+	) {
+		List<CarouselChild> children = carouselChildren(placed);
+		CarouselRuntime state = this.carouselStates.get(placed.key());
+		if (state == null || children.size() <= 1 || content.width() < 36) {
+			return;
+		}
+		int selected = indexOfCarouselChild(children, state.selectedId());
+		int maximumVisible = Math.min(7, children.size());
+		int start = Math.clamp(
+			selected - maximumVisible / 2,
+			0,
+			Math.max(0, children.size() - maximumVisible)
+		);
+		int gap = 4;
+		int regularWidth = 9;
+		int selectedWidth = 20;
+		int totalWidth = (maximumVisible - 1) * regularWidth
+			+ selectedWidth
+			+ (maximumVisible - 1) * gap;
+		int x = content.x() + Math.max(0, (content.width() - totalWidth) / 2);
+		int y = content.bottom() - 6;
+		RenderNode selectedNode = this.plan.nodes().get(children.get(selected).placed().key());
+		int accent = selectedNode == null
+			? styleColor(node, "accent_color", INFO_CYAN)
+			: styleColor(selectedNode, "accent_color", INFO_CYAN);
+		for (int visibleIndex = 0; visibleIndex < maximumVisible; visibleIndex++) {
+			int childIndex = start + visibleIndex;
+			boolean current = childIndex == selected;
+			int width = current ? selectedWidth : regularWidth;
+			graphics.fill(
+				x,
+				y,
+				x + width,
+				y + 2,
+				withOpacity(current ? accent : SURFACE_BORDER, opacity)
+			);
+			x += width + gap;
+		}
 	}
 
 	private void rememberPageProjection() {
@@ -2772,6 +5014,48 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void drawExclusiveChoiceContent(
+		final GuiGraphicsExtractor graphics,
+		final AbstractWidget widget,
+		final ExclusiveChoicePresentation presentation,
+		final double presentationScale
+	) {
+		float scale = (float)Math.clamp(presentationScale, 0.0, 8.0);
+		if (scale <= 0.001F) {
+			return;
+		}
+		if (Math.abs(scale - 1.0F) < 0.001F) {
+			drawExclusiveChoiceContentUnscaled(graphics, widget, presentation);
+			return;
+		}
+
+		int hitX = widget.getX();
+		int hitY = widget.getY();
+		int hitWidth = widget.getWidth();
+		int hitHeight = widget.getHeight();
+		float centerX = hitX + hitWidth / 2.0F;
+		float centerY = hitY + hitHeight / 2.0F;
+		int sourceWidth = Math.max(1, Math.round(hitWidth / scale));
+		int sourceHeight = Math.max(1, Math.round(hitHeight / scale));
+		widget.setX(Math.round(centerX - sourceWidth / 2.0F));
+		widget.setY(Math.round(centerY - sourceHeight / 2.0F));
+		widget.setWidth(sourceWidth);
+		widget.setHeight(sourceHeight);
+		graphics.pose().pushMatrix();
+		graphics.pose().translate(centerX, centerY);
+		graphics.pose().scale(scale, scale);
+		graphics.pose().translate(-centerX, -centerY);
+		try {
+			drawExclusiveChoiceContentUnscaled(graphics, widget, presentation);
+		} finally {
+			graphics.pose().popMatrix();
+			widget.setX(hitX);
+			widget.setY(hitY);
+			widget.setWidth(hitWidth);
+			widget.setHeight(hitHeight);
+		}
+	}
+
+	private void drawExclusiveChoiceContentUnscaled(
 		final GuiGraphicsExtractor graphics,
 		final AbstractWidget widget,
 		final ExclusiveChoicePresentation presentation
@@ -2907,6 +5191,10 @@ public final class DataDrivenPageScreen extends Screen {
 
 	private void synchronizeWidgetBounds(final MotionLayout motionLayout) {
 		for (WidgetBinding binding : this.pageWidgets.values()) {
+			if (!carouselInteractionVisible(binding.node().key())) {
+				binding.widget().visible = false;
+				continue;
+			}
 			NodeFrame frame = motionLayout.frames().get(binding.node().key());
 			if (frame == null) {
 				binding.widget().visible = false;
@@ -2930,6 +5218,49 @@ public final class DataDrivenPageScreen extends Screen {
 			}
 			Rect visible = bounds.intersection(frame.clip());
 			binding.widget().visible = visible.width() > 0 && visible.height() > 0;
+		}
+		synchronizeTerminalNavigationBounds(motionLayout);
+	}
+
+	private void synchronizeTerminalNavigationBounds(final MotionLayout motionLayout) {
+		if (
+			this.terminalRootNavigationWidgets.isEmpty()
+				|| this.terminalShellViewport == null
+		) {
+			return;
+		}
+		long now = Util.getMillis();
+		double shellScale = this.terminalShellViewport.scale();
+		Rect shell = new Rect(
+			this.terminalShellX,
+			this.terminalShellY,
+			this.terminalShellWidth,
+			this.terminalShellHeight
+		);
+		for (TerminalNavigationBinding binding : this.terminalRootNavigationWidgets.values()) {
+			NodeFrame frame = motionLayout.frames().get(binding.nodeKey());
+			if (frame == null) {
+				binding.button().visible = false;
+				continue;
+			}
+			UiMotionRuntime.Sample sample = sampleNodeMotion(binding.nodeKey(), now);
+			Rect base = this.terminalShellViewport.map(binding.referenceBounds());
+			Transform transform = Transform.root(0, 0)
+				.around(
+					base,
+					sample.scale(),
+					sample.translateX() * shellScale,
+					sample.translateY() * shellScale
+				);
+			Rect bounds = transform.apply(base);
+			setWidgetBounds(binding.button(), bounds);
+			binding.button().setPresentationScale(
+				(float)(shellScale * sample.scale())
+			);
+			Rect visible = bounds.intersection(shell);
+			binding.button().visible = frame.opacity() > 0.001F
+				&& visible.width() > 0
+				&& visible.height() > 0;
 		}
 	}
 
@@ -3078,7 +5409,10 @@ public final class DataDrivenPageScreen extends Screen {
 			mouseY,
 			motionLayout
 		);
-		int panelWidth = Math.min(360, Math.max(250, this.width - 24));
+		int panelWidth = Math.min(
+			360,
+			Math.max(250, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
+		);
 		List<String> lines = new ArrayList<>();
 		lines.add(
 			"tier="
@@ -3131,9 +5465,15 @@ public final class DataDrivenPageScreen extends Screen {
 			.limit(MAX_DEBUG_DETAILS)
 			.forEach(diagnostic -> lines.add("R " + diagnostic.code() + " " + diagnostic.pointer()));
 
-		int panelHeight = Math.min(this.height - 24, 12 + lines.size() * 10);
+		int panelHeight = Math.min(
+			ConsoleScreenViewport.REFERENCE_HEIGHT - 24,
+			12 + lines.size() * 10
+		);
 		int x = 12;
-		int y = Math.min(this.height - panelHeight - 12, this.viewportY + 8);
+		int y = Math.min(
+			ConsoleScreenViewport.REFERENCE_HEIGHT - panelHeight - 12,
+			this.viewportY + 8
+		);
 		graphics.fill(x, y, x + panelWidth, y + panelHeight, 0xF20B1118);
 		graphics.outline(x, y, panelWidth, panelHeight, WARNING);
 		for (int index = 0; index < lines.size() && y + 7 + index * 10 < y + panelHeight - 3; index++) {
@@ -3173,15 +5513,24 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void drawRequestEnvelope(final GuiGraphicsExtractor graphics) {
-		int width = Math.min(560, Math.max(280, this.width - 32));
+		int width = Math.min(
+			560,
+			Math.max(280, ConsoleScreenViewport.REFERENCE_WIDTH - 32)
+		);
 		int textWidth = width - 16;
 		int textHeight = this.font.wordWrapHeight(
 			Component.literal(this.lastRequestEnvelope),
 			textWidth
 		);
-		int height = Math.min(this.height - 40, textHeight + 28);
-		int x = (this.width - width) / 2;
-		int y = Math.max(20, this.height - FOOTER_HEIGHT - height - 6);
+		int height = Math.min(
+			ConsoleScreenViewport.REFERENCE_HEIGHT - 40,
+			textHeight + 28
+		);
+		int x = (ConsoleScreenViewport.REFERENCE_WIDTH - width) / 2;
+		int y = Math.max(
+			20,
+			ConsoleScreenViewport.REFERENCE_HEIGHT - FOOTER_HEIGHT - height - 6
+		);
 		int outcomeColor = this.lastRequestOutcome == UiEvent.ERROR ? DANGER : SUCCESS;
 		graphics.fill(x, y, x + width, y + height, 0xFA0B1219);
 		graphics.outline(x, y, width, height, outcomeColor);
@@ -3213,7 +5562,7 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void renderFooter(final GuiGraphicsExtractor graphics) {
-		int y = this.height - 25;
+		int y = ConsoleScreenViewport.REFERENCE_HEIGHT - 25;
 		String status = this.plan.tier()
 			+ "  // "
 			+ this.viewportWidth
@@ -3222,7 +5571,10 @@ public final class DataDrivenPageScreen extends Screen {
 			+ "  // Repeat "
 			+ this.plan.visibleRepeatItems()
 			+ " visible";
-		int availableWidth = Math.max(0, this.width - 140);
+		int availableWidth = Math.max(
+			0,
+			ConsoleScreenViewport.REFERENCE_WIDTH - 140
+		);
 		if (this.font.width(status) > availableWidth) {
 			status = this.plan.tier() + "  // " + this.viewportWidth + "×" + this.viewportHeight;
 		}
@@ -3230,10 +5582,16 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private void renderSafetyPage(final GuiGraphicsExtractor graphics) {
-		int panelWidth = Math.max(1, Math.min(620, this.width - 24));
-		int panelHeight = Math.max(1, Math.min(330, this.height - 24));
-		int x = (this.width - panelWidth) / 2;
-		int y = (this.height - panelHeight) / 2;
+		int panelWidth = Math.max(
+			1,
+			Math.min(620, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
+		);
+		int panelHeight = Math.max(
+			1,
+			Math.min(330, ConsoleScreenViewport.REFERENCE_HEIGHT - 24)
+		);
+		int x = (ConsoleScreenViewport.REFERENCE_WIDTH - panelWidth) / 2;
+		int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - panelHeight) / 2;
 		graphics.fill(x, y, x + panelWidth, y + panelHeight, PANEL);
 		graphics.outline(x, y, panelWidth, panelHeight, DANGER);
 		graphics.fill(x, y, x + 4, y + panelHeight, DANGER);
@@ -3392,7 +5750,7 @@ public final class DataDrivenPageScreen extends Screen {
 			case IMAGE, PLAYER_HEAD -> 0xFFFFFFFF;
 			case DIVIDER -> styleColor(node, "border_color", SURFACE_BORDER);
 			case PROGRESS -> styleColor(node, "fill_color", BRAND_GOLD);
-			case ROW, COLUMN, GRID, FLOW, OVERLAY, REPEAT ->
+			case ROW, COLUMN, GRID, FLOW, OVERLAY, CAROUSEL, REPEAT ->
 				node == this.plan.root()
 					? styleColor(node, "background_color", PANEL)
 					: MAIN_TEXT;
@@ -3477,8 +5835,8 @@ public final class DataDrivenPageScreen extends Screen {
 	}
 
 	private Transform pageRootTransform() {
-		if (this.pageScale >= 0.999) {
-			return Transform.root(this.viewportX, this.viewportY);
+		if (this.referencePageScale >= 0.999) {
+			return new Transform(this.pageScale, this.viewportX, this.viewportY);
 		}
 		double offsetX = this.viewportX
 			+ (this.viewportWidth - this.pageContentWidth * this.pageScale) / 2.0;
@@ -3535,12 +5893,113 @@ public final class DataDrivenPageScreen extends Screen {
 			sample.progressValue()
 		);
 		frames.put(placed.key(), frame);
-		Rect childClip = placed.type() == NodeType.SCROLL || placed.type() == NodeType.CARD
+		Rect childClip = placed.type() == NodeType.SCROLL
+				|| placed.type() == NodeType.CARD
+				|| placed.type() == NodeType.CAROUSEL
 			? clip.intersection(content)
 			: clip;
+		if (placed.type() == NodeType.CAROUSEL) {
+			CarouselRuntime state = this.carouselStates.get(placed.key());
+			for (PlacedNode child : placed.children()) {
+				CarouselChildMotion carousel = carouselChildMotion(
+					placed,
+					child,
+					state,
+					now
+				);
+				if (!carousel.visible()) {
+					continue;
+				}
+				Transform childTransform = transform.around(
+					child.bounds(),
+					carousel.scale(),
+					carousel.translateX(),
+					0.0
+				);
+				buildNodeFrames(
+					child,
+					childTransform,
+					childClip,
+					(float)(opacity * carousel.opacity()),
+					now,
+					frames
+				);
+			}
+			return;
+		}
 		for (PlacedNode child : placed.children()) {
 			buildNodeFrames(child, transform, childClip, opacity, now, frames);
 		}
+	}
+
+	private boolean carouselInteractionVisible(final String nodeKey) {
+		for (Map.Entry<String, CarouselRuntime> entry : this.carouselStates.entrySet()) {
+			PlacedNode carousel = this.placedNodes.get(entry.getKey());
+			if (carousel == null || nodeKey.equals(carousel.key())) {
+				continue;
+			}
+			for (CarouselChild child : carouselChildren(carousel)) {
+				if (
+					(nodeKey.equals(child.placed().key())
+							|| nodeKey.startsWith(child.placed().key() + "/"))
+						&& !child.id().equals(entry.getValue().selectedId())
+				) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
+	private CarouselChildMotion carouselChildMotion(
+		final PlacedNode carousel,
+		final PlacedNode child,
+		final CarouselRuntime state,
+		final long now
+	) {
+		RenderNode childNode = this.plan.nodes().get(child.key());
+		if (childNode == null || childNode.definition() == null) {
+			return CarouselChildMotion.hidden();
+		}
+		String childId = childNode.definition().id().orElse("");
+		if (state == null) {
+			return carousel.children().getFirst().key().equals(child.key())
+				? CarouselChildMotion.still()
+				: CarouselChildMotion.hidden();
+		}
+		double progress = state.progress(
+			now,
+			this.session.reducedMotion()
+				? REDUCED_CAROUSEL_TRANSITION_MILLIS
+				: CAROUSEL_TRANSITION_MILLIS
+		);
+		if (!state.transitioning()) {
+			return childId.equals(state.selectedId())
+				? CarouselChildMotion.still()
+				: CarouselChildMotion.hidden();
+		}
+		double eased = 1.0 - Math.pow(1.0 - progress, 3.0);
+		if (childId.equals(state.selectedId())) {
+			return this.session.reducedMotion()
+				? new CarouselChildMotion(true, 1.0, 0.0, eased)
+				: new CarouselChildMotion(
+					true,
+					0.96 + eased * 0.04,
+					state.direction() * (1.0 - eased) * 36.0,
+					eased
+				);
+		}
+		if (childId.equals(state.previousId())) {
+			return this.session.reducedMotion()
+				? new CarouselChildMotion(true, 1.0, 0.0, 1.0 - eased)
+				: new CarouselChildMotion(
+					true,
+					1.0 - eased * 0.04,
+					-state.direction() * eased * 30.0,
+					1.0 - eased
+				);
+		}
+		return CarouselChildMotion.hidden();
 	}
 
 	private Optional<String> effectiveStyleName(final RenderNode node) {
@@ -3704,6 +6163,14 @@ public final class DataDrivenPageScreen extends Screen {
 			.withStyle(style -> style.withFont(new FontDescription.Resource(node.fontId())));
 	}
 
+	private Component textNodeComponent(final RenderNode node, final String text) {
+		return Component.literal(text)
+			.withStyle(style ->
+				style.withFont(new FontDescription.Resource(node.fontId()))
+					.withObfuscated(styleBoolean(node, "obfuscated", false))
+			);
+	}
+
 	private static Optional<Integer> parseHexColor(final String value) {
 		if (value == null || !value.matches("#[0-9a-fA-F]{6}")) {
 			return Optional.empty();
@@ -3717,6 +6184,23 @@ public final class DataDrivenPageScreen extends Screen {
 
 	private int screenY(final int layoutY) {
 		return this.viewportY + layoutY;
+	}
+
+	private ConsoleScreenViewport.Layout consoleCanvas() {
+		return ConsoleScreenViewport.fit(this.width, this.height);
+	}
+
+	private boolean safetyPageVisible() {
+		return !isTerminalLoading() && isSafetyPage();
+	}
+
+	private MouseButtonEvent consoleReferenceMouseEvent(final MouseButtonEvent event) {
+		ConsoleScreenViewport.Layout canvas = consoleCanvas();
+		return new MouseButtonEvent(
+			canvas.toReferenceX(event.x()),
+			canvas.toReferenceY(event.y()),
+			event.buttonInfo()
+		);
 	}
 
 	private Rect visibleClip(final PlacedNode placed, final MotionLayout motionLayout) {
@@ -3741,13 +6225,39 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.closing) {
 			return true;
 		}
+		if (safetyPageVisible()) {
+			ConsoleScreenViewport.Layout canvas = consoleCanvas();
+			return super.mouseScrolled(
+				canvas.toReferenceX(mouseX),
+				canvas.toReferenceY(mouseY),
+				horizontalAmount,
+				verticalAmount
+			);
+		}
+		double contentMouseX = mouseX;
+		double contentMouseY = mouseY;
+		if (this.session.previewChrome()) {
+			ConsoleScreenViewport.Layout canvas = consoleCanvas();
+			contentMouseX = canvas.toReferenceX(mouseX);
+			contentMouseY = canvas.toReferenceY(mouseY);
+		}
 		if (this.plan == null) {
-			return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+			return super.mouseScrolled(
+				contentMouseX,
+				contentMouseY,
+				horizontalAmount,
+				verticalAmount
+			);
 		}
 		MotionLayout motionLayout = buildMotionLayout(Util.getMillis());
-		PlacedNode scroll = deepestScrollableAt(mouseX, mouseY, motionLayout);
+		PlacedNode scroll = deepestScrollableAt(contentMouseX, contentMouseY, motionLayout);
 		if (scroll == null) {
-			return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+			return super.mouseScrolled(
+				contentMouseX,
+				contentMouseY,
+				horizontalAmount,
+				verticalAmount
+			);
 		}
 		Direction direction = scrollDirection(scroll);
 		double amount = direction == Direction.HORIZONTAL && horizontalAmount != 0.0
@@ -3778,6 +6288,18 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.closing) {
 			if (event.key() == GLFW_KEY_ESCAPE) {
 				finishClose();
+			}
+			return true;
+		}
+		if (
+			event.key() == GLFW_KEY_ESCAPE
+				&& normalTerminalPage()
+				&& this.active.terminalContext()
+					.map(TerminalContext::stackDepth)
+					.orElse(1) > 1
+		) {
+			if (!ClientPageState.terminalIntentPending(Intent.BACK)) {
+				terminalBackOrClose();
 			}
 			return true;
 		}
@@ -3892,13 +6414,19 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.closing || ClientPageState.flowActionPending()) {
 			return true;
 		}
+		if (safetyPageVisible()) {
+			return super.mouseClicked(consoleReferenceMouseEvent(event), doubleClick);
+		}
+		MouseButtonEvent contentEvent = this.session.previewChrome()
+			? consoleReferenceMouseEvent(event)
+			: event;
 		MotionLayout motionLayout = this.plan == null
 			? null
 			: buildMotionLayout(Util.getMillis());
 		if (motionLayout != null) {
 			synchronizeWidgetBounds(motionLayout);
 		}
-		if (event.button() == 0 && this.plan != null) {
+		if (contentEvent.button() == 0 && this.plan != null) {
 			PlacedNode scroll = this.placedNodes.values()
 				.stream()
 				.filter(node -> node.type() == NodeType.SCROLL)
@@ -3907,8 +6435,16 @@ public final class DataDrivenPageScreen extends Screen {
 					node -> {
 						Scrollbar bar = scrollbar(node, motionLayout);
 						return bar != null
-							&& contains(visibleClip(node, motionLayout), event.x(), event.y())
-							&& contains(bar.track(), event.x(), event.y());
+							&& contains(
+								visibleClip(node, motionLayout),
+								contentEvent.x(),
+								contentEvent.y()
+							)
+							&& contains(
+								bar.track(),
+								contentEvent.x(),
+								contentEvent.y()
+							);
 					}
 				)
 				.max(Comparator.comparingInt(node -> node.key().length()))
@@ -3916,18 +6452,20 @@ public final class DataDrivenPageScreen extends Screen {
 			if (scroll != null) {
 				Scrollbar bar = scrollbar(scroll, motionLayout);
 				this.draggingScrollKey = scroll.key();
-				this.dragStartMouse = bar.direction() == Direction.VERTICAL ? event.y() : event.x();
+				this.dragStartMouse = bar.direction() == Direction.VERTICAL
+					? contentEvent.y()
+					: contentEvent.x();
 				this.dragStartOffset = scroll.scrollOffset();
 				return true;
 			}
 		}
 		List<AbstractWidget> hidden = hideClippedPageWidgetsAt(
-			event.x(),
-			event.y(),
+			contentEvent.x(),
+			contentEvent.y(),
 			motionLayout
 		);
 		try {
-			return super.mouseClicked(event, doubleClick);
+			return super.mouseClicked(contentEvent, doubleClick);
 		} finally {
 			hidden.forEach(widget -> widget.visible = true);
 		}
@@ -3973,8 +6511,34 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.closing) {
 			return true;
 		}
-		if (this.draggingScrollKey == null || this.plan == null || event.button() != 0) {
-			return super.mouseDragged(event, deltaX, deltaY);
+		if (safetyPageVisible()) {
+			ConsoleScreenViewport.Layout canvas = consoleCanvas();
+			return super.mouseDragged(
+				consoleReferenceMouseEvent(event),
+				canvas.toReferenceLength(deltaX),
+				canvas.toReferenceLength(deltaY)
+			);
+		}
+		MouseButtonEvent contentEvent = this.session.previewChrome()
+			? consoleReferenceMouseEvent(event)
+			: event;
+		double contentDeltaX = deltaX;
+		double contentDeltaY = deltaY;
+		if (this.session.previewChrome()) {
+			ConsoleScreenViewport.Layout canvas = consoleCanvas();
+			contentDeltaX = canvas.toReferenceLength(deltaX);
+			contentDeltaY = canvas.toReferenceLength(deltaY);
+		}
+		if (
+			this.draggingScrollKey == null
+				|| this.plan == null
+				|| contentEvent.button() != 0
+		) {
+			return super.mouseDragged(
+				contentEvent,
+				contentDeltaX,
+				contentDeltaY
+			);
 		}
 		PlacedNode scroll = this.placedNodes.get(this.draggingScrollKey);
 		if (scroll == null) {
@@ -3986,7 +6550,9 @@ public final class DataDrivenPageScreen extends Screen {
 			this.draggingScrollKey = null;
 			return false;
 		}
-		double mouse = bar.direction() == Direction.VERTICAL ? event.y() : event.x();
+		double mouse = bar.direction() == Direction.VERTICAL
+			? contentEvent.y()
+			: contentEvent.x();
 		int travel = bar.direction() == Direction.VERTICAL
 			? bar.track().height() - bar.thumb().height()
 			: bar.track().width() - bar.thumb().width();
@@ -4009,11 +6575,17 @@ public final class DataDrivenPageScreen extends Screen {
 		if (this.closing) {
 			return true;
 		}
-		if (event.button() == 0 && this.draggingScrollKey != null) {
+		if (safetyPageVisible()) {
+			return super.mouseReleased(consoleReferenceMouseEvent(event));
+		}
+		MouseButtonEvent contentEvent = this.session.previewChrome()
+			? consoleReferenceMouseEvent(event)
+			: event;
+		if (contentEvent.button() == 0 && this.draggingScrollKey != null) {
 			this.draggingScrollKey = null;
 			return true;
 		}
-		return super.mouseReleased(event);
+		return super.mouseReleased(contentEvent);
 	}
 
 	private static boolean contains(final Rect rect, final double x, final double y) {
@@ -4126,15 +6698,30 @@ public final class DataDrivenPageScreen extends Screen {
 			playEventSound(node, UiEvent.HIDE, node.key());
 		}
 		this.pageWidgets.values().forEach(binding -> binding.widget().active = false);
+		this.terminalRootNavigationWidgets.values()
+			.forEach(binding -> binding.button().active = false);
+		if (this.terminalExitButton != null) {
+			this.terminalExitButton.active = false;
+		}
+		if (this.terminalBackButton != null) {
+			this.terminalBackButton.active = false;
+		}
+		if (this.terminalTakeoverButton != null) {
+			this.terminalTakeoverButton.active = false;
+		}
 		if (!animated || motionsFinished(UiEvent.HIDE, now)) {
 			finishClose();
 		}
 	}
 
 	private void finishClose() {
-		if (!this.serverReleased && !ClientPageState.closeActivePage()) {
-			this.closing = false;
-			return;
+		if (this.serverReleased) {
+			ClientPageState.completeTerminalRelease();
+		} else {
+			if (!ClientPageState.closeActivePage()) {
+				this.closing = false;
+				return;
+			}
 		}
 		TransitioningConsoleScreen.preparePopEntry(this.parent);
 		this.minecraft.gui.setScreen(this.parent);
@@ -4149,6 +6736,165 @@ public final class DataDrivenPageScreen extends Screen {
 		RenderNode node,
 		Rect layoutBounds
 	) {
+	}
+
+	private record TerminalNavigationBinding(
+		ConsoleButton button,
+		String nodeKey,
+		Rect referenceBounds
+	) {
+	}
+
+	private record TerminalNavigationPlan(
+		List<String> buttonKeys,
+		Set<String> subtreeKeys
+	) {
+		private TerminalNavigationPlan {
+			buttonKeys = List.copyOf(buttonKeys);
+			subtreeKeys = Set.copyOf(subtreeKeys);
+		}
+
+		private static TerminalNavigationPlan empty() {
+			return new TerminalNavigationPlan(List.of(), Set.of());
+		}
+	}
+
+	private record CarouselSelectionKey(
+		UUID terminalSessionId,
+		Identifier pageId,
+		String carouselId
+	) {
+		private CarouselSelectionKey {
+			Objects.requireNonNull(terminalSessionId, "terminalSessionId");
+			Objects.requireNonNull(pageId, "pageId");
+			carouselId = Objects.requireNonNull(carouselId, "carouselId");
+		}
+	}
+
+	private record CarouselChild(String id, PlacedNode placed) {
+	}
+
+	private record CarouselControls(ConsoleButton previous, ConsoleButton next) {
+	}
+
+	private record CarouselControlRects(Rect previous, Rect next) {
+	}
+
+	private record CarouselChildMotion(
+		boolean visible,
+		double scale,
+		double translateX,
+		double opacity
+	) {
+		private static CarouselChildMotion hidden() {
+			return new CarouselChildMotion(false, 1.0, 0.0, 0.0);
+		}
+
+		private static CarouselChildMotion still() {
+			return new CarouselChildMotion(true, 1.0, 0.0, 1.0);
+		}
+	}
+
+	private static final class CarouselRuntime {
+		private String selectedId;
+		private String previousId = "";
+		private int direction;
+		private long startedAt = -1L;
+
+		private CarouselRuntime(final String selectedId) {
+			this.selectedId = Objects.requireNonNull(selectedId, "selectedId");
+		}
+
+		private CarouselRuntime reconcile(
+			final String fallbackSelectedId,
+			final List<CarouselChild> children
+		) {
+			if (children.stream().noneMatch(child -> child.id().equals(this.selectedId))) {
+				this.selectedId = fallbackSelectedId;
+				clearTransition();
+			}
+			if (
+				!this.previousId.isEmpty()
+					&& children.stream().noneMatch(child -> child.id().equals(this.previousId))
+			) {
+				clearTransition();
+			}
+			return this;
+		}
+
+		private void select(
+			final String nextSelectedId,
+			final int nextDirection,
+			final long now
+		) {
+			if (this.selectedId.equals(nextSelectedId)) {
+				return;
+			}
+			this.previousId = this.selectedId;
+			this.selectedId = Objects.requireNonNull(nextSelectedId, "nextSelectedId");
+			this.direction = nextDirection < 0 ? -1 : 1;
+			this.startedAt = now;
+		}
+
+		private double progress(final long now, final long duration) {
+			if (!transitioning()) {
+				return 1.0;
+			}
+			long safeDuration = Math.max(1L, duration);
+			double value = Math.clamp((double)(now - this.startedAt) / safeDuration, 0.0, 1.0);
+			if (value >= 1.0) {
+				clearTransition();
+				return 1.0;
+			}
+			return value;
+		}
+
+		private boolean transitioning() {
+			return this.startedAt >= 0L && !this.previousId.isEmpty();
+		}
+
+		private String selectedId() {
+			return this.selectedId;
+		}
+
+		private String previousId() {
+			return this.previousId;
+		}
+
+		private int direction() {
+			return this.direction;
+		}
+
+		private void clearTransition() {
+			this.previousId = "";
+			this.direction = 0;
+			this.startedAt = -1L;
+		}
+	}
+
+	private record WidgetLayout(
+		WidgetKind kind,
+		PlacedNode placed,
+		RenderNode node,
+		Rect bounds
+	) {
+	}
+
+	private enum WidgetKind {
+		BUTTON {
+			@Override
+			boolean matches(final AbstractWidget widget) {
+				return widget instanceof ConsoleButton;
+			}
+		},
+		EDIT_BOX {
+			@Override
+			boolean matches(final AbstractWidget widget) {
+				return widget instanceof AnimatedEditBox;
+			}
+		};
+
+		abstract boolean matches(AbstractWidget widget);
 	}
 
 	private record ExclusiveChoicePresentation(

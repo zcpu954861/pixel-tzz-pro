@@ -1,0 +1,846 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "逃走者任务"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "runner_task_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 0,
+      "padding": {
+        "vertical": 12,
+        "horizontal": 14
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "runner_dossier",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "margin": {
+            "bottom": 4
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "gap": 12,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 10
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "runner_eyebrow",
+                  "text": {
+                    "text": "CURRENT MISSION / 当前任务"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "runner_title",
+                  "text": {
+                    "concat": [
+                      {
+                        "text": "「"
+                      },
+                      {
+                        "bind": "task.name",
+                        "fallback": {
+                          "text": "任务信息尚未公开"
+                        }
+                      },
+                      {
+                        "text": "」"
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "concat": [
+                      {
+                        "bind": "session.phase_name"
+                      },
+                      {
+                        "text": "  ·  逃走者视图"
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 92
+                },
+                "gap": 2
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "STATUS / 状态"
+                  },
+                  "text_align": "right"
+                },
+                {
+                  "type": "text",
+                  "style": "status_success",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.status"
+                      },
+                      {
+                        "literal": "running"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "进行中"
+                  },
+                  "text_align": "right"
+                },
+                {
+                  "type": "text",
+                  "style": "progress_remaining",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.status"
+                      },
+                      {
+                        "literal": "paused"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "已暂停"
+                  },
+                  "text_align": "right"
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.status"
+                      },
+                      {
+                        "literal": "intermission"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "结算间隔"
+                  },
+                  "text_align": "right"
+                },
+                {
+                  "type": "text",
+                  "style": "progress_remaining",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.status"
+                      },
+                      {
+                        "literal": "settling"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "正在结算"
+                  },
+                  "text_align": "right"
+                },
+                {
+                  "type": "text",
+                  "style": "hunter_title",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.status"
+                      },
+                      {
+                        "literal": "blocked"
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "技术阻塞"
+                  },
+                  "text_align": "right"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "grid",
+        "id": "runner_mission_board",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "margin": {
+            "top": 4
+          },
+          "padding": {
+            "horizontal": 4
+          },
+          "columns": [
+            {
+              "mode": "fixed",
+              "value": 328
+            },
+            {
+              "mode": "fixed",
+              "value": 224
+            }
+          ],
+          "column_gap": 8,
+          "row_gap": 8
+        },
+        "children": [
+          {
+            "type": "card",
+            "id": "runner_progress_layout",
+            "style": "broadcast_panel",
+            "visible_when": {
+              "eq": [
+                {
+                  "bind": "task.id"
+                },
+                {
+                  "literal": "pixel_tzz:acceptance/main_branch"
+                }
+              ]
+            },
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              },
+              "column_span": 2
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 9,
+                  "horizontal": 11
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "runner_eyebrow",
+                  "text": {
+                    "text": "OBJECTIVE / 当前目标"
+                  }
+                },
+                {
+                  "type": "scroll",
+                  "id": "runner_objective_scroll",
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "child": {
+                    "type": "text",
+                    "style": "rule_body",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "padding": {
+                        "right": 8
+                      }
+                    },
+                    "text": {
+                      "bind": "task.description",
+                      "fallback": {
+                        "text": "数据包没有向逃走者公开额外说明。"
+                      }
+                    },
+                    "wrap": true,
+                    "max_lines": 40,
+                    "overflow": "ellipsis"
+                  }
+                },
+                {
+                  "type": "column",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "task.id"
+                      },
+                      {
+                        "literal": "pixel_tzz:acceptance/main_branch"
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "gap": 5
+                  },
+                  "children": [
+                    {
+                      "type": "divider",
+                      "style": "runner_divider"
+                    },
+                    {
+                      "type": "row",
+                      "layout": {
+                        "width": {
+                          "mode": "fill"
+                        }
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "runner_eyebrow",
+                          "layout": {
+                            "width": {
+                              "mode": "weight",
+                              "value": 1
+                            }
+                          },
+                          "text": {
+                            "text": "PUBLIC PROGRESS / 公开进度"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "progress_value",
+                          "text": {
+                            "concat": [
+                              {
+                                "bind": "personal/pixel_tzz:main_branch_terminal_count"
+                              },
+                              {
+                                "text": " / 8"
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "progress",
+                      "id": "runner_public_progress",
+                      "style": "segmented_progress",
+                      "layout": {
+                        "width": {
+                          "mode": "fill"
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 14
+                        }
+                      },
+                      "value": {
+                        "bind": "task.progress"
+                      },
+                      "min": {
+                        "literal": 0
+                      },
+                      "max": {
+                        "literal": 8
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "id": "runner_standard_layout",
+            "style": "broadcast_panel",
+            "visible_when": {
+              "not": {
+                "eq": [
+                  {
+                    "bind": "task.id"
+                  },
+                  {
+                    "literal": "pixel_tzz:acceptance/main_branch"
+                  }
+                ]
+              }
+            },
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 9,
+                  "horizontal": 11
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "runner_eyebrow",
+                  "text": {
+                    "text": "OBJECTIVE / 当前目标"
+                  }
+                },
+                {
+                  "type": "scroll",
+                  "id": "runner_standard_objective_scroll",
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "child": {
+                    "type": "text",
+                    "style": "rule_body",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "padding": {
+                        "right": 8
+                      }
+                    },
+                    "text": {
+                      "bind": "task.description",
+                      "fallback": {
+                        "text": "数据包没有向逃走者公开额外说明。"
+                      }
+                    },
+                    "wrap": true,
+                    "max_lines": 40,
+                    "overflow": "ellipsis"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "id": "runner_standard_run_data",
+            "style": "status_rail",
+            "visible_when": {
+              "not": {
+                "eq": [
+                  {
+                    "bind": "task.id"
+                  },
+                  {
+                    "literal": "pixel_tzz:acceptance/main_branch"
+                  }
+                ]
+              }
+            },
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 9,
+                  "horizontal": 10
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "runner_eyebrow",
+                  "text": {
+                    "text": "RUN DATA / 本局数据"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider"
+                },
+                {
+                  "type": "scroll",
+                  "id": "runner_run_data_scroll",
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "padding": {
+                        "right": 8
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "row",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "cross_align": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              }
+                            },
+                            "text": {
+                              "text": "环节计时"
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "progress_value",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "personal/pixel_tzz:current_task_elapsed"
+                              }
+                            },
+                            "text": {
+                              "duration_ticks": {
+                                "bind": "personal/pixel_tzz:current_task_elapsed"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "terminal_masked",
+                            "visible_when": {
+                              "not": {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:current_task_elapsed"
+                                }
+                              }
+                            },
+                            "text": {
+                              "text": "00:00"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "divider",
+                        "style": "runner_divider"
+                      },
+                      {
+                        "type": "row",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "cross_align": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              }
+                            },
+                            "text": {
+                              "text": "剩余时间"
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "progress_remaining",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "personal/pixel_tzz:current_task_remaining"
+                              }
+                            },
+                            "text": {
+                              "duration_ticks": {
+                                "bind": "personal/pixel_tzz:current_task_remaining"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "terminal_masked",
+                            "visible_when": {
+                              "not": {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:current_task_remaining"
+                                }
+                              }
+                            },
+                            "text": {
+                              "text": "00:00"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "divider",
+                        "style": "runner_divider"
+                      },
+                      {
+                        "type": "row",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "cross_align": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              }
+                            },
+                            "text": {
+                              "text": "正式计时"
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "status_identity",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "personal/pixel_tzz:game_elapsed"
+                              }
+                            },
+                            "text": {
+                              "duration_ticks": {
+                                "bind": "personal/pixel_tzz:game_elapsed"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "terminal_masked",
+                            "visible_when": {
+                              "not": {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:game_elapsed"
+                                }
+                              }
+                            },
+                            "text": {
+                              "text": "00:00"
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "type": "grid",
+        "id": "terminal_footer_navigation",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 0
+          },
+          "columns": [
+            {
+              "mode": "weight",
+              "value": 1
+            },
+            {
+              "mode": "weight",
+              "value": 1
+            },
+            {
+              "mode": "weight",
+              "value": 1
+            }
+          ],
+          "column_gap": 8
+        },
+        "children": [
+          {
+            "type": "button",
+            "id": "runner_open_history",
+            "style": "primary_button",
+            "label": {
+              "text": "过去事件"
+            },
+            "action": {
+              "type": "registered",
+              "action": "pixel_tzz:open_history"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          },
+          {
+            "type": "button",
+            "id": "runner_open_profile",
+            "style": "secondary_button",
+            "label": {
+              "text": "个人信息"
+            },
+            "action": {
+              "type": "registered",
+              "action": "pixel_tzz:open_profile"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          },
+          {
+            "type": "button",
+            "id": "runner_open_help",
+            "style": "secondary_button",
+            "label": {
+              "text": "终端帮助"
+            },
+            "action": {
+              "type": "registered",
+              "action": "pixel_tzz:open_help"
+            },
+            "events": {
+              "press": {
+                "motion": "button_press",
+                "sound": "button_press"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

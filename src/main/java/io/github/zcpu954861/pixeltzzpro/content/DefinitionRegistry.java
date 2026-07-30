@@ -15,7 +15,9 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
@@ -351,23 +353,53 @@ public final class DefinitionRegistry {
 			);
 	}
 
-	private static Set<Identifier> referencedPredicates(
+	static Set<Identifier> referencedPredicates(
 		final DefinitionSnapshot snapshot
 	) {
+		return referencedPredicates(snapshot, ignored -> true);
+	}
+
+	static Set<Identifier> referencedPredicates(
+		final DefinitionSnapshot snapshot,
+		final Identifier gameId
+	) {
+		Objects.requireNonNull(gameId, "gameId");
+		return referencedPredicates(snapshot, gameId::equals);
+	}
+
+	private static Set<Identifier> referencedPredicates(
+		final DefinitionSnapshot snapshot,
+		final Predicate<Identifier> includesGame
+	) {
 		Set<Identifier> result = new LinkedHashSet<>();
-		snapshot.fields().values().forEach(field -> field.visibleWhen().ifPresent(result::add));
-		snapshot.panelActions().values().forEach(action -> {
-			action.visibleWhen().ifPresent(result::add);
-			action.enabledWhen().ifPresent(result::add);
-		});
-		snapshot.flows().values().forEach(flow ->
-			flow.nodes().values().stream()
-				.filter(BranchNode.class::isInstance)
-				.map(BranchNode.class::cast)
-				.forEach(branch ->
-					branch.cases().forEach(branchCase -> result.add(branchCase.predicate()))
-				)
-		);
+		snapshot.fields().values().stream()
+			.filter(field -> includesGame.test(field.game()))
+			.forEach(field -> field.visibleWhen().ifPresent(result::add));
+		snapshot.panelActions().values().stream()
+			.filter(action -> includesGame.test(action.game()))
+			.forEach(action -> {
+				action.visibleWhen().ifPresent(result::add);
+				action.enabledWhen().ifPresent(result::add);
+			});
+		snapshot.playerRoutes().values().stream()
+			.filter(route -> includesGame.test(route.game()))
+			.forEach(route -> route.predicate().ifPresent(result::add));
+		snapshot.playerData().values().stream()
+			.filter(data -> includesGame.test(data.game()))
+			.forEach(data -> data.predicate().ifPresent(result::add));
+		snapshot.playerActions().values().stream()
+			.filter(action -> includesGame.test(action.game()))
+			.forEach(action -> action.predicate().ifPresent(result::add));
+		snapshot.flows().values().stream()
+			.filter(flow -> includesGame.test(flow.game()))
+			.forEach(flow ->
+				flow.nodes().values().stream()
+					.filter(BranchNode.class::isInstance)
+					.map(BranchNode.class::cast)
+					.forEach(branch ->
+						branch.cases().forEach(branchCase -> result.add(branchCase.predicate()))
+					)
+			);
 		return Set.copyOf(result);
 	}
 

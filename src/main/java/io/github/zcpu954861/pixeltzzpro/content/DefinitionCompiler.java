@@ -65,6 +65,25 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TargetSelection;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.AuditPolicy;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.CooldownScope;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.ExecutionContext;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.HistoryRelease;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.HistorySource;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerActionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerActionFeedback;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerDataDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerDataSource;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerDataSourceType;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerHistoryPresentation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerOperation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerOpenPageOperation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRouteDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRunFunctionOperation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerSurface;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTaskState;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTerminalConfig;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.UsageScope;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.CandidateVisibility;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.FutureVisibility;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.HistoryVisibility;
@@ -92,6 +111,7 @@ import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TransitionTiming
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitionParser.Issue;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitionParser.ParseResult;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.BindingValue;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ActionType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.BoundText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
@@ -99,6 +119,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ComparisonConditio
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConcatenatedText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConditionExpression;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConditionOperator;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.DurationTicksText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ExistsCondition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.JunctionCondition;
@@ -162,6 +183,13 @@ public final class DefinitionCompiler {
 	public static final int MAX_TASK_EVENTS = 64;
 	public static final int MAX_TASK_STATISTICS = 64;
 	public static final int MAX_TASK_CALLBACK_FIELDS = 32;
+	public static final int MAX_PLAYER_ROUTES_PER_GAME = 128;
+	public static final int MAX_PLAYER_DATA_PER_GAME = 256;
+	public static final int MAX_PLAYER_ACTIONS_PER_GAME = 256;
+	public static final int MAX_PLAYER_HISTORY_FIELDS = 64;
+	public static final int MAX_PLAYER_DATA_NAME_LENGTH = 256;
+	public static final int MAX_PLAYER_ACTION_USES = 1_000_000;
+	public static final long MAX_PLAYER_ACTION_COOLDOWN_TICKS = 12_096_000L;
 	public static final int MAX_EXCLUSIVE_OPTIONS = 128;
 	public static final int MAX_REPEATABLE_EVENT_RECORDS = 4_096;
 	public static final long MAX_TASK_DURATION_TICKS = 51_840_000L;
@@ -205,6 +233,9 @@ public final class DefinitionCompiler {
 		FLOW("flows"),
 		TASK("tasks"),
 		PANEL_ACTION("panel_actions"),
+		PLAYER_ROUTE("player_routes"),
+		PLAYER_DATA("player_data"),
+		PLAYER_ACTION("player_actions"),
 		PAGE("pages"),
 		THEME("themes");
 
@@ -315,6 +346,9 @@ public final class DefinitionCompiler {
 		private final Map<Identifier, FlowDefinition> flows = new LinkedHashMap<>();
 		private final Map<Identifier, TaskDefinition> tasks = new LinkedHashMap<>();
 		private final Map<Identifier, PanelActionDefinition> panelActions = new LinkedHashMap<>();
+		private final Map<Identifier, PlayerRouteDefinition> playerRoutes = new LinkedHashMap<>();
+		private final Map<Identifier, PlayerDataDefinition> playerData = new LinkedHashMap<>();
+		private final Map<Identifier, PlayerActionDefinition> playerActions = new LinkedHashMap<>();
 		private final Map<Identifier, PageDefinition> pages = new LinkedHashMap<>();
 		private final Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
 		private final Map<DocumentKey, SourceDocument> sourceDocuments = new LinkedHashMap<>();
@@ -393,6 +427,9 @@ public final class DefinitionCompiler {
 						this.flows,
 						this.tasks,
 						this.panelActions,
+						this.playerRoutes,
+						this.playerData,
+						this.playerActions,
 						this.pages,
 						this.themes,
 						this.sourceDocuments,
@@ -443,6 +480,9 @@ public final class DefinitionCompiler {
 				case FLOW -> parseFlow(source, reader);
 				case TASK -> parseTask(source, reader);
 				case PANEL_ACTION -> parsePanelAction(source, reader);
+				case PLAYER_ROUTE -> parsePlayerRoute(source, reader);
+				case PLAYER_DATA -> parsePlayerData(source, reader);
+				case PLAYER_ACTION -> parsePlayerAction(source, reader);
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
 			}
 			reader.finish();
@@ -542,6 +582,7 @@ public final class DefinitionCompiler {
 			Identifier defaultLifeState = reader.requiredIdentifier("default_life_state");
 			Optional<TaskTimeline> taskTimeline = parseTaskTimeline(reader);
 			Optional<ReadinessDefinition> readiness = parseReadiness(reader);
+			Optional<PlayerTerminalConfig> playerTerminal = parsePlayerTerminalConfig(reader);
 			if (
 				apiVersion != null
 					&& (
@@ -573,6 +614,18 @@ public final class DefinitionCompiler {
 					"task_timeline requires api_version 2"
 				);
 			}
+			if (
+				apiVersion != null
+					&& apiVersion < 3
+					&& playerTerminal.isPresent()
+			) {
+				add(
+					source,
+					"UNSUPPORTED_API",
+					"/player_terminal",
+					"player_terminal requires api_version 3"
+				);
+			}
 			if (contentVersion != null && contentVersion < 1) {
 				add(source, "OUT_OF_RANGE", "/content_version", "content version must be positive");
 			}
@@ -598,10 +651,34 @@ public final class DefinitionCompiler {
 						defaultRole,
 						defaultLifeState,
 						taskTimeline,
-						readiness
+						readiness,
+						playerTerminal
 					)
 				);
 			}
+		}
+
+		private Optional<PlayerTerminalConfig> parsePlayerTerminalConfig(
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("player_terminal");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("player_terminal", object);
+			Identifier defaultPage = reader.requiredIdentifier("default_page");
+			boolean historyEnabled = reader.optionalBoolean("history_enabled", false);
+			HistorySource historySource = reader.optionalEnum(
+				"history_source",
+				HistorySource.class,
+				HistorySource.EVENTS
+			);
+			reader.finish();
+			return defaultPage == null || historySource == null
+				? Optional.empty()
+				: Optional.of(
+					new PlayerTerminalConfig(defaultPage, historyEnabled, historySource)
+				);
 		}
 
 		private Optional<ReadinessDefinition> parseReadiness(final ObjectReader parent) {
@@ -2090,6 +2167,10 @@ public final class DefinitionCompiler {
 					RecapVisibility.class,
 					RecapVisibility.PARTICIPANTS
 				);
+				Optional<PlayerHistoryPresentation> playerHistory = parsePlayerHistory(
+					source,
+					reader
+				);
 				if (
 					policy == TaskEventPolicy.REPEATABLE
 						&& (
@@ -2132,12 +2213,130 @@ public final class DefinitionCompiler {
 							maximumRecords,
 							allowedStates,
 							audience,
-							recapVisibility
+							recapVisibility,
+							playerHistory
 						)
 					);
 				}
 			}
 			return List.copyOf(events);
+		}
+
+		private Optional<PlayerHistoryPresentation> parsePlayerHistory(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("player_history");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("player_history", object);
+			HistoryRelease release = reader.optionalEnum(
+				"release",
+				HistoryRelease.class,
+				HistoryRelease.IMMEDIATE
+			);
+			JsonObject audienceObject = reader.requiredObject("audience");
+			Audience audience = audienceObject == null
+				? null
+				: parseAudienceObject(reader, "audience", audienceObject, false);
+			RichText title = reader.requiredText("title");
+			Optional<RichText> summary = reader.optionalText("summary");
+			Optional<Identifier> icon = reader.optionalIdentifier("icon");
+			Optional<String> color = reader.optionalString("color");
+			Optional<String> category = reader.optionalLocalId("category");
+			boolean showGameTime = reader.optionalBoolean("show_game_time", true);
+			boolean showTask = reader.optionalBoolean("show_task", true);
+			boolean showActor = reader.optionalBoolean("show_actor", false);
+			boolean showTargets = reader.optionalBoolean("show_targets", false);
+			Set<String> parameters = parseBoundedLocalIdSet(
+				source,
+				reader,
+				"parameters",
+				MAX_PLAYER_HISTORY_FIELDS
+			);
+			if (!parameters.isEmpty()) {
+				add(
+					source,
+					"INVALID_CONSTRAINT",
+					reader.pointer("/parameters"),
+					"non-empty player history parameters are reserved for a future API version"
+				);
+			}
+			Set<String> statistics = parseBoundedLocalIdSet(
+				source,
+				reader,
+				"statistics",
+				MAX_PLAYER_HISTORY_FIELDS
+			);
+			boolean showPersonalResult = reader.optionalBoolean("show_personal_result", false);
+			Optional<RichText> details = reader.optionalText("details");
+			Optional<Identifier> detailPage = reader.optionalIdentifier("detail_page");
+			color.ifPresent(value -> {
+				if (!HEX_COLOR.matcher(value).matches()) {
+					add(source, "INVALID_COLOR", reader.pointer("/color"), "expected #RRGGBB");
+				}
+			});
+			reader.finish();
+			if (release == null || audience == null || title == null) {
+				return Optional.empty();
+			}
+			return Optional.of(
+				new PlayerHistoryPresentation(
+					release,
+					audience,
+					title,
+					summary,
+					icon,
+					color,
+					category,
+					showGameTime,
+					showTask,
+					showActor,
+					showTargets,
+					parameters,
+					statistics,
+					showPersonalResult,
+					details,
+					detailPage
+				)
+			);
+		}
+
+		private Set<String> parseBoundedLocalIdSet(
+			final Source source,
+			final ObjectReader reader,
+			final String name,
+			final int maximum
+		) {
+			JsonArray array = reader.optionalArray(name);
+			if (array == null) {
+				return Set.of();
+			}
+			if (array.size() > maximum) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					reader.pointer("/" + escapePointer(name)),
+					name + " count exceeds " + maximum
+				);
+			}
+			Set<String> result = new LinkedHashSet<>();
+			for (int index = 0; index < Math.min(array.size(), maximum); index++) {
+				JsonElement element = array.get(index);
+				String pointer = reader.pointer("/" + escapePointer(name) + "/" + index);
+				if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+					add(source, "TYPE_MISMATCH", pointer, "expected a local identifier string");
+					continue;
+				}
+				String value = element.getAsString();
+				if (!LOCAL_ID.matcher(value).matches() || value.length() > MAX_SHORT_STRING_LENGTH) {
+					add(source, "INVALID_LOCAL_ID", pointer, "expected bounded lowercase [a-z0-9_.-]+");
+				} else if (!result.add(value)) {
+					add(source, "DUPLICATE_VALUE", pointer, "duplicate value " + value);
+				}
+			}
+			return Set.copyOf(result);
 		}
 
 		private Set<TaskEventState> parseEventStates(
@@ -2277,6 +2476,432 @@ public final class DefinitionCompiler {
 				);
 				return null;
 			}
+		}
+
+		private void parsePlayerRoute(final Source source, final ObjectReader reader) {
+			Identifier game = reader.requiredIdentifier("game");
+			Identifier page = reader.requiredIdentifier("page");
+			Integer priority = reader.requiredInt("priority");
+			Audience audience = parseRequiredAudience(reader);
+			Set<Identifier> phases = reader.optionalIdentifierSet("phases");
+			Set<Identifier> tasks = reader.optionalIdentifierSet("tasks");
+			Set<PlayerTaskState> taskStates = parseEnumSet(
+				source,
+				reader,
+				"task_states",
+				PlayerTaskState.class
+			);
+			Optional<Identifier> predicate = reader.optionalIdentifier("predicate");
+			if (priority != null && (priority < -10_000 || priority > 10_000)) {
+				add(source, "OUT_OF_RANGE", "/priority", "priority must be between -10000 and 10000");
+			}
+			if (
+				game != null
+					&& page != null
+					&& priority != null
+					&& priority >= -10_000
+					&& priority <= 10_000
+					&& audience != null
+			) {
+				this.playerRoutes.put(
+					source.id(),
+					new PlayerRouteDefinition(
+						source.id(),
+						game,
+						page,
+						priority,
+						audience,
+						phases,
+						tasks,
+						taskStates,
+						predicate
+					)
+				);
+			}
+		}
+
+		private void parsePlayerData(final Source source, final ObjectReader reader) {
+			Identifier game = reader.requiredIdentifier("game");
+			PlayerDataSource dataSource = parsePlayerDataSource(source, reader);
+			Set<PlayerSurface> surfaces = parseEnumSet(
+				source,
+				reader,
+				"surfaces",
+				PlayerSurface.class
+			);
+			Audience audience = parseRequiredAudience(reader);
+			Set<Identifier> phases = reader.optionalIdentifierSet("phases");
+			Set<Identifier> tasks = reader.optionalIdentifierSet("tasks");
+			Set<PlayerTaskState> taskStates = parseEnumSet(
+				source,
+				reader,
+				"task_states",
+				PlayerTaskState.class
+			);
+			Optional<Identifier> predicate = reader.optionalIdentifier("predicate");
+			Optional<RichText> name = reader.optionalText("name");
+			Optional<String> format = reader.optionalString("format");
+			Optional<RichText> maskedFallback = reader.optionalText("masked_fallback");
+			name.ifPresent(value -> {
+				if (value.plainText().length() > MAX_PLAYER_DATA_NAME_LENGTH) {
+					add(
+						source,
+						"RESOURCE_LIMIT",
+						"/name",
+						"player data name exceeds " + MAX_PLAYER_DATA_NAME_LENGTH + " characters"
+					);
+				}
+			});
+			if (surfaces.isEmpty()) {
+				add(source, "OUT_OF_RANGE", "/surfaces", "player data requires at least one surface");
+			}
+			if (
+				game != null
+					&& dataSource != null
+					&& !surfaces.isEmpty()
+					&& audience != null
+			) {
+				this.playerData.put(
+					source.id(),
+					new PlayerDataDefinition(
+						source.id(),
+						game,
+						dataSource,
+						surfaces,
+						audience,
+						phases,
+						tasks,
+						taskStates,
+						predicate,
+						name,
+						format,
+						maskedFallback
+					)
+				);
+			}
+		}
+
+		private PlayerDataSource parsePlayerDataSource(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.requiredObject("source");
+			if (object == null) {
+				return null;
+			}
+			ObjectReader reader = parent.child("source", object);
+			PlayerDataSourceType type = reader.requiredEnum("type", PlayerDataSourceType.class);
+			Optional<Identifier> id = reader.optionalIdentifier("id");
+			Optional<String> key = reader.optionalLocalId("key");
+			reader.finish();
+			if (type == null) {
+				return null;
+			}
+			boolean needsField = type == PlayerDataSourceType.FIELD
+				|| type == PlayerDataSourceType.EXCLUSIVE_CHOICE;
+			boolean needsTask = switch (type) {
+				case TASK_PROGRESS,
+					TASK_RESULT,
+					TASK_STATISTIC -> true;
+				default -> false;
+			};
+			boolean acceptsOptionalTask = switch (type) {
+				case TASK_ID,
+					TASK_NAME,
+					TASK_DESCRIPTION,
+					TASK_STATUS,
+					TASK_ELAPSED_TICKS,
+					TASK_REMAINING_TICKS -> true;
+				default -> false;
+			};
+			boolean needsKey = type == PlayerDataSourceType.TASK_PROGRESS
+				|| type == PlayerDataSourceType.TASK_STATISTIC;
+			if ((needsField || needsTask) && id.isEmpty()) {
+				add(
+					source,
+					"MISSING_KEY",
+					reader.pointer("/id"),
+					type.name().toLowerCase(Locale.ROOT) + " source requires id"
+				);
+			}
+			if (!needsField && !needsTask && !acceptsOptionalTask && id.isPresent()) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer("/id"),
+					type.name().toLowerCase(Locale.ROOT) + " source does not accept id"
+				);
+			}
+			if (needsKey && key.isEmpty()) {
+				add(
+					source,
+					"MISSING_KEY",
+					reader.pointer("/key"),
+					type.name().toLowerCase(Locale.ROOT) + " source requires key"
+				);
+			}
+			if (!needsKey && type != PlayerDataSourceType.TASK_RESULT && key.isPresent()) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer("/key"),
+					type.name().toLowerCase(Locale.ROOT) + " source does not accept key"
+				);
+			}
+			if (
+				((needsField || needsTask) && id.isEmpty())
+					|| (!needsField && !needsTask && !acceptsOptionalTask && id.isPresent())
+					|| (needsKey && key.isEmpty())
+					|| (!needsKey && type != PlayerDataSourceType.TASK_RESULT && key.isPresent())
+			) {
+				return null;
+			}
+			return new PlayerDataSource(type, id, key);
+		}
+
+		private void parsePlayerAction(final Source source, final ObjectReader reader) {
+			Identifier game = reader.requiredIdentifier("game");
+			PlayerOperation operation = parsePlayerOperation(source, reader);
+			Audience audience = parseRequiredAudience(reader);
+			Set<Identifier> phases = reader.optionalIdentifierSet("phases");
+			Set<Identifier> tasks = reader.optionalIdentifierSet("tasks");
+			Set<PlayerTaskState> taskStates = parseEnumSet(
+				source,
+				reader,
+				"task_states",
+				PlayerTaskState.class
+			);
+			Optional<Identifier> predicate = reader.optionalIdentifier("predicate");
+			UsageSettings usage = parseUsage(source, reader);
+			CooldownSettings cooldown = parseCooldown(source, reader);
+			Optional<Confirmation> confirmation = parseConfirmation(reader);
+			ExecutionContext executionContext = reader.optionalEnum(
+				"execution_context",
+				ExecutionContext.class,
+				ExecutionContext.PLAYER
+			);
+			PlayerActionFeedback feedback = parsePlayerActionFeedback(reader);
+			AuditPolicy audit = reader.optionalEnum("audit", AuditPolicy.class, AuditPolicy.ALL);
+			if (
+				operation instanceof PlayerOpenPageOperation
+					&& executionContext != null
+					&& executionContext != ExecutionContext.PLAYER
+			) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					"/execution_context",
+					"open_page actions use player execution context"
+				);
+			}
+			if (
+				game != null
+					&& operation != null
+					&& audience != null
+					&& usage != null
+					&& cooldown != null
+					&& executionContext != null
+					&& audit != null
+					&& (
+						!(operation instanceof PlayerOpenPageOperation)
+							|| executionContext == ExecutionContext.PLAYER
+					)
+			) {
+				this.playerActions.put(
+					source.id(),
+					new PlayerActionDefinition(
+						source.id(),
+						game,
+						operation,
+						audience,
+						phases,
+						tasks,
+						taskStates,
+						predicate,
+						usage.scope(),
+						usage.maximum(),
+						cooldown.ticks(),
+						cooldown.scope(),
+						confirmation,
+						executionContext,
+						feedback,
+						audit
+					)
+				);
+			}
+		}
+
+		private PlayerOperation parsePlayerOperation(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.requiredObject("operation");
+			if (object == null) {
+				return null;
+			}
+			ObjectReader reader = parent.child("operation", object);
+			String type = reader.requiredString("type");
+			PlayerOperation operation = null;
+			if (type != null) {
+				operation = switch (type.toLowerCase(Locale.ROOT)) {
+					case "open_page" -> {
+						Identifier page = reader.requiredIdentifier("page");
+						yield page == null ? null : new PlayerOpenPageOperation(page);
+					}
+					case "run_function" -> {
+						Identifier function = reader.requiredIdentifier("function");
+						yield function == null ? null : new PlayerRunFunctionOperation(function);
+					}
+					default -> {
+						add(
+							source,
+							"UNKNOWN_OPERATION",
+							reader.pointer("/type"),
+							"unknown player operation type " + type
+						);
+						yield null;
+					}
+				};
+			}
+			reader.finish();
+			return operation;
+		}
+
+		private UsageSettings parseUsage(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("usage");
+			if (object == null) {
+				return new UsageSettings(UsageScope.UNLIMITED, 0);
+			}
+			ObjectReader reader = parent.child("usage", object);
+			UsageScope scope = reader.requiredEnum("scope", UsageScope.class);
+			int maximum = reader.optionalInt("max", 0);
+			boolean valid = scope != null;
+			if (scope == UsageScope.UNLIMITED && maximum != 0) {
+				add(
+					source,
+					"INVALID_COMBINATION",
+					reader.pointer("/max"),
+					"unlimited usage requires max 0"
+				);
+				valid = false;
+			} else if (
+				scope != null
+					&& scope != UsageScope.UNLIMITED
+					&& (maximum < 1 || maximum > MAX_PLAYER_ACTION_USES)
+			) {
+				add(
+					source,
+					"OUT_OF_RANGE",
+					reader.pointer("/max"),
+					"limited usage max must be between 1 and " + MAX_PLAYER_ACTION_USES
+				);
+				valid = false;
+			}
+			reader.finish();
+			return valid ? new UsageSettings(scope, maximum) : null;
+		}
+
+		private CooldownSettings parseCooldown(
+			final Source source,
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("cooldown");
+			if (object == null) {
+				return new CooldownSettings(0L, CooldownScope.PLAYER);
+			}
+			ObjectReader reader = parent.child("cooldown", object);
+			Long ticks = reader.requiredLong("ticks");
+			CooldownScope scope = reader.optionalEnum(
+				"scope",
+				CooldownScope.class,
+				CooldownScope.PLAYER
+			);
+			if (
+				ticks != null
+					&& (ticks < 0L || ticks > MAX_PLAYER_ACTION_COOLDOWN_TICKS)
+			) {
+				add(
+					source,
+					"OUT_OF_RANGE",
+					reader.pointer("/ticks"),
+					"cooldown ticks must be between 0 and "
+						+ MAX_PLAYER_ACTION_COOLDOWN_TICKS
+				);
+			}
+			reader.finish();
+			return ticks == null
+					|| ticks < 0L
+					|| ticks > MAX_PLAYER_ACTION_COOLDOWN_TICKS
+					|| scope == null
+				? null
+				: new CooldownSettings(ticks, scope);
+		}
+
+		private PlayerActionFeedback parsePlayerActionFeedback(
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("feedback");
+			if (object == null) {
+				return PlayerActionFeedback.empty();
+			}
+			ObjectReader reader = parent.child("feedback", object);
+			PlayerActionFeedback feedback = new PlayerActionFeedback(
+				reader.optionalText("success"),
+				reader.optionalText("denied"),
+				reader.optionalText("failed")
+			);
+			reader.finish();
+			return feedback;
+		}
+
+		private Audience parseRequiredAudience(final ObjectReader parent) {
+			JsonObject object = parent.requiredObject("audience");
+			return object == null
+				? null
+				: parseAudienceObject(parent, "audience", object, false);
+		}
+
+		private <E extends Enum<E>> Set<E> parseEnumSet(
+			final Source source,
+			final ObjectReader reader,
+			final String name,
+			final Class<E> type
+		) {
+			JsonArray array = reader.optionalArray(name);
+			if (array == null) {
+				return Set.of();
+			}
+			if (array.size() > type.getEnumConstants().length) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					reader.pointer("/" + escapePointer(name)),
+					name + " count exceeds " + type.getEnumConstants().length
+				);
+			}
+			Set<E> result = new LinkedHashSet<>();
+			for (int index = 0; index < array.size(); index++) {
+				JsonElement element = array.get(index);
+				String pointer = reader.pointer("/" + escapePointer(name) + "/" + index);
+				if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
+					add(source, "TYPE_MISMATCH", pointer, "expected an enum string");
+					continue;
+				}
+				E value = parseEnumValue(source, pointer, element.getAsString(), type);
+				if (value != null && !result.add(value)) {
+					add(source, "DUPLICATE_VALUE", pointer, "duplicate value " + element.getAsString());
+				}
+			}
+			return Set.copyOf(result);
+		}
+
+		private record UsageSettings(UsageScope scope, int maximum) {
+		}
+
+		private record CooldownSettings(long ticks, CooldownScope scope) {
 		}
 
 		private void parsePanelAction(final Source source, final ObjectReader reader) {
@@ -2564,6 +3189,21 @@ public final class DefinitionCompiler {
 		}
 
 		private void validateReferences() {
+			if (this.games.size() > 1) {
+				Identifier conflictingGame = this.games.keySet()
+					.stream()
+					.skip(1L)
+					.findFirst()
+					.orElseThrow();
+				add(
+					origin(DefinitionType.GAME, conflictingGame),
+					"MULTIPLE_GAME_PROFILES",
+					"",
+					"V3 accepts at most one Game Profile per active resource collection; found "
+						+ this.games.size()
+				);
+				return;
+			}
 			for (GameDefinition game : this.games.values()) {
 				requireSameGame(
 					DefinitionType.GAME,
@@ -2597,6 +3237,7 @@ public final class DefinitionCompiler {
 				);
 				game.taskTimeline().ifPresent(timeline -> validateTaskTimeline(game, timeline));
 				game.readiness().ifPresent(readiness -> validateReadiness(game, readiness));
+				game.playerTerminal().ifPresent(config -> validatePlayerTerminal(game, config));
 				long taskCount = this.tasks.values()
 					.stream()
 					.filter(task -> task.game().equals(game.id()))
@@ -2609,6 +3250,8 @@ public final class DefinitionCompiler {
 						"game task count exceeds " + MAX_TASKS_PER_GAME
 					);
 				}
+				validatePlayerDefinitionCapacity(game);
+				validatePlayerRoutePriorities(game);
 				validateTaskGraph(game);
 			}
 			for (RoleDefinition role : this.roles.values()) {
@@ -2852,6 +3495,392 @@ public final class DefinitionCompiler {
 					);
 				}
 				validateOperation(action);
+			}
+			for (PlayerRouteDefinition route : this.playerRoutes.values()) {
+				validatePlayerRoute(route);
+			}
+			for (PlayerDataDefinition data : this.playerData.values()) {
+				validatePlayerData(data);
+			}
+			for (PlayerActionDefinition action : this.playerActions.values()) {
+				validatePlayerAction(action);
+			}
+		}
+
+		private void validatePlayerTerminal(
+			final GameDefinition game,
+			final PlayerTerminalConfig config
+		) {
+			if (game.apiVersion() < 3) {
+				add(
+					origin(DefinitionType.GAME, game.id()),
+					"UNSUPPORTED_API",
+					"/player_terminal",
+					"player_terminal requires api_version 3"
+				);
+			}
+			requireSameGame(
+				DefinitionType.GAME,
+				game.id(),
+				"/player_terminal/default_page",
+				game.id(),
+				config.defaultPage(),
+				this.pages,
+				PageDefinition::game,
+				"page"
+			);
+		}
+
+		private void validatePlayerDefinitionCapacity(final GameDefinition game) {
+			validateSameGameCapacity(
+				game,
+				DefinitionType.PLAYER_ROUTE,
+				this.playerRoutes.values().stream().filter(value -> value.game().equals(game.id())).count(),
+				MAX_PLAYER_ROUTES_PER_GAME,
+				"player route"
+			);
+			validateSameGameCapacity(
+				game,
+				DefinitionType.PLAYER_DATA,
+				this.playerData.values().stream().filter(value -> value.game().equals(game.id())).count(),
+				MAX_PLAYER_DATA_PER_GAME,
+				"player data"
+			);
+			validateSameGameCapacity(
+				game,
+				DefinitionType.PLAYER_ACTION,
+				this.playerActions.values().stream().filter(value -> value.game().equals(game.id())).count(),
+				MAX_PLAYER_ACTIONS_PER_GAME,
+				"player action"
+			);
+		}
+
+		private void validateSameGameCapacity(
+			final GameDefinition game,
+			final DefinitionType type,
+			final long count,
+			final int maximum,
+			final String label
+		) {
+			if (count <= maximum) {
+				return;
+			}
+			add(
+				origin(DefinitionType.GAME, game.id()),
+				"RESOURCE_LIMIT",
+				"/player_terminal",
+				"game " + label + " count exceeds " + maximum + " (" + type.directory() + ")"
+			);
+		}
+
+		private void validatePlayerRoutePriorities(final GameDefinition game) {
+			Map<Integer, Identifier> priorities = new HashMap<>();
+			this.playerRoutes.values()
+				.stream()
+				.filter(route -> route.game().equals(game.id()))
+				.sorted(java.util.Comparator.comparing(PlayerRouteDefinition::id))
+				.forEach(route -> {
+					Identifier previous = priorities.putIfAbsent(route.priority(), route.id());
+					if (previous != null) {
+						add(
+							origin(DefinitionType.PLAYER_ROUTE, route.id()),
+							"DUPLICATE_PRIORITY",
+							"/priority",
+							"priority "
+								+ route.priority()
+								+ " is already used by "
+								+ previous
+								+ " in game "
+								+ game.id()
+						);
+					}
+				});
+		}
+
+		private void validatePlayerRoute(final PlayerRouteDefinition route) {
+			requirePlayerApi(DefinitionType.PLAYER_ROUTE, route.id(), route.game());
+			requireSameGame(
+				DefinitionType.PLAYER_ROUTE,
+				route.id(),
+				"/page",
+				route.game(),
+				route.page(),
+				this.pages,
+				PageDefinition::game,
+				"page"
+			);
+			validatePlayerConditions(
+				DefinitionType.PLAYER_ROUTE,
+				route.id(),
+				route.game(),
+				route.audience(),
+				route.phases(),
+				route.tasks(),
+				route.predicate()
+			);
+		}
+
+		private void validatePlayerData(final PlayerDataDefinition data) {
+			requirePlayerApi(DefinitionType.PLAYER_DATA, data.id(), data.game());
+			validatePlayerConditions(
+				DefinitionType.PLAYER_DATA,
+				data.id(),
+				data.game(),
+				data.audience(),
+				data.phases(),
+				data.tasks(),
+				data.predicate()
+			);
+			PlayerDataSource source = data.source();
+			source.id().ifPresent(id -> {
+				switch (source.type()) {
+					case FIELD, EXCLUSIVE_CHOICE -> {
+						requireSameGame(
+							DefinitionType.PLAYER_DATA,
+							data.id(),
+							"/source/id",
+							data.game(),
+							id,
+							this.fields,
+							FieldDefinition::game,
+							"field"
+						);
+						FieldDefinition field = this.fields.get(id);
+						if (field != null && field.scope() != FieldScope.PLAYER) {
+							add(
+								origin(DefinitionType.PLAYER_DATA, data.id()),
+								"INVALID_CONSTRAINT",
+								"/source/id",
+								"player data may only expose a player-scoped field"
+							);
+						}
+						if (
+							source.type() == PlayerDataSourceType.EXCLUSIVE_CHOICE
+								&& field != null
+								&& field.type() != FieldType.EXCLUSIVE_CHOICE
+						) {
+							add(
+								origin(DefinitionType.PLAYER_DATA, data.id()),
+								"TYPE_MISMATCH",
+								"/source/id",
+								"exclusive_choice source requires an exclusive-choice field"
+							);
+						}
+					}
+					case TASK_ID,
+						TASK_NAME,
+						TASK_DESCRIPTION,
+						TASK_STATUS,
+						TASK_ELAPSED_TICKS,
+						TASK_REMAINING_TICKS,
+						TASK_PROGRESS,
+						TASK_RESULT,
+						TASK_STATISTIC -> {
+						requireSameGame(
+							DefinitionType.PLAYER_DATA,
+							data.id(),
+							"/source/id",
+							data.game(),
+							id,
+							this.tasks,
+							TaskDefinition::game,
+							"task"
+						);
+						validatePlayerDataTaskKey(data, id);
+					}
+					case ROLE,
+						TEAM,
+						LIFE_STATE,
+						INITIALIZED,
+						READY,
+						GAME_ELAPSED_TICKS -> {
+						// Structural parsing rejects IDs for these sources.
+					}
+				}
+			});
+			UiValueType projectedType = playerDataValueType(data);
+			if (data.format().isPresent() && projectedType != UiValueType.STRING) {
+				add(
+					origin(DefinitionType.PLAYER_DATA, data.id()),
+					"TYPE_MISMATCH",
+					"/format",
+					"format is only available for string-valued player data"
+				);
+			}
+			data.format().ifPresent(format -> {
+				int first = format.indexOf("{value}");
+				if (
+					first < 0
+						|| first != format.lastIndexOf("{value}")
+						|| format.replace("{value}", "").contains("{")
+						|| format.replace("{value}", "").contains("}")
+				) {
+					add(
+						origin(DefinitionType.PLAYER_DATA, data.id()),
+						"INVALID_FORMAT",
+						"/format",
+						"format must contain exactly one {value} placeholder and no other braces"
+					);
+				}
+			});
+			if (
+				data.maskedFallback().isPresent()
+					&& projectedType != UiValueType.STRING
+			) {
+				add(
+					origin(DefinitionType.PLAYER_DATA, data.id()),
+					"TYPE_MISMATCH",
+					"/masked_fallback",
+					"masked_fallback is only available for string-valued player data"
+				);
+			}
+		}
+
+		private void validatePlayerDataTaskKey(
+			final PlayerDataDefinition data,
+			final Identifier taskId
+		) {
+			TaskDefinition task = this.tasks.get(taskId);
+			if (task == null || !task.game().equals(data.game())) {
+				return;
+			}
+			String key = data.source().key().orElse(null);
+			if (
+				data.source().type() == PlayerDataSourceType.TASK_RESULT
+					&& key != null
+					&& !task.results().containsKey(key)
+			) {
+				add(
+					origin(DefinitionType.PLAYER_DATA, data.id()),
+					"MISSING_REFERENCE",
+					"/source/key",
+					"task result " + key + " does not exist in " + taskId
+				);
+			}
+			if (
+				data.source().type() == PlayerDataSourceType.TASK_STATISTIC
+					&& key != null
+					&& task.statistics().stream().noneMatch(statistic -> statistic.id().equals(key))
+			) {
+				add(
+					origin(DefinitionType.PLAYER_DATA, data.id()),
+					"MISSING_REFERENCE",
+					"/source/key",
+					"task statistic " + key + " does not exist in " + taskId
+				);
+			}
+			if (data.source().type() == PlayerDataSourceType.TASK_PROGRESS && key != null) {
+				TaskStatisticDefinition statistic = task.statistics()
+					.stream()
+					.filter(value -> value.id().equals(key))
+					.findFirst()
+					.orElse(null);
+				if (statistic == null) {
+					add(
+						origin(DefinitionType.PLAYER_DATA, data.id()),
+						"MISSING_REFERENCE",
+						"/source/key",
+						"task progress statistic " + key + " does not exist in " + taskId
+					);
+				} else if (
+					statistic.type() != TaskStatisticType.INTEGER
+						&& statistic.type() != TaskStatisticType.DURATION_TICKS
+				) {
+					add(
+						origin(DefinitionType.PLAYER_DATA, data.id()),
+						"TYPE_MISMATCH",
+						"/source/key",
+						"task progress requires an integer or duration_ticks statistic"
+					);
+				}
+			}
+		}
+
+		private void validatePlayerAction(final PlayerActionDefinition action) {
+			requirePlayerApi(DefinitionType.PLAYER_ACTION, action.id(), action.game());
+			validatePlayerConditions(
+				DefinitionType.PLAYER_ACTION,
+				action.id(),
+				action.game(),
+				action.audience(),
+				action.phases(),
+				action.tasks(),
+				action.predicate()
+			);
+			if (action.operation() instanceof PlayerOpenPageOperation openPage) {
+				requireSameGame(
+					DefinitionType.PLAYER_ACTION,
+					action.id(),
+					"/operation/page",
+					action.game(),
+					openPage.page(),
+					this.pages,
+					PageDefinition::game,
+					"page"
+				);
+			} else if (action.operation() instanceof PlayerRunFunctionOperation runFunction) {
+				requireFunction(
+					DefinitionType.PLAYER_ACTION,
+					action.id(),
+					"/operation/function",
+					runFunction.function()
+				);
+			}
+		}
+
+		private void validatePlayerConditions(
+			final DefinitionType ownerType,
+			final Identifier owner,
+			final Identifier game,
+			final Audience audience,
+			final Set<Identifier> phases,
+			final Set<Identifier> tasks,
+			final Optional<Identifier> predicate
+		) {
+			validateAudience(ownerType, owner, game, audience);
+			for (Identifier phase : phases) {
+				requireSameGame(
+					ownerType,
+					owner,
+					"/phases",
+					game,
+					phase,
+					this.phases,
+					PhaseDefinition::game,
+					"phase"
+				);
+			}
+			for (Identifier task : tasks) {
+				requireSameGame(
+					ownerType,
+					owner,
+					"/tasks",
+					game,
+					task,
+					this.tasks,
+					TaskDefinition::game,
+					"task"
+				);
+			}
+			predicate.ifPresent(value ->
+				requirePredicate(ownerType, owner, "/predicate", value)
+			);
+		}
+
+		private void requirePlayerApi(
+			final DefinitionType ownerType,
+			final Identifier owner,
+			final Identifier gameId
+		) {
+			requireGame(ownerType, owner, gameId);
+			GameDefinition game = this.games.get(gameId);
+			if (game != null && game.apiVersion() < 3) {
+				add(
+					origin(ownerType, owner),
+					"UNSUPPORTED_API",
+					"/game",
+					ownerType.directory() + " require a game with api_version 3"
+				);
 			}
 		}
 
@@ -3114,6 +4143,61 @@ public final class DefinitionCompiler {
 						audience
 					)
 				);
+				event.playerHistory().ifPresent(
+					history -> validatePlayerHistory(task, event, history)
+				);
+			}
+		}
+
+		private void validatePlayerHistory(
+			final TaskDefinition task,
+			final TaskEventDefinition event,
+			final PlayerHistoryPresentation history
+		) {
+			GameDefinition game = this.games.get(task.game());
+			if (
+				game == null
+					|| game.apiVersion() < 3
+					|| game.playerTerminal().isEmpty()
+					|| !game.playerTerminal().orElseThrow().historyEnabled()
+			) {
+				add(
+					origin(DefinitionType.TASK, task.id()),
+					"INVALID_CONSTRAINT",
+					"/events/" + event.id() + "/player_history",
+					"player history requires an api_version 3 game with player_terminal.history_enabled"
+				);
+			}
+			validateAudience(
+				DefinitionType.TASK,
+				task.id(),
+				task.game(),
+				history.audience()
+			);
+			history.detailPage().ifPresent(
+				page -> requireSameGame(
+					DefinitionType.TASK,
+					task.id(),
+					"/events/" + event.id() + "/player_history/detail_page",
+					task.game(),
+					page,
+					this.pages,
+					PageDefinition::game,
+					"page"
+				)
+			);
+			for (String statistic : history.statistics()) {
+				if (
+					task.statistics().stream()
+						.noneMatch(definition -> definition.id().equals(statistic))
+				) {
+					add(
+						origin(DefinitionType.TASK, task.id()),
+						"MISSING_REFERENCE",
+						"/events/" + event.id() + "/player_history/statistics",
+						"task statistic " + statistic + " does not exist"
+					);
+				}
 			}
 		}
 
@@ -3416,7 +4500,7 @@ public final class DefinitionCompiler {
 			Map<String, NodeDefinition> nodesById = new LinkedHashMap<>();
 			collectPageNodes(page.root(), nodesById);
 			ThemeDefinition theme = this.themes.get(page.theme());
-			validatePageNode(page, page.root(), nodesById, theme);
+			validatePageNode(page, page.root(), nodesById, theme, false);
 		}
 
 		private void collectPageNodes(
@@ -3437,7 +4521,8 @@ public final class DefinitionCompiler {
 			final PageDefinition page,
 			final NodeDefinition node,
 			final Map<String, NodeDefinition> nodesById,
-			final ThemeDefinition theme
+			final ThemeDefinition theme,
+			final boolean historyItemScope
 		) {
 			node.style().ifPresent(style -> validatePageStyle(page, node.pointer() + "/style", style, theme));
 			node.responsive()
@@ -3483,9 +4568,36 @@ public final class DefinitionCompiler {
 				);
 
 			if (node.content() instanceof ChildrenContent children) {
-				children.children().forEach(child -> validatePageNode(page, child, nodesById, theme));
+				if (node.type() == NodeType.CAROUSEL) {
+					children.children()
+						.stream()
+						.filter(child -> child.id().isEmpty())
+						.forEach(
+							child -> add(
+								origin(DefinitionType.PAGE, page.id()),
+								"MISSING_KEY",
+								child.pointer() + "/id",
+								"carousel direct children require stable ids"
+							)
+						);
+				}
+				children.children().forEach(
+					child -> validatePageNode(
+						page,
+						child,
+						nodesById,
+						theme,
+						historyItemScope
+					)
+				);
 			} else if (node.content() instanceof SingleChildContent single) {
-				validatePageNode(page, single.child(), nodesById, theme);
+				validatePageNode(
+					page,
+					single.child(),
+					nodesById,
+					theme,
+					historyItemScope
+				);
 			} else if (node.content() instanceof TextContent text) {
 				validateTextBindings(page, text.text(), nodesById, node.pointer() + "/text");
 			} else if (node.content() instanceof UiDefinitions.ImageContent image) {
@@ -3511,7 +4623,7 @@ public final class DefinitionCompiler {
 							node.pointer() + "/disabled_reason"
 						)
 					);
-				validatePageAction(page, node, button.action());
+				validatePageAction(page, node, button.action(), historyItemScope);
 			} else if (node.content() instanceof ProgressContent progress) {
 				requireValueType(
 					page,
@@ -3572,7 +4684,16 @@ public final class DefinitionCompiler {
 						"Repeat.item_key must resolve to a stable text or identifier"
 					);
 				}
-				validatePageNode(page, repeat.template(), nodesById, theme);
+				boolean historyTemplate =
+					repeat.items() instanceof BindingValue binding
+						&& binding.path().equals("history.items");
+				validatePageNode(
+					page,
+					repeat.template(),
+					nodesById,
+					theme,
+					historyTemplate
+				);
 			} else if (node.content() instanceof FieldInputContent input) {
 				FieldDefinition field = requirePageField(
 					page,
@@ -3661,7 +4782,8 @@ public final class DefinitionCompiler {
 		private void validatePageAction(
 			final PageDefinition page,
 			final NodeDefinition node,
-			final UiAction action
+			final UiAction action,
+			final boolean historyItemScope
 		) {
 			if (node.id().isEmpty()) {
 				add(
@@ -3679,11 +4801,22 @@ public final class DefinitionCompiler {
 						node.pointer() + "/action/action",
 						page.game(),
 						actionId,
-						this.panelActions,
-						PanelActionDefinition::game,
-						"panel action"
+						this.playerActions,
+						PlayerActionDefinition::game,
+						"player action"
 					)
 				);
+			if (
+				action.type() == ActionType.HISTORY_DETAIL
+					&& !historyItemScope
+			) {
+				add(
+					origin(DefinitionType.PAGE, page.id()),
+					"INVALID_CONSTRAINT",
+					node.pointer() + "/action",
+					"history_detail requires a Repeat template bound to history.items"
+				);
+			}
 		}
 
 		private FieldDefinition requirePageField(
@@ -3722,6 +4855,23 @@ public final class DefinitionCompiler {
 			if (text instanceof BoundText bound) {
 				validateValue(page, bound.binding(), nodesById, pointer + "/bind");
 				bound.fallback()
+					.ifPresent(fallback -> validateTextBindings(page, fallback, nodesById, pointer + "/fallback"));
+			} else if (text instanceof DurationTicksText duration) {
+				UiValueType valueType = validateValue(
+					page,
+					duration.value(),
+					nodesById,
+					pointer + "/duration_ticks"
+				);
+				if (valueType != UiValueType.UNKNOWN && valueType != UiValueType.INTEGER) {
+					add(
+						origin(DefinitionType.PAGE, page.id()),
+						"TYPE_MISMATCH",
+						pointer + "/duration_ticks",
+						"duration_ticks text requires an integer tick value"
+					);
+				}
+				duration.fallback()
 					.ifPresent(fallback -> validateTextBindings(page, fallback, nodesById, pointer + "/fallback"));
 			} else if (text instanceof TranslatedText translated) {
 				for (int index = 0; index < translated.arguments().size(); index++) {
@@ -3856,6 +5006,85 @@ public final class DefinitionCompiler {
 				FieldDefinition field = id == null ? null : requirePageField(page, id, pointer);
 				return field == null ? UiValueType.UNKNOWN : fieldValueType(field.type());
 			}
+			if (path.startsWith("personal_meta/")) {
+				String suffix = path.substring("personal_meta/".length());
+				int propertySeparator = suffix.lastIndexOf('/');
+				String property = propertySeparator <= 0
+					? ""
+					: suffix.substring(propertySeparator + 1);
+				if (
+					propertySeparator <= 0
+						|| (!property.equals("name") && !property.equals("value_name"))
+				) {
+					add(
+						origin(DefinitionType.PAGE, page.id()),
+						"UNKNOWN_BINDING",
+						pointer,
+						"personal metadata exposes only the /name and /value_name properties"
+					);
+					return UiValueType.UNKNOWN;
+				}
+				String rawId = suffix.substring(0, propertySeparator);
+				PlayerDataDefinition data = requireTerminalPlayerData(page, rawId, pointer);
+				if (data == null) {
+					return UiValueType.UNKNOWN;
+				}
+				if (property.equals("name") && data.name().isEmpty()) {
+					add(
+						origin(DefinitionType.PAGE, page.id()),
+						"MISSING_REFERENCE",
+						pointer,
+						"player data " + data.id() + " does not declare a name"
+					);
+					return UiValueType.UNKNOWN;
+				}
+				if (property.equals("value_name")) {
+					if (data.source().type() != PlayerDataSourceType.EXCLUSIVE_CHOICE) {
+						add(
+							origin(DefinitionType.PAGE, page.id()),
+							"TYPE_MISMATCH",
+							pointer,
+							"player data "
+								+ data.id()
+								+ " must use an exclusive_choice source to expose value_name"
+						);
+						return UiValueType.UNKNOWN;
+					}
+					Identifier fieldId = data.source().id().orElse(null);
+					FieldDefinition field = fieldId == null ? null : this.fields.get(fieldId);
+					if (field == null) {
+						add(
+							origin(DefinitionType.PAGE, page.id()),
+							"MISSING_REFERENCE",
+							pointer,
+							"player data "
+								+ data.id()
+								+ " does not reference a registered exclusive-choice field"
+						);
+						return UiValueType.UNKNOWN;
+					}
+					if (field.type() != FieldType.EXCLUSIVE_CHOICE) {
+						add(
+							origin(DefinitionType.PAGE, page.id()),
+							"TYPE_MISMATCH",
+							pointer,
+							"player data "
+								+ data.id()
+								+ " does not reference an exclusive-choice field"
+						);
+						return UiValueType.UNKNOWN;
+					}
+				}
+				return UiValueType.STRING;
+			}
+			if (path.startsWith("personal/")) {
+				String rawId = path.substring("personal/".length());
+				PlayerDataDefinition data = requireTerminalPlayerData(page, rawId, pointer);
+				if (data == null) {
+					return UiValueType.UNKNOWN;
+				}
+				return playerDataValueType(data);
+			}
 			if (path.startsWith("ui/") || path.startsWith("ui.")) {
 				String[] parts = path.startsWith("ui/")
 					? path.split("/", -1)
@@ -3882,7 +5111,101 @@ public final class DefinitionCompiler {
 				FieldDefinition field = requirePageField(page, input.field(), pointer);
 				return field == null ? UiValueType.UNKNOWN : fieldValueType(field.type());
 			}
-			return fixedBindingType(path);
+			UiValueType fixed = fixedBindingType(path);
+			if (fixed == UiValueType.UNKNOWN) {
+				add(
+					origin(DefinitionType.PAGE, page.id()),
+					"UNKNOWN_BINDING",
+					pointer,
+					"unknown or unauthorized binding " + path
+				);
+			}
+			return fixed;
+		}
+
+		private PlayerDataDefinition requireTerminalPlayerData(
+			final PageDefinition page,
+			final String rawId,
+			final String pointer
+		) {
+			Identifier id = parseIdentifier(rawId);
+			PlayerDataDefinition data = id == null ? null : this.playerData.get(id);
+			if (data == null) {
+				add(
+					origin(DefinitionType.PAGE, page.id()),
+					"MISSING_REFERENCE",
+					pointer,
+					"player data " + rawId + " does not exist"
+				);
+				return null;
+			}
+			if (!page.game().equals(data.game())) {
+				add(
+					origin(DefinitionType.PAGE, page.id()),
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					"player data " + id + " belongs to " + data.game()
+				);
+				return null;
+			}
+			if (!data.surfaces().contains(PlayerSurface.TERMINAL)) {
+				add(
+					origin(DefinitionType.PAGE, page.id()),
+					"INVALID_CONSTRAINT",
+					pointer,
+					"player data " + id + " is not authorized for the terminal surface"
+				);
+				return null;
+			}
+			return data;
+		}
+
+		private UiValueType playerDataValueType(final PlayerDataDefinition data) {
+			return switch (data.source().type()) {
+				case INITIALIZED, READY -> UiValueType.BOOLEAN;
+				case ROLE,
+					TEAM,
+					LIFE_STATE,
+					TASK_ID -> UiValueType.IDENTIFIER;
+				case TASK_ELAPSED_TICKS,
+					TASK_REMAINING_TICKS,
+					GAME_ELAPSED_TICKS,
+					TASK_PROGRESS -> UiValueType.INTEGER;
+				case FIELD, EXCLUSIVE_CHOICE -> data.source()
+					.id()
+					.map(this.fields::get)
+					.map(FieldDefinition::type)
+					.map(Compiler::fieldValueType)
+					.orElse(UiValueType.UNKNOWN);
+				case TASK_STATISTIC -> playerStatisticValueType(data);
+				case TASK_NAME,
+					TASK_DESCRIPTION,
+					TASK_STATUS,
+					TASK_RESULT -> UiValueType.STRING;
+			};
+		}
+
+		private UiValueType playerStatisticValueType(final PlayerDataDefinition data) {
+			Identifier taskId = data.source().id().orElse(null);
+			String key = data.source().key().orElse(null);
+			TaskDefinition task = taskId == null ? null : this.tasks.get(taskId);
+			if (task == null || key == null) {
+				return UiValueType.UNKNOWN;
+			}
+			TaskStatisticDefinition statistic = task.statistics()
+				.stream()
+				.filter(value -> value.id().equals(key))
+				.findFirst()
+				.orElse(null);
+			if (statistic == null) {
+				return UiValueType.UNKNOWN;
+			}
+			return switch (statistic.type()) {
+				case BOOLEAN -> UiValueType.BOOLEAN;
+				case INTEGER, DURATION_TICKS -> UiValueType.INTEGER;
+				case IDENTIFIER, PLAYER -> UiValueType.IDENTIFIER;
+				case STRING -> UiValueType.STRING;
+			};
 		}
 
 		private static UiValueType fixedBindingType(final String path) {
@@ -3891,29 +5214,127 @@ public final class DefinitionCompiler {
 					"viewer.admin",
 					"viewer.host",
 					"viewer.ready",
+					"viewer.initialized",
 					"session.connected",
+					"terminal.connected",
+					"terminal.loading",
+					"terminal.history_enabled",
+					"task.exists",
+					"task.paused",
+					"history.enabled",
+					"history.empty",
+					"detail.exists",
+					"detail.detail_available",
 					"item.online",
 					"item.admin",
 					"item.host",
-					"item.ready" -> UiValueType.BOOLEAN;
+					"item.ready",
+					"item.initialized",
+					"item.detail_available" -> UiValueType.BOOLEAN;
 				case "session.revision",
 					"session.generation",
 					"flow.version",
 					"flow.completed",
 					"flow.total",
 					"flow.remaining",
-					"flow.percent" -> UiValueType.INTEGER;
+					"flow.percent",
+					"task.elapsed_ticks",
+					"task.remaining_ticks",
+					"task.duration_ticks",
+					"task.progress",
+					"task.progress_min",
+					"task.progress_max",
+					"history.count",
+					"detail.event_count",
+					"detail.game_time",
+					"detail.task_time",
+					"detail.game_time_ticks",
+					"detail.task_time_ticks",
+					"item.event_count",
+					"item.game_time",
+					"item.task_time",
+					"item.game_time_ticks",
+					"item.task_time_ticks" -> UiValueType.INTEGER;
 				case "viewer.role",
 					"viewer.team",
 					"viewer.life_state",
 					"session.game",
 					"session.phase",
 					"flow.id",
+					"flow.flowId",
+					"terminal.page",
+					"terminal.route",
+					"task.id",
+					"detail.icon",
+					"detail.task",
+					"item.icon",
+					"item.task",
 					"item.role",
 					"item.team",
 					"item.life_state" -> UiValueType.IDENTIFIER;
-				case "session.players" -> UiValueType.COLLECTION;
-				default -> UiValueType.STRING;
+				case "session.players",
+					"flow.members",
+					"task.statistics",
+					"history.items",
+					"detail.targets",
+					"detail.statistics",
+					"detail.metadata",
+					"item.targets",
+					"item.statistics" -> UiValueType.COLLECTION;
+				case "viewer.name",
+					"viewer.uuid",
+					"viewer.role_name",
+					"viewer.team_name",
+					"viewer.life_state_name",
+					"session.game_name",
+					"session.phase_name",
+					"flow.flowNameJson",
+					"flow.initiatedBy",
+					"flow.node",
+					"flow.status",
+					"terminal.status",
+					"task.name",
+					"task.description",
+					"task.status",
+					"task.result",
+					"history.source",
+					"detail.status",
+					"detail.id",
+					"detail.title",
+					"detail.summary",
+					"detail.source",
+					"detail.source_name",
+					"detail.category",
+					"detail.color",
+					"detail.game_time_text",
+					"detail.task_time_text",
+					"detail.task_name",
+					"detail.actor.uuid",
+					"detail.actor.name",
+					"detail.result",
+					"detail.details",
+					"item.id",
+					"item.title",
+					"item.summary",
+					"item.source",
+					"item.source_name",
+					"item.category",
+					"item.color",
+					"item.game_time_text",
+					"item.task_time_text",
+					"item.task_name",
+					"item.actor.uuid",
+					"item.actor.name",
+					"item.result",
+					"item.details",
+					"item.uuid",
+					"item.name",
+					"item.label",
+					"item.value",
+					"item.role_name",
+					"item.team_name",
+					"item.life_state_name" -> UiValueType.STRING;
+				default -> UiValueType.UNKNOWN;
 			};
 		}
 

@@ -1,0 +1,460 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "指南目录"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_help_catalog",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "end"
+        },
+        "children": [
+          {
+            "type": "column",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "gap": 2
+            },
+            "children": [
+              {
+                "type": "text",
+                "style": "runner_eyebrow",
+                "text": {
+                  "text": "MANUAL INDEX / 指南目录"
+                }
+              },
+              {
+                "type": "text",
+                "style": "progress_value",
+                "text": {
+                  "text": "直接选择要看的内容"
+                }
+              }
+            ]
+          },
+          {
+            "type": "text",
+            "style": "ui_count_label",
+            "text": {
+              "text": "4 份文档"
+            }
+          }
+        ]
+      },
+      {
+        "type": "scroll",
+        "id": "help_catalog_scroll",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        },
+        "direction": "vertical",
+        "show_scrollbar": true,
+        "child": {
+          "type": "grid",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "columns": [
+              {
+                "mode": "weight",
+                "value": 1
+              },
+              {
+                "mode": "weight",
+                "value": 1
+              }
+            ],
+            "column_gap": 9,
+            "row_gap": 9,
+            "padding": {
+              "right": 5
+            }
+          },
+          "responsive": {
+            "compact": {
+              "layout": {
+                "columns": [
+                  {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                ]
+              }
+            }
+          },
+          "children": [
+            {
+              "type": "card",
+              "style": "ui_doc_cyan",
+              "child": {
+                "type": "row",
+                "layout": {
+                  "gap": 10,
+                  "padding": {
+                    "vertical": 10,
+                    "horizontal": 11
+                  },
+                  "cross_align": "center"
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_icon_cyan",
+                    "text": {
+                      "text": "▤"
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_info",
+                        "text": {
+                          "text": "GUIDE 01 / 终端基础"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "progress_value",
+                        "text": {
+                          "text": "玩家终端怎么使用"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "首页、返回、同步提示与任务入口"
+                        },
+                        "max_lines": 1,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "button",
+                        "id": "catalog_open_terminal_guide",
+                        "style": "secondary_button",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          }
+                        },
+                        "label": {
+                          "text": "打开文档"
+                        },
+                        "action": {
+                          "type": "registered",
+                          "action": "pixel_tzz:open_help_terminal"
+                        },
+                        "events": {
+                          "press": {
+                            "motion": "button_press",
+                            "sound": "button_press"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "card",
+              "style": "ui_doc_green",
+              "child": {
+                "type": "row",
+                "layout": {
+                  "gap": 10,
+                  "padding": {
+                    "vertical": 10,
+                    "horizontal": 11
+                  },
+                  "cross_align": "center"
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_icon_green",
+                    "text": {
+                      "text": "▤"
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_success",
+                        "text": {
+                          "text": "GUIDE 02 / 可见内容"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "progress_value",
+                        "text": {
+                          "text": "为什么每个人看到的不同"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "身份、阶段与任务如何决定公开范围"
+                        },
+                        "max_lines": 1,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "button",
+                        "id": "catalog_open_visibility_guide",
+                        "style": "ui_button_success",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          }
+                        },
+                        "label": {
+                          "text": "打开文档"
+                        },
+                        "action": {
+                          "type": "registered",
+                          "action": "pixel_tzz:open_help_visibility"
+                        },
+                        "events": {
+                          "press": {
+                            "motion": "button_press",
+                            "sound": "button_press"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "card",
+              "style": "ui_doc_gold",
+              "child": {
+                "type": "row",
+                "layout": {
+                  "gap": 10,
+                  "padding": {
+                    "vertical": 10,
+                    "horizontal": 11
+                  },
+                  "cross_align": "center"
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_icon_gold",
+                    "text": {
+                      "text": "▤"
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_brand",
+                        "text": {
+                          "text": "GUIDE 03 / 事件回顾"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "progress_value",
+                        "text": {
+                          "text": "回看本局已经发生的事"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "时间线、公开时机与事件详情"
+                        },
+                        "max_lines": 1,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "button",
+                        "id": "catalog_open_history_guide",
+                        "style": "primary_button",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          }
+                        },
+                        "label": {
+                          "text": "打开文档"
+                        },
+                        "action": {
+                          "type": "registered",
+                          "action": "pixel_tzz:open_help_history"
+                        },
+                        "events": {
+                          "press": {
+                            "motion": "button_press",
+                            "sound": "button_press"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "type": "card",
+              "style": "ui_doc_red",
+              "child": {
+                "type": "row",
+                "layout": {
+                  "gap": 10,
+                  "padding": {
+                    "vertical": 10,
+                    "horizontal": 11
+                  },
+                  "cross_align": "center"
+                },
+                "children": [
+                  {
+                    "type": "text",
+                    "style": "ui_icon_red",
+                    "text": {
+                      "text": "▤"
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_danger",
+                        "text": {
+                          "text": "GUIDE 04 / 安全操作"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "progress_value",
+                        "text": {
+                          "text": "按钮执行前后会发生什么"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "服务端复核、反馈与重复点击保护"
+                        },
+                        "max_lines": 1,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "button",
+                        "id": "catalog_open_actions_guide",
+                        "style": "danger_button",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          }
+                        },
+                        "label": {
+                          "text": "打开文档"
+                        },
+                        "action": {
+                          "type": "registered",
+                          "action": "pixel_tzz:open_help_actions"
+                        },
+                        "events": {
+                          "press": {
+                            "motion": "button_press",
+                            "sound": "button_press"
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

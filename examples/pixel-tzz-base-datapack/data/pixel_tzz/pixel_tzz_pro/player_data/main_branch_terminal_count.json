@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "task_statistic",
+    "id": "pixel_tzz:acceptance/main_branch",
+    "key": "activated_terminals"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "tasks": [
+    "pixel_tzz:acceptance/main_branch"
+  ],
+  "name": {
+    "text": "验收终端触发次数"
+  }
+}

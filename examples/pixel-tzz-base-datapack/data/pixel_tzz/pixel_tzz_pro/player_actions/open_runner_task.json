@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "operation": {
+    "type": "open_page",
+    "page": "pixel_tzz:player/task_runner"
+  },
+  "audience": {
+    "roles": [
+      "pixel_tzz:runner"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "tasks": [
+    "pixel_tzz:acceptance/warmup",
+    "pixel_tzz:acceptance/main_branch",
+    "pixel_tzz:acceptance/timeout_only"
+  ],
+  "audit": "none"
+}

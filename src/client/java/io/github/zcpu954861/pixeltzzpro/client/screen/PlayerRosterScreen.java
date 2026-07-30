@@ -163,13 +163,15 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 		}
 		int x = panelX();
 		int y = panelY();
+		double referenceX = referenceMouseX(mouseX);
+		double referenceY = referenceMouseY(mouseY);
 		int listTop = y + 82;
 		int listBottom = y + panelHeight() - 46;
 		if (
-			mouseX < x + 12
-				|| mouseX >= x + panelWidth() - 12
-				|| mouseY < listTop - 5
-				|| mouseY >= listBottom
+			referenceX < x + 12
+				|| referenceX >= x + panelWidth() - 12
+				|| referenceY < listTop - 5
+				|| referenceY >= listBottom
 		) {
 			return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
 		}
@@ -375,19 +377,19 @@ final class PlayerRosterScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.max(1, Math.min(760, this.width - 12));
+		return Math.max(1, Math.min(760, designWidth() - 12));
 	}
 
 	private int panelHeight() {
-		return Math.max(1, Math.min(430, this.height - 12));
+		return Math.max(1, Math.min(430, designHeight() - 12));
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

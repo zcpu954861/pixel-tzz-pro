@@ -298,19 +298,19 @@ public final class PagePreviewCatalogScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.min(620, Math.max(300, this.width - 20));
+		return Math.min(620, Math.max(300, designWidth() - 20));
 	}
 
 	private int panelHeight() {
-		return Math.min(330, Math.max(230, this.height - 20));
+		return Math.min(330, Math.max(230, designHeight() - 20));
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

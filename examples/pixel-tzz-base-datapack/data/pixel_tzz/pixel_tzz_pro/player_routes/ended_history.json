@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "page": "pixel_tzz:player/history",
+  "priority": 500,
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "phases": [
+    "pixel_tzz:ended"
+  ]
+}

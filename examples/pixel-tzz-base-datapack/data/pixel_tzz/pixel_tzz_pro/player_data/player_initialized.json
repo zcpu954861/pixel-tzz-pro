@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "initialized"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "name": {
+    "text": "初始化状态"
+  }
+}

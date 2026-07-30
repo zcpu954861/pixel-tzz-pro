@@ -1886,6 +1886,7 @@ public record WorldStateV2(
 		CALLBACK_RETRIED("callback_retried"),
 		PHASE_TRANSITIONED("phase_transitioned"),
 		TIMELINE_CONTROL("timeline_control"),
+		PLAYER_ACTION("player_action"),
 		SCHEMA_MIGRATED("schema_migrated"),
 		RECOVERY_CREATED("recovery_created"),
 		REQUEST_REJECTED("request_rejected");

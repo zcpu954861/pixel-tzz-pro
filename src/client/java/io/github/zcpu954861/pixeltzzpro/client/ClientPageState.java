@@ -25,6 +25,12 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewPageRequestC2SPay
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewPageRequestC2SPayload.CachedDocuments;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.StatefulRequest;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload.Intent;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalOpenC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.TerminalContext;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.Key;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.ParsedDocuments;
@@ -47,6 +53,13 @@ import net.minecraft.resources.Identifier;
  */
 public final class ClientPageState {
 	private static final PageDocumentCache CACHE = new PageDocumentCache();
+	private static final String TERMINAL_HOST_CONTROL_NODE_ID = "system_host_control";
+	private static final Identifier CLAIM_HOST_OPERATION = Identifier.parse(
+		"pixel-tzz-pro:host/claim"
+	);
+	private static final Identifier TAKEOVER_HOST_OPERATION = Identifier.parse(
+		"pixel-tzz-pro:host/takeover"
+	);
 
 	private static Catalog catalog = Catalog.idle();
 	private static PageStatus pageStatus = PageStatus.IDLE;
@@ -58,6 +71,13 @@ public final class ClientPageState {
 	private static OperationResultS2CPayload flowActionResult;
 	private static PendingExclusiveChoiceMutation pendingExclusiveChoiceMutation;
 	private static OperationResultS2CPayload exclusiveChoiceMutationResult;
+	private static long nextTerminalOpenRequestSequence;
+	private static Long pendingTerminalOpenRequestSequence;
+	private static long nextTerminalRequestSequence;
+	private static PendingTerminalIntent pendingTerminalIntent;
+	private static OperationResultS2CPayload terminalIntentResult;
+	private static TerminalRelease terminalRelease;
+	private static boolean terminalReleaseConsumed;
 	private static OperationCode fatalFlowBlock;
 	private static long revision;
 
@@ -122,6 +142,8 @@ public final class ClientPageState {
 			return;
 		}
 		releaseActive(true);
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
 		pagePurpose = PagePurpose.PREVIEW;
 		pageStatus = PageStatus.LOADING;
 		pageMessage = "";
@@ -138,9 +160,58 @@ public final class ClientPageState {
 		ClientPlayNetworking.send(new PreviewPageRequestC2SPayload(pageId, cachedDocuments));
 	}
 
+	/**
+	 * Opens a normal player terminal only after an explicit local user action.
+	 */
+	public static synchronized boolean openTerminal() {
+		if (forcedPageActive()) {
+			return false;
+		}
+		if (pendingTerminalOpenRequestSequence != null) {
+			return false;
+		}
+		if (!ClientPlayNetworking.canSend(TerminalOpenC2SPayload.TYPE)) {
+			releaseActive(true);
+			clearTerminalOpenPending();
+			pagePurpose = PagePurpose.NORMAL;
+			pageStatus = PageStatus.ERROR;
+			pageMessage = "玩家终端协议当前不可用";
+			revision++;
+			return false;
+		}
+		releaseActive(true);
+		clearTerminalIntentState();
+		pagePurpose = PagePurpose.NORMAL;
+		pageStatus = PageStatus.LOADING;
+		pageMessage = "";
+		long sequence = nextTerminalOpenRequestSequence++;
+		try {
+			ClientPlayNetworking.send(
+				new TerminalOpenC2SPayload(NetworkProtocol.CURRENT_VERSION, sequence)
+			);
+		} catch (RuntimeException error) {
+			pageStatus = PageStatus.ERROR;
+			pageMessage = "玩家终端请求未能发送";
+			revision++;
+			return false;
+		}
+		pendingTerminalOpenRequestSequence = sequence;
+		revision++;
+		return true;
+	}
+
 	public static synchronized void acceptPageBundle(final PageBundleS2CPayload payload) {
 		if (!replacementAllowed(payload)) {
 			return;
+		}
+		if (
+			payload.purpose() == PagePurpose.NORMAL
+				|| (
+					pagePurpose == PagePurpose.NORMAL
+						&& payload.purpose() == PagePurpose.FORCED_FLOW
+				)
+		) {
+			clearTerminalOpenPending();
 		}
 		boolean sameFlowPage = activePage != null
 			&& activePage.purpose == PagePurpose.FORCED_FLOW
@@ -148,8 +219,18 @@ public final class ClientPageState {
 			&& activePage.instanceId.equals(payload.instanceId())
 			&& activePage.flowContext.map(FlowContext::flowInstanceId)
 				.equals(payload.flowContext().map(FlowContext::flowInstanceId));
+		boolean sameTerminalSession = activePage != null
+			&& activePage.purpose == PagePurpose.NORMAL
+			&& payload.purpose() == PagePurpose.NORMAL
+			&& activePage.terminalContext.map(TerminalContext::sessionId)
+				.equals(payload.terminalContext().map(TerminalContext::sessionId));
+		boolean sameTerminalGeneration = sameTerminalSession
+			&& activePage.generation == payload.generation();
 		long localNextFlowSequence = nextFlowRequestSequence;
+		long localNextTerminalSequence = nextTerminalRequestSequence;
 		releaseActive(false);
+		terminalRelease = null;
+		terminalReleaseConsumed = false;
 		pagePurpose = payload.purpose();
 		fatalFlowBlock = null;
 		Key pinnedKey = null;
@@ -259,6 +340,7 @@ public final class ClientPageState {
 				resources,
 				payload.purpose(),
 				payload.flowContext(),
+				payload.terminalContext(),
 				serverContext
 			);
 			nextFlowRequestSequence = payload.flowContext()
@@ -267,6 +349,21 @@ public final class ClientPageState {
 					sameFlowPage ? Math.max(localNextFlowSequence, serverNext) : serverNext
 				)
 				.orElse(0L);
+			nextTerminalRequestSequence = payload.terminalContext()
+				.map(TerminalContext::nextRequestSequence)
+				.map(serverNext ->
+					sameTerminalGeneration
+						? Math.max(localNextTerminalSequence, serverNext)
+						: serverNext
+				)
+				.orElse(0L);
+			if (
+				payload.purpose() == PagePurpose.NORMAL
+					&& (!sameTerminalSession || !sameTerminalGeneration)
+			) {
+				pendingTerminalIntent = null;
+				terminalIntentResult = null;
+			}
 			acceptExclusiveMutationBundle(activePage);
 			pageStatus = resources.requiredMissing() ? PageStatus.RESOURCE_ERROR : PageStatus.READY;
 			pageMessage = resources.requiredMissing()
@@ -295,6 +392,86 @@ public final class ClientPageState {
 			}
 		}
 		revision++;
+	}
+
+	/**
+	 * Applies a binding-only terminal update without replacing the page definition or instance.
+	 */
+	public static synchronized boolean acceptTerminalBindingDelta(
+		final TerminalBindingDeltaS2CPayload payload
+	) {
+		Objects.requireNonNull(payload, "payload");
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.NORMAL
+				|| pageStatus != PageStatus.READY
+				|| terminalRelease != null
+				|| activePage.generation != payload.generation()
+				|| !activePage.instanceId.equals(payload.pageInstanceId())
+				|| payload.stateRevision() < activePage.stateRevision
+		) {
+			return false;
+		}
+		TerminalContext terminal = activePage.terminalContext.orElseThrow();
+		if (
+			!terminal.sessionId().equals(payload.sessionId())
+				|| terminal.routeRevision() != payload.routeRevision()
+		) {
+			return false;
+		}
+		try {
+			BindingContext serverContext = BindingContextDocument.decode(payload.bindingJson());
+			activePage = activePage.withServerContext(payload.stateRevision(), serverContext);
+			revision++;
+			return true;
+		} catch (RuntimeException error) {
+			return false;
+		}
+	}
+
+	/**
+	 * Applies only a matching NORMAL-terminal invalidation. A completed timeline retains the live
+	 * render plan for its hide motion; every other reason enters the closeable safety page.
+	 */
+	public static synchronized boolean acceptTerminalInvalidation(
+		final TerminalInvalidationS2CPayload payload
+	) {
+		Objects.requireNonNull(payload, "payload");
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.NORMAL
+				|| payload.stateRevision() < activePage.stateRevision
+				|| !activePage.instanceId.equals(payload.pageInstanceId())
+		) {
+			return false;
+		}
+		TerminalContext terminal = activePage.terminalContext.orElse(null);
+		if (terminal == null || !terminal.sessionId().equals(payload.sessionId())) {
+			return false;
+		}
+		if (payload.reason().equals("timeline_terminal")) {
+			pageMessage = "";
+			fatalFlowBlock = null;
+			clearFlowActionState();
+			clearTerminalOpenPending();
+			clearTerminalIntentState();
+			terminalRelease = new TerminalRelease(payload.reason(), payload.message());
+			terminalReleaseConsumed = false;
+			revision++;
+			return true;
+		}
+		releaseActive(false);
+		pagePurpose = PagePurpose.NORMAL;
+		pageStatus = PageStatus.ERROR;
+		pageMessage = payload.message();
+		terminalRelease = null;
+		terminalReleaseConsumed = false;
+		fatalFlowBlock = null;
+		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
+		revision++;
+		return true;
 	}
 
 	public static synchronized void retryResourcePreflight() {
@@ -484,23 +661,227 @@ public final class ClientPageState {
 		return FlowSubmission.sent(sequence);
 	}
 
+	public static synchronized TerminalSubmission submitTerminalAction(
+		final String nodeId,
+		final Identifier actionId
+	) {
+		return submitTerminalIntent(
+			Intent.ACTION,
+			Optional.of(Objects.requireNonNull(nodeId, "nodeId")),
+			Optional.of(Objects.requireNonNull(actionId, "actionId")),
+			Optional.empty()
+		);
+	}
+
+	/**
+	 * Submits the one mod-owned host-ownership action exposed by an ordinary player terminal.
+	 *
+	 * <p>The reserved node id is never sourced from a data-pack page. The server recognizes this
+	 * exact node/action pair before registered player actions, re-derives whether claim or takeover
+	 * is currently legal, and binds the confirmation to this terminal request sequence.
+	 */
+	public static synchronized TerminalSubmission submitTerminalHostControl(
+		final Identifier operationId
+	) {
+		Objects.requireNonNull(operationId, "operationId");
+		if (
+			!operationId.equals(CLAIM_HOST_OPERATION)
+				&& !operationId.equals(TAKEOVER_HOST_OPERATION)
+		) {
+			return TerminalSubmission.rejected("未知的主持人系统操作");
+		}
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.NORMAL
+				|| activePage.terminalContext
+					.filter(TerminalContext::takeoverAllowed)
+					.isEmpty()
+		) {
+			return TerminalSubmission.rejected("当前玩家终端未授权主持人认领或接管");
+		}
+		return submitTerminalIntent(
+			Intent.ACTION,
+			Optional.of(TERMINAL_HOST_CONTROL_NODE_ID),
+			Optional.of(operationId),
+			Optional.empty()
+		);
+	}
+
+	public static boolean isTerminalHostControlOperation(
+		final String operationType,
+		final Identifier operationId
+	) {
+		Objects.requireNonNull(operationType, "operationType");
+		Objects.requireNonNull(operationId, "operationId");
+		return (
+			operationType.equals("claim_host")
+				&& operationId.equals(CLAIM_HOST_OPERATION)
+		) || (
+			operationType.equals("takeover_host")
+				&& operationId.equals(TAKEOVER_HOST_OPERATION)
+		);
+	}
+
+	public static synchronized TerminalSubmission submitTerminalHistoryDetail(
+		final String nodeId,
+		final String historyRecordKey
+	) {
+		return submitTerminalIntent(
+			Intent.HISTORY_DETAIL,
+			Optional.of(Objects.requireNonNull(nodeId, "nodeId")),
+			Optional.empty(),
+			Optional.of(Objects.requireNonNull(historyRecordKey, "historyRecordKey"))
+		);
+	}
+
+	public static synchronized TerminalSubmission submitTerminalBack() {
+		return submitTerminalIntent(
+			Intent.BACK,
+			Optional.empty(),
+			Optional.empty(),
+			Optional.empty()
+		);
+	}
+
+	public static synchronized TerminalSubmission refreshTerminal() {
+		return submitTerminalIntent(
+			Intent.REFRESH,
+			Optional.empty(),
+			Optional.empty(),
+			Optional.empty()
+		);
+	}
+
+	/**
+	 * Hands one matched terminal action over to the shared confirmation controller.
+	 *
+	 * <p>The confirmation payload is still validated by {@link ClientConsoleState}; this method
+	 * only clears the NORMAL-page request that has now received a server-authored review instead
+	 * of an operation result. Canceling the review therefore returns to an immediately usable
+	 * terminal rather than leaving its button permanently pending.
+	 */
+	public static synchronized boolean acceptTerminalConfirmation(
+		final long requestSequence,
+		final Identifier actionId
+	) {
+		Objects.requireNonNull(actionId, "actionId");
+		if (
+			pendingTerminalIntent == null
+				|| pendingTerminalIntent.intent != Intent.ACTION
+				|| pendingTerminalIntent.requestSequence != requestSequence
+				|| pendingTerminalIntent.actionId.filter(actionId::equals).isEmpty()
+		) {
+			return false;
+		}
+		pendingTerminalIntent = null;
+		terminalIntentResult = null;
+		revision++;
+		return true;
+	}
+
+	private static TerminalSubmission submitTerminalIntent(
+		final Intent intent,
+		final Optional<String> nodeId,
+		final Optional<Identifier> actionId,
+		final Optional<String> historyRecordKey
+	) {
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.NORMAL
+				|| pageStatus != PageStatus.READY
+				|| terminalRelease != null
+		) {
+			return TerminalSubmission.rejected("当前页面不是可操作的玩家终端");
+		}
+		if (pendingTerminalIntent != null) {
+			return TerminalSubmission.rejected("相关终端操作仍在等待服务端确认");
+		}
+		if (!ClientPlayNetworking.canSend(TerminalIntentC2SPayload.TYPE)) {
+			return TerminalSubmission.rejected("玩家终端操作协议当前不可用");
+		}
+		TerminalContext terminal = activePage.terminalContext.orElseThrow();
+		long sequence = nextTerminalRequestSequence;
+		try {
+			ClientPlayNetworking.send(
+				new TerminalIntentC2SPayload(
+					NetworkProtocol.CURRENT_VERSION,
+					terminal.sessionId(),
+					activePage.instanceId,
+					activePage.generation,
+					activePage.stateRevision,
+					terminal.routeRevision(),
+					sequence,
+					intent,
+					nodeId,
+					actionId,
+					historyRecordKey
+				)
+			);
+		} catch (RuntimeException error) {
+			return TerminalSubmission.rejected(
+				truncate(
+					error.getMessage() == null
+						? error.getClass().getSimpleName()
+						: error.getMessage(),
+					256
+				)
+			);
+		}
+		nextTerminalRequestSequence = sequence + 1L;
+		pendingTerminalIntent = new PendingTerminalIntent(
+			sequence,
+			activePage.instanceId,
+			intent,
+			nodeId,
+			actionId,
+			historyRecordKey
+		);
+		terminalIntentResult = null;
+		revision++;
+		return TerminalSubmission.sent(sequence);
+	}
+
 	public static synchronized void acceptOperationResult(
 		final OperationResultS2CPayload payload
 	) {
+		boolean terminalOpenResult = pendingTerminalOpenRequestSequence != null
+			&& pendingTerminalOpenRequestSequence == payload.requestSequence();
 		boolean flowResult = pendingFlowAction != null
 			&& pendingFlowAction.requestSequence == payload.requestSequence();
 		boolean exclusiveResult = pendingExclusiveChoiceMutation != null
 			&& pendingExclusiveChoiceMutation.requestSequence == payload.requestSequence();
+		boolean terminalResult = pendingTerminalIntent != null
+			&& pendingTerminalIntent.requestSequence == payload.requestSequence();
 		if (
 			!NetworkProtocol.isCompatible(payload.protocolVersion())
-				|| (!flowResult && !exclusiveResult)
+				|| (
+					!terminalOpenResult
+						&& !flowResult
+						&& !exclusiveResult
+						&& !terminalResult
+				)
 		) {
+			return;
+		}
+		if (terminalOpenResult) {
+			if (payload.success()) {
+				// A successful open is completed by the authoritative NORMAL PageBundle.
+				return;
+			}
+			clearTerminalOpenPending();
+			if (pagePurpose == PagePurpose.NORMAL && pageStatus == PageStatus.LOADING) {
+				pageStatus = PageStatus.ERROR;
+				pageMessage = payload.message().isBlank()
+					? "服务端未能打开玩家终端"
+					: payload.message();
+				revision++;
+			}
 			return;
 		}
 		if (flowResult) {
 			pendingFlowAction = null;
 			flowActionResult = payload;
-		} else {
+		} else if (exclusiveResult) {
 			exclusiveChoiceMutationResult = payload;
 			if (payload.success()) {
 				PendingExclusiveChoiceMutation accepted =
@@ -511,6 +892,9 @@ public final class ClientPageState {
 			} else {
 				pendingExclusiveChoiceMutation = null;
 			}
+		} else {
+			pendingTerminalIntent = null;
+			terminalIntentResult = payload;
 		}
 		if (
 			activePage != null
@@ -575,6 +959,75 @@ public final class ClientPageState {
 			&& pendingExclusiveChoiceMutation.fieldId.equals(fieldId);
 	}
 
+	public static synchronized Optional<OperationResultS2CPayload> consumeTerminalIntentResult(
+		final long requestSequence
+	) {
+		if (
+			terminalIntentResult == null
+				|| terminalIntentResult.requestSequence() != requestSequence
+		) {
+			return Optional.empty();
+		}
+		OperationResultS2CPayload result = terminalIntentResult;
+		terminalIntentResult = null;
+		return Optional.of(result);
+	}
+
+	public static synchronized boolean terminalIntentPending() {
+		return pendingTerminalIntent != null;
+	}
+
+	public static synchronized boolean terminalOpenPending() {
+		return pendingTerminalOpenRequestSequence != null;
+	}
+
+	public static synchronized boolean terminalIntentPending(final String nodeId) {
+		return pendingTerminalIntent != null
+			&& pendingTerminalIntent.nodeId.filter(nodeId::equals).isPresent();
+	}
+
+	public static synchronized boolean terminalIntentPending(final Intent intent) {
+		return pendingTerminalIntent != null && pendingTerminalIntent.intent == intent;
+	}
+
+	public static synchronized boolean terminalSyncPending() {
+		return pagePurpose == PagePurpose.NORMAL
+			&& (pageStatus == PageStatus.LOADING || pendingTerminalIntent != null);
+	}
+
+	/**
+	 * Returns one server-authored, non-error terminal closure exactly once to the live-screen
+	 * supervisor. The active page remains pinned until its hide motion has completed.
+	 */
+	public static synchronized Optional<TerminalRelease> consumeTerminalRelease() {
+		if (terminalRelease == null || terminalReleaseConsumed) {
+			return Optional.empty();
+		}
+		terminalReleaseConsumed = true;
+		return Optional.of(terminalRelease);
+	}
+
+	public static synchronized boolean terminalReleasePending() {
+		return terminalRelease != null;
+	}
+
+	public static synchronized void completeTerminalRelease() {
+		if (terminalRelease == null) {
+			return;
+		}
+		releaseActive(false);
+		pagePurpose = PagePurpose.PREVIEW;
+		pageStatus = PageStatus.IDLE;
+		pageMessage = "";
+		terminalRelease = null;
+		terminalReleaseConsumed = false;
+		fatalFlowBlock = null;
+		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
+		revision++;
+	}
+
 	public static synchronized boolean acceptForcedRelease(
 		final ForcedPageReleaseS2CPayload payload
 	) {
@@ -599,6 +1052,8 @@ public final class ClientPageState {
 		pageMessage = "";
 		fatalFlowBlock = null;
 		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
 		revision++;
 		return true;
 	}
@@ -607,11 +1062,17 @@ public final class ClientPageState {
 		if (forcedPageActive()) {
 			return false;
 		}
+		if (terminalRelease != null) {
+			completeTerminalRelease();
+			return true;
+		}
 		releaseActive(true);
 		pagePurpose = PagePurpose.PREVIEW;
 		pageStatus = PageStatus.IDLE;
 		pageMessage = "";
 		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
 		revision++;
 		return true;
 	}
@@ -720,6 +1181,12 @@ public final class ClientPageState {
 	}
 
 	private static boolean replacementAllowed(final PageBundleS2CPayload payload) {
+		if (
+			pagePurpose == PagePurpose.NORMAL
+				&& payload.purpose() == PagePurpose.PREVIEW
+		) {
+			return false;
+		}
 		if (!forcedPageActive()) {
 			return true;
 		}
@@ -757,7 +1224,12 @@ public final class ClientPageState {
 		pageMessage = "";
 		pagePurpose = PagePurpose.PREVIEW;
 		fatalFlowBlock = null;
+		terminalRelease = null;
+		terminalReleaseConsumed = false;
 		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
+		nextTerminalOpenRequestSequence = 0L;
 		revision++;
 	}
 
@@ -767,6 +1239,16 @@ public final class ClientPageState {
 		flowActionResult = null;
 		pendingExclusiveChoiceMutation = null;
 		exclusiveChoiceMutationResult = null;
+	}
+
+	private static void clearTerminalIntentState() {
+		nextTerminalRequestSequence = 0L;
+		pendingTerminalIntent = null;
+		terminalIntentResult = null;
+	}
+
+	private static void clearTerminalOpenPending() {
+		pendingTerminalOpenRequestSequence = null;
 	}
 
 	private static String decodeUtf8(final byte[] bytes, final String document) {
@@ -838,12 +1320,14 @@ public final class ClientPageState {
 		Report resources,
 		PagePurpose purpose,
 		Optional<FlowContext> flowContext,
+		Optional<TerminalContext> terminalContext,
 		BindingContext serverContext
 	) {
 		public ActivePage {
 			fields = Map.copyOf(fields);
 			purpose = Objects.requireNonNull(purpose, "purpose");
 			flowContext = Objects.requireNonNull(flowContext, "flowContext");
+			terminalContext = Objects.requireNonNull(terminalContext, "terminalContext");
 			serverContext = Objects.requireNonNull(serverContext, "serverContext");
 		}
 
@@ -859,7 +1343,28 @@ public final class ClientPageState {
 				updated,
 				this.purpose,
 				this.flowContext,
+				this.terminalContext,
 				this.serverContext
+			);
+		}
+
+		private ActivePage withServerContext(
+			final long updatedStateRevision,
+			final BindingContext updatedServerContext
+		) {
+			return new ActivePage(
+				this.instanceId,
+				this.generation,
+				updatedStateRevision,
+				this.page,
+				this.theme,
+				this.fields,
+				this.cacheKey,
+				this.resources,
+				this.purpose,
+				this.flowContext,
+				this.terminalContext,
+				updatedServerContext
 			);
 		}
 
@@ -889,6 +1394,26 @@ public final class ClientPageState {
 
 		private static ExclusiveMutationSubmission rejected(final String message) {
 			return new ExclusiveMutationSubmission(false, -1L, message);
+		}
+	}
+
+	public record TerminalSubmission(boolean sent, long requestSequence, String message) {
+		private static TerminalSubmission sent(final long sequence) {
+			return new TerminalSubmission(true, sequence, "");
+		}
+
+		private static TerminalSubmission rejected(final String message) {
+			return new TerminalSubmission(false, -1L, message);
+		}
+	}
+
+	public record TerminalRelease(String reason, String message) {
+		public TerminalRelease {
+			reason = Objects.requireNonNull(reason, "reason");
+			message = Objects.requireNonNull(message, "message");
+			if (reason.isBlank() || message.isBlank()) {
+				throw new IllegalArgumentException("terminal release must be visible and attributable");
+			}
 		}
 	}
 
@@ -932,6 +1457,26 @@ public final class ClientPageState {
 				this.memberRevision,
 				this.resultAccepted,
 				true
+			);
+		}
+	}
+
+	private record PendingTerminalIntent(
+		long requestSequence,
+		UUID pageInstanceId,
+		Intent intent,
+		Optional<String> nodeId,
+		Optional<Identifier> actionId,
+		Optional<String> historyRecordKey
+	) {
+		private PendingTerminalIntent {
+			pageInstanceId = Objects.requireNonNull(pageInstanceId, "pageInstanceId");
+			intent = Objects.requireNonNull(intent, "intent");
+			nodeId = Objects.requireNonNull(nodeId, "nodeId");
+			actionId = Objects.requireNonNull(actionId, "actionId");
+			historyRecordKey = Objects.requireNonNull(
+				historyRecordKey,
+				"historyRecordKey"
 			);
 		}
 	}

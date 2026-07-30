@@ -33,6 +33,8 @@ public final class ClientConsoleState {
 	private static ConsoleSnapshotS2CPayload snapshot;
 	private static TargetSnapshotS2CPayload targets;
 	private static TimedConfirmation confirmation;
+	private static long terminalHostReviewSequence = -1L;
+	private static Optional<Identifier> terminalHostReviewOperation = Optional.empty();
 	private static String feedback = "";
 	private static boolean feedbackError;
 	private static OperationResultContext lastResult;
@@ -52,6 +54,10 @@ public final class ClientConsoleState {
 		if (pending != null) {
 			return false;
 		}
+		if (!ClientSessionState.snapshot().currentPlayerHost()) {
+			fail("只有当前主持人可以打开主持人控制台");
+			return false;
+		}
 		if (!ClientPlayNetworking.canSend(ConsoleRequestC2SPayload.TYPE)) {
 			fail("控制台协议当前不可用");
 			return false;
@@ -67,6 +73,10 @@ public final class ClientConsoleState {
 	public static synchronized boolean requestTargets(final ActionEntry action) {
 		if (busy()) {
 			inform("上一项请求仍在同步，请稍候。");
+			return false;
+		}
+		if (!ClientSessionState.snapshot().currentPlayerHost()) {
+			fail("当前玩家已经不是主持人");
 			return false;
 		}
 		if (!ClientPlayNetworking.canSend(TargetSnapshotRequestC2SPayload.TYPE)) {
@@ -103,7 +113,41 @@ public final class ClientConsoleState {
 		final ActionEntry action,
 		final List<UUID> targetIds
 	) {
+		if (
+			ClientPageState.isTerminalHostControlOperation(
+				action.operationType(),
+				action.operationId()
+			)
+		) {
+			return refreshTerminalHostOperation(action, targetIds);
+		}
 		return prepareOperation(action, renewalTargetIds(action, targetIds), true);
+	}
+
+	private static boolean refreshTerminalHostOperation(
+		final ActionEntry action,
+		final List<UUID> targetIds
+	) {
+		if (!targetIds.isEmpty()) {
+			fail("主持人认领或接管不接受目标玩家");
+			return false;
+		}
+		if (pending != null || terminalHostReviewSequence >= 0L) {
+			inform("上一项请求仍在同步，请稍候。");
+			return false;
+		}
+		ClientPageState.TerminalSubmission submission =
+			ClientPageState.submitTerminalHostControl(action.operationId());
+		if (!submission.sent()) {
+			fail(submission.message());
+			return false;
+		}
+		clearFeedback();
+		lastResult = null;
+		terminalHostReviewSequence = submission.requestSequence();
+		terminalHostReviewOperation = Optional.of(action.operationId());
+		revision++;
+		return true;
 	}
 
 	/**
@@ -127,6 +171,10 @@ public final class ClientConsoleState {
 	) {
 		if (busy()) {
 			inform("上一项请求仍在同步，请稍候。");
+			return false;
+		}
+		if (!ClientSessionState.snapshot().currentPlayerHost()) {
+			fail("当前玩家已经不是主持人");
 			return false;
 		}
 		if (!ClientPlayNetworking.canSend(PrepareOperationC2SPayload.TYPE)) {
@@ -212,6 +260,12 @@ public final class ClientConsoleState {
 			}
 			return;
 		}
+		if (
+			!payload.currentPlayerHost()
+				|| !ClientSessionState.snapshot().currentPlayerHost()
+		) {
+			return;
+		}
 		boolean pushed = payload.requestSequence() == 0L;
 		if (
 			!pushed && payload.requestSequence() < lastConsoleSequence
@@ -240,6 +294,9 @@ public final class ClientConsoleState {
 	}
 
 	public static synchronized void acceptTargets(final TargetSnapshotS2CPayload payload) {
+		if (!ClientSessionState.snapshot().currentPlayerHost()) {
+			return;
+		}
 		if (
 			pending == null
 				|| pending.kind != RequestKind.TARGETS
@@ -264,6 +321,32 @@ public final class ClientConsoleState {
 	}
 
 	public static synchronized void acceptConfirmation(final ConfirmationS2CPayload payload) {
+		boolean terminalAction = (
+			payload.operationType().equals("player_action")
+				|| ClientPageState.isTerminalHostControlOperation(
+					payload.operationType(),
+					payload.operationId()
+				)
+		)
+			&& pending == null
+			&& NetworkProtocol.isCompatible(payload.protocolVersion())
+			&& ClientPageState.acceptTerminalConfirmation(
+				payload.requestSequence(),
+				payload.operationId()
+			);
+		if (terminalAction) {
+			confirmation = new TimedConfirmation(payload);
+			terminalHostReviewSequence = -1L;
+			terminalHostReviewOperation = Optional.empty();
+			lastResult = null;
+			feedback = "";
+			feedbackError = false;
+			revision++;
+			return;
+		}
+		if (!ClientSessionState.snapshot().currentPlayerHost()) {
+			return;
+		}
 		if (
 			pending == null
 				|| pending.kind != RequestKind.PREPARE
@@ -291,6 +374,33 @@ public final class ClientConsoleState {
 	public static synchronized void acceptOperationResult(
 		final OperationResultS2CPayload payload
 	) {
+		if (
+			terminalHostReviewSequence >= 0L
+				&& terminalHostReviewSequence == payload.requestSequence()
+		) {
+			ClientPageState.consumeTerminalIntentResult(payload.requestSequence());
+			Optional<Identifier> operationId = terminalHostReviewOperation;
+			terminalHostReviewSequence = -1L;
+			terminalHostReviewOperation = Optional.empty();
+			if (!NetworkProtocol.isCompatible(payload.protocolVersion())) {
+				fail("操作结果协议版本不兼容");
+				return;
+			}
+			confirmation = null;
+			feedback = OperationFeedbackText.resolve(payload.code(), payload.message());
+			feedbackError = !payload.success()
+				&& payload.code() != OperationCode.NO_ELIGIBLE_TARGETS;
+			lastResult = new OperationResultContext(
+				RequestKind.PREPARE,
+				operationId,
+				payload.code(),
+				feedback,
+				payload.stateRevision(),
+				payload.definitionGeneration()
+			);
+			revision++;
+			return;
+		}
 		if (
 			pending == null
 				|| pending.sequence != payload.requestSequence()
@@ -323,7 +433,10 @@ public final class ClientConsoleState {
 			payload.definitionGeneration()
 		);
 		revision++;
-		if (payload.refreshConsole()) {
+		if (
+			payload.refreshConsole()
+				&& ClientSessionState.snapshot().currentPlayerHost()
+		) {
 			requestConsole();
 		}
 	}
@@ -331,6 +444,37 @@ public final class ClientConsoleState {
 	public static synchronized void acceptSessionProjection(
 		final SessionSnapshotS2CPayload payload
 	) {
+		if (!payload.currentPlayerHost() && snapshot != null) {
+			/*
+			 * Console snapshots contain the host-only operation catalog, player roster, flow
+			 * state, and target metadata. A host transfer therefore revokes this projection
+			 * immediately; an OP keeps only the ordinary player terminal and its registered
+			 * takeover action.
+			 *
+			 * A transfer COMMIT result may race this session push. Keep only that correlated
+			 * request/result long enough for the confirmation screen to report success, while
+			 * dropping every reusable host capability and target cache now.
+			 */
+			boolean commitInFlight =
+				pending != null && pending.kind == RequestKind.COMMIT;
+			boolean settledCommit =
+				lastResult != null && lastResult.kind == RequestKind.COMMIT;
+			snapshot = null;
+			targets = null;
+			lastConsoleSequence = -1L;
+			if (!commitInFlight) {
+				pending = null;
+				confirmation = null;
+			}
+			if (!commitInFlight && !settledCommit) {
+				lastResult = null;
+				clearFeedback();
+			} else if (commitInFlight) {
+				lastResult = null;
+				clearFeedback();
+			}
+			revision++;
+		}
 		if (confirmation == null) {
 			return;
 		}
@@ -392,7 +536,16 @@ public final class ClientConsoleState {
 	}
 
 	public static synchronized boolean pending() {
-		return pending != null;
+		return pending != null || terminalHostReviewSequence >= 0L;
+	}
+
+	/**
+	 * Keeps a host-transfer confirmation screen alive only until its correlated COMMIT result has
+	 * been presented. All reusable host snapshots and targets are already revoked separately.
+	 */
+	public static synchronized boolean hostCommitResolutionPending() {
+		return pending != null && pending.kind == RequestKind.COMMIT
+			|| lastResult != null && lastResult.kind == RequestKind.COMMIT;
 	}
 
 	public static synchronized String feedback() {
@@ -471,7 +624,8 @@ public final class ClientConsoleState {
 	}
 
 	private static boolean busy() {
-		return pending != null && pending.kind != RequestKind.CONSOLE;
+		return terminalHostReviewSequence >= 0L
+			|| pending != null && pending.kind != RequestKind.CONSOLE;
 	}
 
 	private static void inform(final String message) {
@@ -488,6 +642,8 @@ public final class ClientConsoleState {
 		snapshot = null;
 		targets = null;
 		confirmation = null;
+		terminalHostReviewSequence = -1L;
+		terminalHostReviewOperation = Optional.empty();
 		feedback = "";
 		feedbackError = false;
 		lastResult = null;

@@ -9,6 +9,9 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerActionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerDataDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRouteDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
@@ -32,6 +35,9 @@ public record DefinitionSnapshot(
 	Map<Identifier, FlowDefinition> flows,
 	Map<Identifier, TaskDefinition> tasks,
 	Map<Identifier, PanelActionDefinition> panelActions,
+	Map<Identifier, PlayerRouteDefinition> playerRoutes,
+	Map<Identifier, PlayerDataDefinition> playerData,
+	Map<Identifier, PlayerActionDefinition> playerActions,
 	Map<Identifier, PageDefinition> pages,
 	Map<Identifier, ThemeDefinition> themes,
 	Map<DocumentKey, SourceDocument> sourceDocuments,
@@ -49,12 +55,56 @@ public record DefinitionSnapshot(
 		flows = Map.copyOf(flows);
 		tasks = Map.copyOf(tasks);
 		panelActions = Map.copyOf(panelActions);
+		playerRoutes = Map.copyOf(playerRoutes);
+		playerData = Map.copyOf(playerData);
+		playerActions = Map.copyOf(playerActions);
 		pages = Map.copyOf(pages);
 		themes = Map.copyOf(themes);
 		sourceDocuments = Map.copyOf(sourceDocuments);
 		functions = Set.copyOf(functions);
 		predicates = Set.copyOf(predicates);
 		predicateDocuments = Map.copyOf(predicateDocuments);
+	}
+
+	public DefinitionSnapshot(
+		final long generation,
+		final Map<Identifier, GameDefinition> games,
+		final Map<Identifier, RoleDefinition> roles,
+		final Map<Identifier, TeamDefinition> teams,
+		final Map<Identifier, LifeStateDefinition> lifeStates,
+		final Map<Identifier, PhaseDefinition> phases,
+		final Map<Identifier, FieldDefinition> fields,
+		final Map<Identifier, FlowDefinition> flows,
+		final Map<Identifier, TaskDefinition> tasks,
+		final Map<Identifier, PanelActionDefinition> panelActions,
+		final Map<Identifier, PageDefinition> pages,
+		final Map<Identifier, ThemeDefinition> themes,
+		final Map<DocumentKey, SourceDocument> sourceDocuments,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates,
+		final Map<Identifier, String> predicateDocuments
+	) {
+		this(
+			generation,
+			games,
+			roles,
+			teams,
+			lifeStates,
+			phases,
+			fields,
+			flows,
+			tasks,
+			panelActions,
+			Map.of(),
+			Map.of(),
+			Map.of(),
+			pages,
+			themes,
+			sourceDocuments,
+			functions,
+			predicates,
+			predicateDocuments
+		);
 	}
 
 	public DefinitionSnapshot(
@@ -85,6 +135,9 @@ public record DefinitionSnapshot(
 			flows,
 			Map.of(),
 			panelActions,
+			Map.of(),
+			Map.of(),
+			Map.of(),
 			pages,
 			themes,
 			sourceDocuments,
@@ -97,6 +150,10 @@ public record DefinitionSnapshot(
 	public static DefinitionSnapshot empty() {
 		return new DefinitionSnapshot(
 			0L,
+			Map.of(),
+			Map.of(),
+			Map.of(),
+			Map.of(),
 			Map.of(),
 			Map.of(),
 			Map.of(),
@@ -128,6 +185,9 @@ public record DefinitionSnapshot(
 			+ this.flows.size()
 			+ this.tasks.size()
 			+ this.panelActions.size()
+			+ this.playerRoutes.size()
+			+ this.playerData.size()
+			+ this.playerActions.size()
 			+ this.pages.size()
 			+ this.themes.size();
 	}
@@ -144,6 +204,9 @@ public record DefinitionSnapshot(
 			this.flows,
 			this.tasks,
 			this.panelActions,
+			this.playerRoutes,
+			this.playerData,
+			this.playerActions,
 			this.pages,
 			this.themes,
 			this.sourceDocuments,
@@ -167,6 +230,9 @@ public record DefinitionSnapshot(
 			this.flows,
 			this.tasks,
 			this.panelActions,
+			this.playerRoutes,
+			this.playerData,
+			this.playerActions,
 			this.pages,
 			this.themes,
 			this.sourceDocuments,
