@@ -198,12 +198,12 @@ tasks.register("worldStateColdStartSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
-tasks.register("protocolV10SelfCheck", JavaExec) {
+tasks.register("protocolV11SelfCheck", JavaExec) {
 	group = "verification"
-	description = "Runs the bounded protocol-v10 codec and trust-boundary checks."
+	description = "Runs the bounded protocol-v11 codec and trust-boundary checks."
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV10SelfCheck"
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV11SelfCheck"
 	workingDir project.projectDir
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
@@ -224,6 +224,26 @@ tasks.register("flowCallbackAuthoritySelfCheck", JavaExec) {
 	dependsOn testClasses
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = "io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("playerActionAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs registered player-action rebinding, usage, replay, confirmation, and macro checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("playerTerminalRuntimeBridgeSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs ordinary-player terminal Runtime/client bridge and fail-closed lifecycle checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PlayerTerminalRuntimeBridgeSelfCheck"
 	workingDir project.projectDir
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
@@ -406,8 +426,48 @@ tasks.register("tabListDisplaySelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("playerTerminalProjectorSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs least-privilege player-terminal projection, frozen timeline, history release, and wire-boundary checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PlayerTerminalProjectorSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("playerTerminalRouterSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs compiled default, audience, task-state, predicate, and priority player-terminal route checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PlayerTerminalRouterSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("playerTerminalSessionsSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs player-terminal sequence, navigation, reload, close, and idle-expiry session checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.PlayerTerminalSessionsSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("pressureFixtureSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Compiles the disposable V3A long-content and history pressure overlay."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.PressureFixtureSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
-check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV10SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck
+check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV11SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, playerActionAuthoritySelfCheck, playerTerminalRuntimeBridgeSelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck, playerTerminalProjectorSelfCheck, playerTerminalRouterSelfCheck, playerTerminalSessionsSelfCheck, pressureFixtureSelfCheck

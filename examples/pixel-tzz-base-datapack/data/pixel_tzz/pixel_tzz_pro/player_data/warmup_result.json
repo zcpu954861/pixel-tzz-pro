@@ -1,0 +1,24 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "task_result",
+    "id": "pixel_tzz:acceptance/warmup"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "tasks": [
+    "pixel_tzz:acceptance/warmup"
+  ],
+  "masked_fallback": {
+    "text": "尚未结算"
+  }
+}

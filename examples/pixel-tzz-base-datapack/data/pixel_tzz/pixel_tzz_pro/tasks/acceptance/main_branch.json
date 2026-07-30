@@ -129,7 +129,36 @@
       "allowed_states": [
         "running"
       ],
-      "recap_visibility": "participants"
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:active_participant"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "验收终端已触发"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "场内终端完成了一次有效触发。"
+        },
+        "color": "#64D8E8",
+        "category": "task_event",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": true,
+        "show_targets": false,
+        "statistics": [
+          "activated_terminals"
+        ],
+        "details": {
+          "text": "这条稳定记录只公开发生时间、所属任务、触发者与当前累计次数；后台回调和内部实例标识不会发送给玩家。"
+        }
+      }
     },
     {
       "id": "deadline_reached",
@@ -140,7 +169,34 @@
       "allowed_states": [
         "settling"
       ],
-      "recap_visibility": "participants"
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "task_end",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:active_participant"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "分支任务到达时限"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "任务在规定时间内未提前结算，已进入超时路线。"
+        },
+        "color": "#F6B94A",
+        "category": "task_result",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "show_personal_result": true,
+        "details": {
+          "text": "该记录在任务结束后公开，避免在权威结果提交前泄露尚未确定的分支。"
+        }
+      }
     }
   ],
   "statistics": [

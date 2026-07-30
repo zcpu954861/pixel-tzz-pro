@@ -1,0 +1,18 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "task_description",
+    "id": "pixel_tzz:acceptance/main_branch"
+  },
+  "surfaces": ["terminal"],
+  "audience": {
+    "role_tags": ["pixel_tzz:active_participant"],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "tasks": ["pixel_tzz:acceptance/main_branch"],
+  "name": {
+    "text": "第二项超长授权字段 · 当前任务公开说明与个人行动参考"
+  }
+}

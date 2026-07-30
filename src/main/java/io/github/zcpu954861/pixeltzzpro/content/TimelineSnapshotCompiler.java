@@ -19,6 +19,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -37,13 +38,18 @@ import net.minecraft.resources.Identifier;
 public final class TimelineSnapshotCompiler {
 	private static final int FORMAT_VERSION = 1;
 	private static final int MAX_EXTERNAL_REFERENCES = 16_384;
+	private static final Identifier REFERENCE_CONDITION = Identifier.fromNamespaceAndPath(
+		"minecraft",
+		"reference"
+	);
 	private static final Set<String> ROOT_KEYS = Set.of(
 		"format_version",
 		"definition_generation",
 		"game",
 		"sources",
 		"functions",
-		"predicates"
+		"predicates",
+		"predicate_documents"
 	);
 	private static final Set<String> SOURCE_KEYS = Set.of("type", "id", "document");
 
@@ -114,9 +120,13 @@ public final class TimelineSnapshotCompiler {
 			sources.add(source);
 		}
 		root.add("sources", sources);
+		Set<Identifier> predicates = DefinitionRegistry.referencedPredicates(
+			definitions,
+			game.id()
+		);
 		if (
 			definitions.functions().size() > MAX_EXTERNAL_REFERENCES
-				|| definitions.predicates().size() > MAX_EXTERNAL_REFERENCES
+				|| predicates.size() > MAX_EXTERNAL_REFERENCES
 		) {
 			return FreezeResult.rejected(
 				"snapshot_too_large",
@@ -124,7 +134,51 @@ public final class TimelineSnapshotCompiler {
 			);
 		}
 		root.add("functions", identifiers(definitions.functions()));
-		root.add("predicates", identifiers(definitions.predicates()));
+		root.add("predicates", identifiers(predicates));
+		JsonObject predicateDocuments = new JsonObject();
+		for (Identifier predicate : predicates.stream().sorted().toList()) {
+			String json = definitions.predicateDocuments().get(predicate);
+			if (json == null) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"referenced predicate has no retained document: " + predicate
+				);
+			}
+			if (json.length() > DefinitionCompiler.MAX_DEFINITION_CHARACTERS) {
+				return FreezeResult.rejected(
+					"snapshot_too_large",
+					"predicate "
+						+ predicate
+						+ " exceeds "
+						+ DefinitionCompiler.MAX_DEFINITION_CHARACTERS
+						+ " characters"
+				);
+			}
+			try {
+				JsonElement document = JsonParser.parseString(json);
+				if (!document.isJsonObject()) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"predicate document must be an object: " + predicate
+					);
+				}
+				if (containsReferenceCondition(document)) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"predicate "
+							+ predicate
+							+ " uses minecraft:reference and is not self-contained"
+					);
+				}
+				predicateDocuments.add(predicate.toString(), document);
+			} catch (RuntimeException error) {
+				return FreezeResult.rejected(
+					"snapshot_invalid",
+					"predicate " + predicate + " is not valid JSON: " + message(error)
+				);
+			}
+		}
+		root.add("predicate_documents", predicateDocuments);
 
 		String normalizedJson = root.toString();
 		if (
@@ -260,6 +314,19 @@ public final class TimelineSnapshotCompiler {
 				requiredArray(root, "predicates"),
 				"predicate"
 			);
+			boolean hasPredicateDocuments = root.has("predicate_documents");
+			Map<Identifier, String> predicateDocuments = hasPredicateDocuments
+				? predicateDocuments(requiredObject(root, "predicate_documents"))
+				: Map.of();
+			if (
+				hasPredicateDocuments
+					&& !predicateDocuments.keySet().equals(predicates)
+			) {
+				return RestoreResult.rejected(
+					"snapshot_invalid",
+					"predicate documents must exactly cover predicate references"
+				);
+			}
 
 			Compilation compilation = DefinitionCompiler.compile(sources, functions, predicates);
 			if (!compilation.valid()) {
@@ -271,6 +338,9 @@ public final class TimelineSnapshotCompiler {
 			DefinitionSnapshot restored = compilation.snapshot()
 				.orElseThrow()
 				.withGeneration(generation);
+			if (hasPredicateDocuments) {
+				restored = restored.withPredicateDocuments(predicateDocuments);
+			}
 			if (!restored.games().keySet().equals(Set.of(expectedGame))) {
 				return RestoreResult.rejected(
 					"snapshot_invalid",
@@ -289,6 +359,18 @@ public final class TimelineSnapshotCompiler {
 				return RestoreResult.rejected(
 					"snapshot_invalid",
 					"timeline snapshot contains tasks outside its reachable plan"
+				);
+			}
+			if (
+				hasPredicateDocuments
+					&& !DefinitionRegistry.referencedPredicates(
+						restored,
+						expectedGame
+					).equals(predicates)
+			) {
+				return RestoreResult.rejected(
+					"snapshot_invalid",
+					"predicate references do not match the restored timeline definitions"
 				);
 			}
 			return RestoreResult.success(restored);
@@ -378,6 +460,21 @@ public final class TimelineSnapshotCompiler {
 			.stream()
 			.filter(value -> value.game().equals(gameId))
 			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PANEL_ACTION, value.id())));
+		definitions.playerRoutes()
+			.values()
+			.stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PLAYER_ROUTE, value.id())));
+		definitions.playerData()
+			.values()
+			.stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PLAYER_DATA, value.id())));
+		definitions.playerActions()
+			.values()
+			.stream()
+			.filter(value -> value.game().equals(gameId))
+			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PLAYER_ACTION, value.id())));
 		Set<Identifier> themes = new LinkedHashSet<>();
 		definitions.pages()
 			.values()
@@ -399,6 +496,71 @@ public final class TimelineSnapshotCompiler {
 					.thenComparing(DocumentKey::id)
 			)
 			.toList();
+	}
+
+	private static Map<Identifier, String> predicateDocuments(final JsonObject values) {
+		if (values.size() > MAX_EXTERNAL_REFERENCES) {
+			throw new IllegalArgumentException("predicate document count exceeds limit");
+		}
+		Map<Identifier, String> result = new LinkedHashMap<>();
+		for (Map.Entry<String, JsonElement> entry : values.entrySet()) {
+			Identifier id = Identifier.tryParse(entry.getKey());
+			if (id == null || result.containsKey(id)) {
+				throw new IllegalArgumentException(
+					"invalid or duplicate predicate document identifier"
+				);
+			}
+			JsonElement document = entry.getValue();
+			if (!document.isJsonObject()) {
+				throw new IllegalArgumentException(
+					"predicate document must be an object: " + id
+				);
+			}
+			if (containsReferenceCondition(document)) {
+				throw new IllegalArgumentException(
+					"predicate "
+						+ id
+						+ " uses minecraft:reference and is not self-contained"
+				);
+			}
+			String normalized = document.toString();
+			if (normalized.length() > DefinitionCompiler.MAX_DEFINITION_CHARACTERS) {
+				throw new IllegalArgumentException(
+					"predicate document exceeds character limit: " + id
+				);
+			}
+			result.put(id, normalized);
+		}
+		return Map.copyOf(result);
+	}
+
+	private static boolean containsReferenceCondition(final JsonElement element) {
+		if (element.isJsonArray()) {
+			for (JsonElement child : element.getAsJsonArray()) {
+				if (containsReferenceCondition(child)) {
+					return true;
+				}
+			}
+			return false;
+		}
+		if (!element.isJsonObject()) {
+			return false;
+		}
+		JsonElement condition = element.getAsJsonObject().get("condition");
+		if (
+			condition != null
+				&& condition.isJsonPrimitive()
+				&& condition.getAsJsonPrimitive().isString()
+				&& REFERENCE_CONDITION.equals(Identifier.tryParse(condition.getAsString()))
+		) {
+			return true;
+		}
+		for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+			if (containsReferenceCondition(entry.getValue())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static JsonArray identifiers(final Set<Identifier> values) {
@@ -433,6 +595,14 @@ public final class TimelineSnapshotCompiler {
 			throw new IllegalArgumentException(key + " must be an array");
 		}
 		return value.getAsJsonArray();
+	}
+
+	private static JsonObject requiredObject(final JsonObject object, final String key) {
+		JsonElement value = object.get(key);
+		if (value == null || !value.isJsonObject()) {
+			throw new IllegalArgumentException(key + " must be an object");
+		}
+		return value.getAsJsonObject();
 	}
 
 	private static String requiredString(final JsonObject object, final String key) {

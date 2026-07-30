@@ -1,7 +1,10 @@
 package io.github.zcpu954861.pixeltzzpro.client.screen;
 
+import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState;
+import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.PageStatus;
+import io.github.zcpu954861.pixeltzzpro.client.animation.OperationSubtitleAnimator;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -43,12 +46,85 @@ public final class LivePageSupervisor {
 		client.gui.setScreen(flowScreen);
 	}
 
+	static void openPlayerTerminal(final Minecraft client, final Screen parent) {
+		if (ClientPageState.forcedPageActive()) {
+			openCurrentForcedPage(client, parent);
+			return;
+		}
+		boolean requestAccepted = ClientPageState.openTerminal();
+		if (!requestAccepted && !ClientPageState.terminalSyncPending()) {
+			return;
+		}
+		session = new LivePageSession();
+		returnScreen = parent;
+		liveWasActive = false;
+		forcedWasActive = false;
+		restrictedPauseActive = false;
+		client.gui.setScreen(new DataDrivenPageScreen(parent, session));
+	}
+
+	static void openCurrentForcedPage(final Minecraft client, final Screen parent) {
+		if (!ClientPageState.forcedPageActive()) {
+			return;
+		}
+		if (session == null) {
+			session = new LivePageSession();
+		}
+		if (returnScreen == null) {
+			returnScreen = parent;
+		}
+		restrictedPauseActive = false;
+		liveWasActive = true;
+		forcedWasActive = true;
+		client.gui.setScreen(new DataDrivenPageScreen(returnScreen, session));
+	}
+
 	public static void tick(final Minecraft client) {
 		PageStatus status = ClientPageState.pageStatus();
-		boolean liveActive = status != PageStatus.IDLE
-			&& ClientPageState.pagePurpose() != PagePurpose.PREVIEW;
 		boolean forcedActive = ClientPageState.forcedPageActive();
+		boolean liveActive = status != PageStatus.IDLE
+			&& ClientPageState.pagePurpose() == PagePurpose.FORCED_FLOW;
 		Screen current = client.gui.screen();
+		var terminalRelease = ClientPageState.consumeTerminalRelease();
+		if (terminalRelease.isPresent()) {
+			OperationSubtitleAnimator.enqueue(terminalRelease.orElseThrow().message());
+			if (
+				current instanceof DataDrivenPageScreen page
+					&& page.isNormalTerminalScreen()
+			) {
+				page.releaseFromServer();
+			} else {
+				ClientPageState.completeTerminalRelease();
+				TransitioningConsoleScreen.preparePopEntry(returnScreen);
+				client.gui.setScreen(returnScreen);
+			}
+			return;
+		}
+		if (
+			ClientPageState.terminalReleasePending()
+				&& !(
+					current instanceof DataDrivenPageScreen page
+						&& page.isNormalTerminalScreen()
+				)
+		) {
+			ClientPageState.completeTerminalRelease();
+			TransitioningConsoleScreen.preparePopEntry(returnScreen);
+			client.gui.setScreen(returnScreen);
+			return;
+		}
+		if (
+			current instanceof TransitioningConsoleScreen console
+				&& console.requiresCurrentHost()
+				&& !ClientSessionState.snapshot().currentPlayerHost()
+				&& !console.navigationLocked()
+				&& !(
+					current instanceof OperationConfirmationScreen
+						&& ClientConsoleState.hostCommitResolutionPending()
+				)
+		) {
+			openPlayerTerminal(client, null);
+			return;
+		}
 
 		if (forcedWasActive && !forcedActive) {
 			if (

@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "life_state"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "name": {
+    "text": "生命状态"
+  }
+}

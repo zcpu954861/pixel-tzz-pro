@@ -136,7 +136,7 @@ public final class UiLayoutEngine {
 			case COLUMN, REPEAT -> placeLinear(item, contentBounds, inheritedClip, diagnostics, Axis.VERTICAL);
 			case GRID -> placeGrid(item, contentBounds, inheritedClip, diagnostics);
 			case FLOW -> placeFlow(item, contentBounds, inheritedClip, diagnostics);
-			case OVERLAY -> placeOverlay(item, contentBounds, inheritedClip, diagnostics);
+			case OVERLAY, CAROUSEL -> placeOverlay(item, contentBounds, inheritedClip, diagnostics);
 			case SCROLL -> placeScroll(item, contentBounds, inheritedClip, diagnostics);
 			case CARD -> placeCard(item, contentBounds, inheritedClip, diagnostics);
 			default -> placeLeaf(item, contentBounds, diagnostics);
@@ -631,7 +631,7 @@ public final class UiLayoutEngine {
 				yield new Measure(plan.contentWidth(), plan.contentHeight());
 			}
 			case FLOW -> measureFlow(item, innerWidth, innerHeight);
-			case OVERLAY -> measureOverlay(item, innerWidth, innerHeight);
+			case OVERLAY, CAROUSEL -> measureOverlay(item, innerWidth, innerHeight);
 			case SCROLL, CARD -> measureSingle(item, innerWidth, innerHeight);
 			default -> new Measure(
 				safeIntrinsic(item.intrinsicWidth()),
@@ -810,10 +810,10 @@ public final class UiLayoutEngine {
 						candidates.add(index);
 					}
 				}
-				if (candidates.isEmpty()) {
-					candidates.add(entry.column() + entry.span() - 1);
+				// A spanning child may grow flexible tracks, but an explicit fixed track remains fixed.
+				if (!candidates.isEmpty()) {
+					distribute(deficit, candidates, trackSizes);
 				}
-				distribute(deficit, candidates, trackSizes);
 			}
 		}
 

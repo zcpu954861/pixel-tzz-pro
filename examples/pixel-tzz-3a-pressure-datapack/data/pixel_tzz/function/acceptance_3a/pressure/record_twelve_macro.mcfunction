@@ -1,0 +1,12 @@
+$pixel_tzz task record_event $(task_instance_id) pressure_01
+$pixel_tzz task record_event $(task_instance_id) pressure_02
+$pixel_tzz task record_event $(task_instance_id) pressure_03
+$pixel_tzz task record_event $(task_instance_id) pressure_04
+$pixel_tzz task record_event $(task_instance_id) pressure_05
+$pixel_tzz task record_event $(task_instance_id) pressure_06
+$pixel_tzz task record_event $(task_instance_id) pressure_07
+$pixel_tzz task record_event $(task_instance_id) pressure_08
+$pixel_tzz task record_event $(task_instance_id) pressure_09
+$pixel_tzz task record_event $(task_instance_id) pressure_10
+$pixel_tzz task record_event $(task_instance_id) pressure_11
+$pixel_tzz task record_event $(task_instance_id) pressure_12

@@ -2,6 +2,7 @@ package io.github.zcpu954861.pixeltzzpro.content;
 
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.Audience;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerHistoryPresentation;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -209,12 +210,35 @@ public final class TaskDefinitions {
 		Optional<Integer> maximumRecords,
 		Set<TaskEventState> allowedStates,
 		Optional<Audience> audience,
-		RecapVisibility recapVisibility
+		RecapVisibility recapVisibility,
+		Optional<PlayerHistoryPresentation> playerHistory
 	) {
 		public TaskEventDefinition {
 			maximumRecords = optional(maximumRecords);
 			allowedStates = Set.copyOf(allowedStates);
 			audience = optional(audience);
+			playerHistory = optional(playerHistory);
+		}
+
+		public TaskEventDefinition(
+			final String id,
+			final RichText name,
+			final TaskEventPolicy policy,
+			final Optional<Integer> maximumRecords,
+			final Set<TaskEventState> allowedStates,
+			final Optional<Audience> audience,
+			final RecapVisibility recapVisibility
+		) {
+			this(
+				id,
+				name,
+				policy,
+				maximumRecords,
+				allowedStates,
+				audience,
+				recapVisibility,
+				Optional.empty()
+			);
 		}
 	}
 

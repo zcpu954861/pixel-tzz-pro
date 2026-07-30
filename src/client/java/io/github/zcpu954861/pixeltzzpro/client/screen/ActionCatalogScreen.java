@@ -223,7 +223,7 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 		if (navigationLocked()) {
 			return true;
 		}
-		if (revealPartialRow(event.x(), event.y())) {
+		if (revealPartialRow(referenceMouseX(event.x()), referenceMouseY(event.y()))) {
 			return true;
 		}
 		return super.mouseClicked(event, doubleClick);
@@ -512,19 +512,19 @@ final class ActionCatalogScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.max(1, Math.min(760, this.width - 12));
+		return Math.max(1, Math.min(760, designWidth() - 12));
 	}
 
 	private int panelHeight() {
-		return Math.max(1, Math.min(430, this.height - 12));
+		return Math.max(1, Math.min(430, designHeight() - 12));
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

@@ -1,0 +1,894 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "个人信息"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_profile_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 10,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_profile_plate",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 78
+          },
+          "padding": {
+            "vertical": 4,
+            "horizontal": 9
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "gap": 13,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 14
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "player_head",
+              "uuid": {
+                "bind": "viewer.uuid"
+              },
+              "name": {
+                "bind": "viewer.name"
+              },
+              "online": {
+                "bind": "viewer.online"
+              },
+              "show_status": false,
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 48
+                },
+                "height": {
+                  "mode": "fixed",
+                  "value": 48
+                }
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 0.8
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_success",
+                  "text": {
+                    "text": "PERSONAL RECORD / 个人档案"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "ui_profile_name",
+                  "text": {
+                    "bind": "viewer.name"
+                  },
+                  "max_lines": 1,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "text",
+                  "style": "runner_title",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "viewer.initialized"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "personal/pixel_tzz:player_role"
+                          },
+                          {
+                            "literal": "pixel_tzz:runner"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "逃走者"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "hunter_title",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "viewer.initialized"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "personal/pixel_tzz:player_role"
+                          },
+                          {
+                            "literal": "pixel_tzz:hunter"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "猎人"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "status_identity",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "viewer.initialized"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "personal/pixel_tzz:player_role"
+                          },
+                          {
+                            "literal": "pixel_tzz:spectator"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "旁观者"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "ui_identity_pending",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "viewer.initialized"
+                      },
+                      {
+                        "literal": false
+                      }
+                    ]
+                  },
+                  "text": {
+                    "text": "身份待确认"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "card",
+              "style": "ui_status_lane",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1.4
+                },
+                "height": {
+                  "mode": "fixed",
+                  "value": 54
+                }
+              },
+              "child": {
+                "type": "row",
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "fill"
+                  },
+                  "gap": 8,
+                  "padding": {
+                    "vertical": 7,
+                    "horizontal": 10
+                  },
+                  "cross_align": "center"
+                },
+                "children": [
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "个人数据"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "status_success",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "viewer.initialized"
+                            },
+                            {
+                              "literal": true
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "已初始化"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_identity_pending",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "viewer.initialized"
+                            },
+                            {
+                              "literal": false
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "尚未初始化"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "divider",
+                    "style": "ui_divider_cyan",
+                    "direction": "vertical",
+                    "thickness": 1,
+                    "layout": {
+                      "height": {
+                        "mode": "percent",
+                        "value": 0.72
+                      }
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "开局准备"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "status_success",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "viewer.ready"
+                            },
+                            {
+                              "literal": true
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "已准备"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_identity_pending",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "viewer.ready"
+                            },
+                            {
+                              "literal": false
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "尚未准备"
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "divider",
+                    "style": "ui_divider_cyan",
+                    "direction": "vertical",
+                    "thickness": 1,
+                    "layout": {
+                      "height": {
+                        "mode": "percent",
+                        "value": 0.72
+                      }
+                    }
+                  },
+                  {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "weight",
+                        "value": 1
+                      },
+                      "gap": 3
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "游戏内状态"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "status_success",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "personal/pixel_tzz:player_life_state"
+                            },
+                            {
+                              "literal": "pixel_tzz:alive"
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "仍在游戏中"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "hunter_title",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "personal/pixel_tzz:player_life_state"
+                            },
+                            {
+                              "literal": "pixel_tzz:captured"
+                            }
+                          ]
+                        },
+                        "text": {
+                          "text": "已被捕获"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "status_identity",
+                        "visible_when": {
+                          "not": {
+                            "exists": {
+                              "bind": "personal/pixel_tzz:player_life_state"
+                            }
+                          }
+                        },
+                        "text": {
+                          "text": "尚未进入游戏"
+                        }
+                      }
+                    ]
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "gap": 9,
+          "cross_align": "stretch"
+        },
+        "responsive": {
+          "compact": {
+            "type": "column",
+            "layout": {
+              "gap": 7,
+              "cross_align": "stretch"
+            }
+          }
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_personal_record",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1.4
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                }
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 11,
+                  "horizontal": 13
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_success",
+                  "text": {
+                    "text": "PERSONAL DATA / 本局个人记录"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "scroll",
+                  "id": "profile_personal_data_scroll",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "margin": {
+                        "right": 5
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "visible_when": {
+                          "not": {
+                            "any": [
+                              {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:main_branch_terminal_count"
+                                }
+                              },
+                              {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:main_branch_progress"
+                                }
+                              },
+                              {
+                                "exists": {
+                                  "bind": "task.result"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "text": {
+                          "text": "数据包向本人公开的变量、贡献和结果集中显示在这里。"
+                        },
+                        "wrap": true
+                      },
+                      {
+                        "type": "row",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "gap": 10,
+                          "cross_align": "start"
+                        },
+                        "children": [
+                          {
+                            "type": "column",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "personal/pixel_tzz:main_branch_terminal_count"
+                              }
+                            },
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              },
+                              "gap": 2
+                            },
+                            "children": [
+                              {
+                                "type": "text",
+                                "style": "utility_label",
+                                "text": {
+                                  "bind": "personal_meta/pixel_tzz:main_branch_terminal_count/name",
+                                  "fallback": {
+                                    "text": "终端触发"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "text",
+                                "style": "status_success",
+                                "text": {
+                                  "concat": [
+                                    {
+                                      "bind": "personal/pixel_tzz:main_branch_terminal_count"
+                                    },
+                                    {
+                                      "text": " 次"
+                                    }
+                                  ]
+                                }
+                              }
+                            ]
+                          },
+                          {
+                            "type": "column",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "personal/pixel_tzz:main_branch_progress"
+                              }
+                            },
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              },
+                              "gap": 2
+                            },
+                            "children": [
+                              {
+                                "type": "text",
+                                "style": "utility_label",
+                                "text": {
+                                  "bind": "personal_meta/pixel_tzz:main_branch_progress/name",
+                                  "fallback": {
+                                    "text": "任务进度"
+                                  }
+                                }
+                              },
+                              {
+                                "type": "text",
+                                "style": "status_identity",
+                                "text": {
+                                  "bind": "personal/pixel_tzz:main_branch_progress"
+                                },
+                                "wrap": true
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "task.result"
+                          }
+                        },
+                        "layout": {
+                          "gap": 2
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "text": {
+                              "text": "本人可见结果"
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "status_success",
+                            "text": {
+                              "bind": "task.result"
+                            },
+                            "wrap": true
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_personal_context",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 0.9
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "responsive": {
+              "compact": {
+                "layout": {
+                  "width": {
+                    "mode": "fill"
+                  },
+                  "height": {
+                    "mode": "weight",
+                    "value": 1
+                  }
+                }
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 11,
+                  "horizontal": 13
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_info",
+                  "text": {
+                    "text": "VISIBLE TO YOU / 本人可见内容"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_cyan",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "scroll",
+                  "id": "profile_visible_content_scroll",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "margin": {
+                        "right": 5
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "column",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "task.name"
+                          }
+                        },
+                        "layout": {
+                          "gap": 2
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "text": {
+                              "text": "当前任务"
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "rule_body",
+                            "text": {
+                              "bind": "task.name"
+                            },
+                            "wrap": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "column",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "personal/pixel_tzz:hunter_spawn"
+                          }
+                        },
+                        "layout": {
+                          "gap": 2
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "utility_label",
+                            "text": {
+                              "bind": "personal_meta/pixel_tzz:hunter_spawn/name",
+                              "fallback": {
+                                "text": "猎人出生点"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "hunter_title",
+                            "text": {
+                              "concat": [
+                                {
+                                  "text": "「"
+                                },
+                                {
+                                  "bind": "personal_meta/pixel_tzz:hunter_spawn/value_name",
+                                  "fallback": {
+                                    "text": "出生点已锁定"
+                                  }
+                                },
+                                {
+                                  "text": "」"
+                                }
+                              ]
+                            },
+                            "wrap": true
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "visible_when": {
+                          "not": {
+                            "any": [
+                              {
+                                "exists": {
+                                  "bind": "task.name"
+                                }
+                              },
+                              {
+                                "exists": {
+                                  "bind": "personal/pixel_tzz:hunter_spawn"
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "text": {
+                          "text": "当前没有额外向你公开的个人内容。"
+                        },
+                        "wrap": true
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

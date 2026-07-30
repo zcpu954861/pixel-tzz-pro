@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTerminalConfig;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskTimeline;
 import net.minecraft.resources.Identifier;
 
@@ -16,7 +17,7 @@ import net.minecraft.resources.Identifier;
 public final class GameDefinitions {
 	public static final int CURRENT_FORMAT_VERSION = 1;
 	public static final int MIN_API_VERSION = 1;
-	public static final int CURRENT_API_VERSION = 2;
+	public static final int CURRENT_API_VERSION = 3;
 
 	private GameDefinitions() {
 	}
@@ -68,11 +69,38 @@ public final class GameDefinitions {
 		Identifier defaultRole,
 		Identifier defaultLifeState,
 		Optional<TaskTimeline> taskTimeline,
-		Optional<ReadinessDefinition> readiness
+		Optional<ReadinessDefinition> readiness,
+		Optional<PlayerTerminalConfig> playerTerminal
 	) {
 		public GameDefinition {
 			taskTimeline = taskTimeline == null ? Optional.empty() : taskTimeline;
 			readiness = readiness == null ? Optional.empty() : readiness;
+			playerTerminal = playerTerminal == null ? Optional.empty() : playerTerminal;
+		}
+
+		public GameDefinition(
+			final Identifier id,
+			final int apiVersion,
+			final int contentVersion,
+			final RichText name,
+			final Identifier initialPhase,
+			final Identifier defaultRole,
+			final Identifier defaultLifeState,
+			final Optional<TaskTimeline> taskTimeline,
+			final Optional<ReadinessDefinition> readiness
+		) {
+			this(
+				id,
+				apiVersion,
+				contentVersion,
+				name,
+				initialPhase,
+				defaultRole,
+				defaultLifeState,
+				taskTimeline,
+				readiness,
+				Optional.empty()
+			);
 		}
 
 		public GameDefinition(
@@ -94,6 +122,7 @@ public final class GameDefinitions {
 				defaultRole,
 				defaultLifeState,
 				taskTimeline,
+				Optional.empty(),
 				Optional.empty()
 			);
 		}
@@ -114,6 +143,7 @@ public final class GameDefinitions {
 				initialPhase,
 				defaultRole,
 				defaultLifeState,
+				Optional.empty(),
 				Optional.empty(),
 				Optional.empty()
 			);

@@ -1,0 +1,639 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "个人信息压力验收"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_profile_pressure_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 8,
+      "padding": {
+        "vertical": 10,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_profile_plate",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 56
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "gap": 12,
+            "padding": {
+              "vertical": 8,
+              "horizontal": 13
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_success",
+                  "text": {
+                    "text": "PERSONAL DATA STRESS / 个人数据压力验收"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "左右区域必须分别滚动；外壳标题、返回入口和底部导航保持固定。"
+                  },
+                  "wrap": true,
+                  "max_lines": 2,
+                  "overflow": "ellipsis"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "style": "status_success",
+              "text": {
+                "text": "10 项授权"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "gap": 9,
+          "cross_align": "stretch"
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_personal_record",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_success",
+                  "text": {
+                    "text": "授权字段 01—05"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "scroll",
+                  "id": "pressure_profile_left_scroll",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 7,
+                      "margin": {
+                        "right": 5
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_01/name",
+                                "fallback": {
+                                  "text": "压力字段 01"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_01",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_02/name",
+                                "fallback": {
+                                  "text": "压力字段 02"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_02",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_03/name",
+                                "fallback": {
+                                  "text": "压力字段 03"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_03",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_04/name",
+                                "fallback": {
+                                  "text": "压力字段 04"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_04",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_05/name",
+                                "fallback": {
+                                  "text": "压力字段 05"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_05",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_personal_context",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "runner_eyebrow",
+                  "text": {
+                    "text": "授权字段 06—10"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_cyan",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "scroll",
+                  "id": "pressure_profile_right_scroll",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 7,
+                      "margin": {
+                        "right": 5
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_06/name",
+                                "fallback": {
+                                  "text": "压力字段 06"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_06",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_07/name",
+                                "fallback": {
+                                  "text": "压力字段 07"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_07",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_08/name",
+                                "fallback": {
+                                  "text": "压力字段 08"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_08",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_09/name",
+                                "fallback": {
+                                  "text": "压力字段 09"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_09",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 4,
+                            "padding": {
+                              "vertical": 8,
+                              "horizontal": 9
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "text": {
+                                "bind": "personal_meta/pixel_tzz:pressure/profile_10/name",
+                                "fallback": {
+                                  "text": "压力字段 10"
+                                }
+                              },
+                              "wrap": true
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "personal/pixel_tzz:pressure/profile_10",
+                                "fallback": {
+                                  "text": "进入分支任务后显示。"
+                                }
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

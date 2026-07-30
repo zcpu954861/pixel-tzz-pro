@@ -26,9 +26,13 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldMigrationSt
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
-import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerOpenPageOperation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRunFunctionOperation;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.HistorySource;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ActionType;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.MotionKeyframe;
@@ -464,6 +468,29 @@ public final class FoundationSelfCheck {
 		List<Source> validSources = validDefinitionSources();
 		Compilation valid = DefinitionCompiler.compile(validSources, functions, predicates);
 		check(valid.valid(), "valid definition bundle must compile: " + valid.problems());
+		List<Source> multipleGameSources = new ArrayList<>(validSources);
+		multipleGameSources.add(
+			source(
+				DefinitionType.GAME,
+				"alternate",
+				"""
+				{
+				  "format_version": 1,
+				  "api_version": 1,
+				  "content_version": 1,
+				  "name": {"text": "Alternate"},
+				  "initial_phase": "test:setup",
+				  "default_role": "test:runner",
+				  "default_life_state": "test:alive"
+				}
+				"""
+			)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(multipleGameSources, functions, predicates),
+			"MULTIPLE_GAME_PROFILES",
+			"V3 resource collections must reject multiple Game Profiles"
+		);
 		DefinitionSnapshot compiled = valid.snapshot().orElseThrow();
 		check(compiled.games().size() == 1, "valid bundle game count failed");
 		check(compiled.roles().size() == 2, "valid bundle role count failed");
@@ -1327,7 +1354,17 @@ public final class FoundationSelfCheck {
 		);
 		DefinitionSnapshot generationOne = snapshotCompilation.snapshot()
 			.orElseThrow()
-			.withGeneration(41L);
+			.withGeneration(41L)
+			.withPredicateDocuments(
+				Map.of(
+					Identifier.parse("test:field/visible"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}",
+					Identifier.parse("test:panel/visible"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}",
+					Identifier.parse("test:panel/enabled"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}"
+				)
+			);
 		var timelineFreeze = TimelineSnapshotCompiler.freeze(
 			generationOne,
 			generationOne.games().get(Identifier.parse("test:main"))
@@ -1599,6 +1636,157 @@ public final class FoundationSelfCheck {
 			throw new AssertionError("intro root must compile as a multi-child container");
 		}
 		expectUnsupported(intro.assets()::clear, "page asset lists must be immutable");
+
+		String historyBindingsPage = """
+			{
+			  "format_version": 1,
+			  "game": "test:main",
+			  "title": {"text": "History bindings"},
+			  "theme": "test:control_console",
+			  "root": {
+			    "type": "repeat",
+			    "items": {"bind": "history.items"},
+			    "item_key": {"bind": "item.id"},
+			    "template": {
+			      "type": "column",
+			      "children": [
+			        {
+			          "type": "text",
+			          "text": {
+			            "concat": [
+			              {"bind": "item.title"},
+			              {"bind": "item.summary", "fallback": {"text": "无摘要"}},
+			              {"bind": "item.category", "fallback": {"text": "无分类"}},
+			              {"bind": "item.color", "fallback": {"text": "无颜色"}},
+			              {"bind": "item.icon", "fallback": {"text": "无图标"}},
+			              {"bind": "item.task", "fallback": {"text": "无任务"}},
+			              {"bind": "item.task_name", "fallback": {"text": "无任务名"}},
+			              {"bind": "item.result", "fallback": {"text": "无结果"}},
+			              {"bind": "item.details", "fallback": {"text": "无详情"}}
+			            ]
+			          }
+			        },
+			        {
+			          "type": "text",
+			          "visible_when": {
+			            "eq": [
+			              {"bind": "item.detail_available"},
+			              {"literal": true}
+			            ]
+			          },
+			          "text": {"text": "可查看详情"}
+			        },
+			        {
+			          "type": "progress",
+			          "value": {"bind": "item.game_time"},
+			          "min": {"literal": 0},
+			          "max": {"bind": "item.task_time"}
+			        },
+			        {
+			          "type": "player_head",
+			          "uuid": {"bind": "item.actor.uuid"},
+			          "name": {"bind": "item.actor.name"},
+			          "online": {"literal": true},
+			          "show_status": false
+			        },
+			        {
+			          "type": "repeat",
+			          "items": {"bind": "item.targets"},
+			          "item_key": {"bind": "item.uuid"},
+			          "template": {"type": "text", "text": {"bind": "item.name"}}
+			        },
+			        {
+			          "type": "repeat",
+			          "items": {"bind": "item.statistics"},
+			          "item_key": {"bind": "item.id"},
+			          "template": {"type": "text", "text": {"bind": "item.name"}}
+			        }
+			      ]
+			    }
+			  }
+			}
+			""";
+		Compilation historyBindings = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				historyBindingsPage
+			),
+			functions,
+			predicates
+		);
+		check(
+			historyBindings.valid(),
+			"projected history Repeat fields must compile with their exact value types: "
+				+ historyBindings.problems()
+		);
+
+		Compilation wrongHistoryType = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "title": {"text": "Wrong history type"},
+				  "theme": "test:control_console",
+				  "root": {
+				    "type": "repeat",
+				    "items": {"bind": "history.items"},
+				    "item_key": {"bind": "item.id"},
+				    "template": {
+				      "type": "progress",
+				      "value": {"bind": "item.title"},
+				      "min": {"literal": 0},
+				      "max": {"literal": 100}
+				    }
+				  }
+				}
+				"""
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			wrongHistoryType,
+			"TYPE_MISMATCH",
+			"history Repeat value types must reject text used as numeric progress"
+		);
+
+		Compilation unknownHistoryBinding = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				historyBindingsPage.replace("item.details", "item.internal_branch")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			unknownHistoryBinding,
+			"UNKNOWN_BINDING",
+			"unknown history item fields must remain unauthorized"
+		);
+
+		Compilation leakedHistoryDetailPage = DefinitionCompiler.compile(
+			replaceSource(
+				validSources,
+				DefinitionType.PAGE,
+				"page/intro",
+				historyBindingsPage.replace("item.detail_available", "item.detail_page")
+			),
+			functions,
+			predicates
+		);
+		checkProblem(
+			leakedHistoryDetailPage,
+			"UNKNOWN_BINDING",
+			"history pages must not receive the internal detail-page identifier"
+		);
 
 		Compilation reorderedPage = DefinitionCompiler.compile(
 			replaceSource(
@@ -2038,13 +2226,200 @@ public final class FoundationSelfCheck {
 		checkProblem(excessiveExpression, "RESOURCE_LIMIT", "condition expression size must be bounded");
 	}
 
+	private static void checkPersonalMetadataBindingCompilation(
+		final List<Source> sources,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates
+	) {
+		Source validData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route",
+			personalMetadataDataJson("pixel_tzz:main", "terminal", true)
+		);
+		Source validPage = pixelTzzFixtureSource(
+			DefinitionType.PAGE,
+			"fixture/personal_metadata",
+			personalMetadataPageJson("personal_meta/pixel_tzz:profile/route/name")
+		);
+		Compilation valid = DefinitionCompiler.compile(
+			appendSources(sources, validData, validPage),
+			functions,
+			predicates
+		);
+		check(
+			valid.valid(),
+			"declared terminal player-data names must compile as String metadata: "
+				+ valid.problems()
+		);
+
+		Source exclusiveField = pixelTzzFixtureSource(
+			DefinitionType.FIELD,
+			"profile/route_choice",
+			personalMetadataExclusiveFieldJson()
+		);
+		Source exclusiveData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route_choice",
+			personalMetadataExclusiveDataJson("exclusive_choice")
+		);
+		Source valueNamePage = pixelTzzFixtureSource(
+			DefinitionType.PAGE,
+			"fixture/personal_metadata",
+			personalMetadataPageJson(
+				"personal_meta/pixel_tzz:profile/route_choice/value_name"
+			)
+		);
+		Compilation validValueName = DefinitionCompiler.compile(
+			appendSources(sources, exclusiveField, exclusiveData, valueNamePage),
+			functions,
+			predicates
+		);
+		check(
+			validValueName.valid(),
+			"exclusive-choice value names must compile as authorized String metadata: "
+				+ validValueName.problems()
+		);
+
+		Source nonExclusiveValueNamePage = pixelTzzFixtureSource(
+			DefinitionType.PAGE,
+			"fixture/personal_metadata",
+			personalMetadataPageJson(
+				"personal_meta/pixel_tzz:profile/route/value_name"
+			)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, validData, nonExclusiveValueNamePage),
+				functions,
+				predicates
+			),
+			"TYPE_MISMATCH",
+			"personal metadata value_name must require an exclusive-choice player-data source"
+		);
+
+		Source wrongFieldSourceData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route_choice",
+			personalMetadataExclusiveDataJson("field")
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(
+					sources,
+					exclusiveField,
+					wrongFieldSourceData,
+					valueNamePage
+				),
+				functions,
+				predicates
+			),
+			"TYPE_MISMATCH",
+			"personal metadata value_name must reject a generic field source even when its field is exclusive"
+		);
+
+		Source missingPage = pixelTzzFixtureSource(
+			DefinitionType.PAGE,
+			"fixture/personal_metadata",
+			personalMetadataPageJson("personal_meta/pixel_tzz:profile/missing/name")
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, missingPage),
+				functions,
+				predicates
+			),
+			"MISSING_REFERENCE",
+			"personal metadata bindings must reference registered player data"
+		);
+
+		Source crossGameData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route",
+			personalMetadataDataJson("pixel_tzz:other", "terminal", true)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, crossGameData, validPage),
+				functions,
+				predicates
+			),
+			"CROSS_GAME_REFERENCE",
+			"personal metadata bindings must stay within the page game"
+		);
+
+		Source hudOnlyData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route",
+			personalMetadataDataJson("pixel_tzz:main", "hud", true)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, hudOnlyData, validPage),
+				functions,
+				predicates
+			),
+			"INVALID_CONSTRAINT",
+			"personal metadata bindings must require terminal-surface authorization"
+		);
+
+		Source unnamedData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route",
+			personalMetadataDataJson("pixel_tzz:main", "terminal", false)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, unnamedData, validPage),
+				functions,
+				predicates
+			),
+			"MISSING_REFERENCE",
+			"personal metadata bindings must require an explicitly declared name"
+		);
+
+		Source oversizedNameData = pixelTzzFixtureSource(
+			DefinitionType.PLAYER_DATA,
+			"profile/route",
+			personalMetadataDataJson("pixel_tzz:main", "terminal", true).replace(
+				"路线偏好",
+				"x".repeat(DefinitionCompiler.MAX_PLAYER_DATA_NAME_LENGTH + 1)
+			)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, oversizedNameData),
+				functions,
+				predicates
+			),
+			"RESOURCE_LIMIT",
+			"player-data names must be bounded before personal metadata projection"
+		);
+
+		Source numericPage = pixelTzzFixtureSource(
+			DefinitionType.PAGE,
+			"fixture/personal_metadata",
+			personalMetadataProgressPageJson(
+				"personal_meta/pixel_tzz:profile/route/name"
+			)
+		);
+		checkProblem(
+			DefinitionCompiler.compile(
+				appendSources(sources, validData, numericPage),
+				functions,
+				predicates
+			),
+			"TYPE_MISMATCH",
+			"personal metadata names must compile as String rather than numeric values"
+		);
+	}
+
 	private static void checkExampleDatapack() {
 		Path packRoot = Path.of("examples", "pixel-tzz-base-datapack");
 		check(Files.isDirectory(packRoot), "2D example data pack is missing");
 		long fileCount;
 		try (var paths = Files.walk(packRoot)) {
 			fileCount = paths.filter(Files::isRegularFile).count();
-			check(fileCount == 70, "2D example data pack file count changed unexpectedly");
+			check(fileCount == 115, "3A example data pack file count changed unexpectedly");
 		} catch (IOException error) {
 			throw new AssertionError("failed to count the 2D example data pack", error);
 		}
@@ -2103,29 +2478,101 @@ public final class FoundationSelfCheck {
 			throw new AssertionError("failed to read the 2D example data pack", error);
 		}
 
+		checkPersonalMetadataBindingCompilation(sources, functions, predicates);
+
+		Identifier branchTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/main_branch");
+		List<Source> emptyHistoryParameterSources = sources.stream()
+			.map(source -> {
+				if (source.type() != DefinitionType.TASK || !source.id().equals(branchTaskId)) {
+					return source;
+				}
+				String mutatedJson = source.json().replaceFirst(
+					"\"show_targets\"\\s*:\\s*false,",
+					"\"show_targets\": false,\n        \"parameters\": [],"
+				);
+				check(
+					!mutatedJson.equals(source.json()),
+					"empty player-history parameter fixture must mutate the example task"
+				);
+				return new Source(
+					source.type(),
+					source.id(),
+					source.resource(),
+					source.sourcePack(),
+					mutatedJson
+				);
+			})
+			.toList();
+		Compilation emptyHistoryParameters = DefinitionCompiler.compile(
+			emptyHistoryParameterSources,
+			functions,
+			predicates
+		);
+		check(
+			emptyHistoryParameters.valid(),
+			"3A must continue accepting an explicitly empty player-history parameters array: "
+				+ emptyHistoryParameters.problems()
+		);
+		List<Source> nonEmptyHistoryParameterSources = emptyHistoryParameterSources.stream()
+			.map(source -> {
+				if (source.type() != DefinitionType.TASK || !source.id().equals(branchTaskId)) {
+					return source;
+				}
+				String mutatedJson = source.json().replace(
+					"\"parameters\": []",
+					"\"parameters\": [\"terminal_code\"]"
+				);
+				check(
+					!mutatedJson.equals(source.json()),
+					"non-empty player-history parameter fixture must mutate the example task"
+				);
+				return new Source(
+					source.type(),
+					source.id(),
+					source.resource(),
+					source.sourcePack(),
+					mutatedJson
+				);
+			})
+			.toList();
+		checkProblem(
+			DefinitionCompiler.compile(nonEmptyHistoryParameterSources, functions, predicates),
+			"INVALID_CONSTRAINT",
+			"3A must reject non-empty player-history parameters until event facts persist them"
+		);
+
 		Compilation example = DefinitionCompiler.compile(sources, functions, predicates);
-		check(example.valid(), "2D example data pack must compile: " + example.problems());
+		check(example.valid(), "3A example data pack must compile: " + example.problems());
 		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
 		check(snapshot.games().size() == 1, "example must register one game");
 		check(snapshot.fields().size() == 2, "example must register two fields");
-		check(snapshot.pages().size() == 12, "example must register preview, fixture, and readiness pages");
+		check(snapshot.pages().size() == 24, "example must register 2A-2D and player-terminal pages");
 		check(snapshot.tasks().size() == 3, "example must register the three-task 2D timeline");
 		check(snapshot.themes().size() == 1, "example must register one theme");
-		check(snapshot.definitionCount() == 42, "example definition count changed unexpectedly");
-		check(functions.size() == 26, "example callback and wrapper function count changed unexpectedly");
+		check(snapshot.playerRoutes().size() == 3, "example must register three player routes");
+		check(snapshot.playerData().size() == 17, "example must register seventeen player-data grants");
+		check(snapshot.playerActions().size() == 12, "example must register twelve player actions");
+		check(snapshot.definitionCount() == 86, "example definition count changed unexpectedly");
+		check(functions.size() == 27, "example callback and wrapper function count changed unexpectedly");
 		Identifier gameId = Identifier.fromNamespaceAndPath("pixel_tzz", "main");
 		Identifier warmupTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/warmup");
-		Identifier branchTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/main_branch");
 		Identifier timeoutTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/timeout_only");
 		Identifier warmupPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "warmup");
 		Identifier runningPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "running");
 		Identifier endedPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "ended");
 		var game = snapshot.games().get(gameId);
 		check(
-			game.apiVersion() == 2
+			game.apiVersion() == 3
 				&& game.taskTimeline().isPresent()
-				&& game.readiness().isPresent(),
-			"2D example must opt into API v2 tasks and player readiness"
+				&& game.readiness().isPresent()
+				&& game.playerTerminal().isPresent()
+				&& game.playerTerminal()
+					.orElseThrow()
+					.defaultPage()
+					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/home"))
+				&& game.playerTerminal().orElseThrow().historyEnabled()
+				&& game.playerTerminal().orElseThrow().historySource() == HistorySource.TASKS,
+			"3A example must opt into player readiness, tasks, terminal, and player history"
 		);
 		var timeline = game.taskTimeline().orElseThrow();
 		check(
@@ -2144,6 +2591,323 @@ public final class FoundationSelfCheck {
 				&& branchTask.results().get("timeout").route().endPhase().orElseThrow().equals(endedPhaseId)
 				&& timeoutTask.results().get("finished").route().endPhase().orElseThrow().equals(endedPhaseId),
 			"2D example task DAG must retain its warmup, success branch, and terminal routes"
+		);
+		check(
+			branchTask.events()
+				.stream()
+				.filter(event -> event.id().equals("terminal_activated"))
+				.findFirst()
+				.orElseThrow()
+				.playerHistory()
+				.isPresent()
+				&& branchTask.events()
+					.stream()
+					.filter(event -> event.id().equals("deadline_reached"))
+					.findFirst()
+					.orElseThrow()
+					.playerHistory()
+					.isPresent()
+				&& timeoutTask.events()
+					.stream()
+					.filter(event -> event.id().equals("deadline_reached"))
+					.findFirst()
+					.orElseThrow()
+					.playerHistory()
+					.isPresent(),
+			"3A example task events must explicitly opt into player history"
+		);
+		check(
+			snapshot.pages().keySet().containsAll(
+				Set.of(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/home"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_catalog"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_terminal"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_visibility"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_history"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_actions"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/history"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/history_detail"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/profile"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_runner"),
+					Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_hunter")
+				)
+			),
+			"3A example must retain all ordinary-player terminal and help-document pages"
+		);
+		List<NodeDefinition> helpNodes = new ArrayList<>();
+		collectNodes(
+			snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "player/help"))
+				.root(),
+			helpNodes
+		);
+		check(
+			helpNodes.stream().anyMatch(node -> node.type().name().equals("CAROUSEL")),
+			"3A example help entry must retain the document carousel"
+		);
+		for (
+			Identifier singleScreenPage : List.of(
+				Identifier.fromNamespaceAndPath("pixel_tzz", "player/home"),
+				Identifier.fromNamespaceAndPath("pixel_tzz", "player/help")
+			)
+		) {
+			List<NodeDefinition> pageNodes = new ArrayList<>();
+			collectNodes(snapshot.pages().get(singleScreenPage).root(), pageNodes);
+			check(
+				pageNodes.stream().noneMatch(node -> node.type().name().equals("SCROLL")),
+				"3A sample single-screen player page must not require full-page scrolling: "
+					+ singleScreenPage
+			);
+			check(
+				pageNodes.stream()
+					.filter(node -> node.content() instanceof ButtonContent)
+					.map(node -> (ButtonContent)node.content())
+					.noneMatch(button ->
+						button.action().type().name().equals("LOCAL")
+							&& button.action().name().filter("back"::equals).isPresent()
+					),
+				"3A sample single-screen player page must rely on shared stack navigation: "
+					+ singleScreenPage
+			);
+		}
+		List<NodeDefinition> profileNodes = new ArrayList<>();
+		var profilePage = snapshot.pages()
+			.get(Identifier.fromNamespaceAndPath("pixel_tzz", "player/profile"));
+		collectNodes(profilePage.root(), profileNodes);
+		Set<String> profileScrollIds = profileNodes.stream()
+			.filter(node -> node.type().name().equals("SCROLL"))
+			.flatMap(node -> node.id().stream())
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
+		check(
+			!profilePage.root().type().name().equals("SCROLL")
+				&& profileScrollIds.equals(
+					Set.of(
+						"profile_personal_data_scroll",
+						"profile_visible_content_scroll"
+					)
+			),
+			"3A profile may scroll only its two bounded body regions"
+		);
+		check(
+			!containsBoundFallback(
+				JsonParser.parseString(profilePage.canonicalDocument()),
+				"personal_meta/pixel_tzz:hunter_spawn/value_name",
+				"personal/pixel_tzz:hunter_spawn"
+			),
+			"profile must never expose an exclusive-choice machine value as the display-name fallback"
+		);
+		for (
+			Identifier taskPage : List.of(
+				Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_runner"),
+				Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_hunter")
+			)
+		) {
+			List<NodeDefinition> taskNodes = new ArrayList<>();
+			var page = snapshot.pages().get(taskPage);
+			collectNodes(page.root(), taskNodes);
+			check(
+				taskNodes.stream().noneMatch(node -> node.type().name().equals("PLAYER_HEAD")),
+				"task pages must use the shared terminal identity header instead of a duplicate avatar"
+			);
+			check(
+				!page.root().type().name().equals("SCROLL")
+					&& taskNodes.stream().filter(node -> node.type().name().equals("SCROLL")).count() == 3,
+				"task pages may scroll only their progress body and two standard-layout body regions"
+			);
+			check(
+				taskNodes.stream().allMatch(node -> node.responsive().isEmpty()),
+				"ordinary task pages must preserve one fixed composition instead of compact reflow"
+			);
+			NodeDefinition missionBoard = taskNodes.stream()
+				.filter(node -> node.id().filter(id -> id.endsWith("_mission_board")).isPresent())
+				.findFirst()
+				.orElseThrow();
+			var missionColumns = missionBoard.layout().columns();
+			check(
+				missionColumns.size() == 2
+					&& missionColumns.get(0).mode() == SizeMode.FIXED
+					&& missionColumns.get(0).value().orElseThrow() == 328.0
+					&& missionColumns.get(1).mode() == SizeMode.FIXED
+					&& missionColumns.get(1).value().orElseThrow() == 224.0
+					&& missionBoard.layout().columnGap().orElseThrow() == 8
+					&& missionBoard.layout().padding().left() == 4
+					&& missionBoard.layout().padding().right() == 4,
+				"task-page boards must keep two safe insets around the fixed 560-pixel content row"
+			);
+			String pagePrefix = taskPage.getPath().endsWith("task_runner")
+				? "runner"
+				: "hunter";
+			NodeDefinition progressLayout = taskNodes.stream()
+				.filter(node -> node.id().filter((pagePrefix + "_progress_layout")::equals).isPresent())
+				.findFirst()
+				.orElseThrow();
+			NodeDefinition standardLayout = taskNodes.stream()
+				.filter(node -> node.id().filter((pagePrefix + "_standard_layout")::equals).isPresent())
+				.findFirst()
+				.orElseThrow();
+			String standardDataId = pagePrefix.equals("runner")
+				? "runner_standard_run_data"
+				: "hunter_standard_spawn_data";
+			NodeDefinition standardData = taskNodes.stream()
+				.filter(node -> node.id().filter(standardDataId::equals).isPresent())
+				.findFirst()
+				.orElseThrow();
+			check(
+				progressLayout.layout().columnSpan().orElseThrow() == 2
+					&& progressLayout.visibleWhen().isPresent()
+					&& standardLayout.visibleWhen().isPresent()
+					&& standardData.visibleWhen().isPresent()
+					&& page.canonicalDocument().contains("\"literal\":\"pixel_tzz:acceptance/main_branch\""),
+				"the sample task pages must switch between standard and progress layouts by their registered task ID"
+			);
+			check(
+				List.of(progressLayout, standardLayout, standardData).stream().allMatch(node ->
+					node.layout().width().filter(width -> width.mode() == SizeMode.FILL).isPresent()
+						&& node.layout().height().filter(height -> height.mode() == SizeMode.FILL).isPresent()
+				),
+				"every conditional task card must be clamped to its assigned grid cell"
+			);
+			check(
+				page.canonicalDocument().contains("\"duration_ticks\"")
+					&& !page.canonicalDocument().contains("\"text\":\" tick\""),
+				"task pages must format authoritative ticks as player-readable time text"
+			);
+			NodeDefinition footerNavigation = taskNodes.stream()
+				.filter(node -> node.id().filter("terminal_footer_navigation"::equals).isPresent())
+				.findFirst()
+				.orElseThrow();
+			check(
+				footerNavigation.content() instanceof io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent children
+					&& !children.children().isEmpty()
+					&& children.children().size() <= 5
+					&& children.children().stream().allMatch(node ->
+						node.id().filter(id -> !id.isBlank()).isPresent()
+							&& node.content() instanceof ButtonContent button
+							&& button.action().type() == ActionType.REGISTERED
+							&& button.action().registeredAction().isPresent()
+					),
+				"task-page footer navigation must contain one to five stable registered buttons"
+			);
+			check(
+				!containsBoundFallback(
+					JsonParser.parseString(page.canonicalDocument()),
+					"personal_meta/pixel_tzz:hunter_spawn/value_name",
+					"personal/pixel_tzz:hunter_spawn"
+				),
+				"task pages must never expose an exclusive-choice machine value as the display-name fallback"
+			);
+		}
+		check(
+			!snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "player/history_detail"))
+				.canonicalDocument()
+				.contains("\"text\":\" tick\""),
+			"player history details must not expose raw tick units"
+		);
+		List<NodeDefinition> helpActionNodes = new ArrayList<>();
+		collectNodes(
+			snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "player/help_actions"))
+				.root(),
+			helpActionNodes
+		);
+		check(
+			helpActionNodes.stream()
+				.filter(node ->
+					node.id().filter("help_actions_acceptance_ping"::equals).isPresent()
+				)
+				.map(NodeDefinition::content)
+				.filter(ButtonContent.class::isInstance)
+				.map(ButtonContent.class::cast)
+				.anyMatch(button ->
+					button.action()
+						.registeredAction()
+						.filter(
+							Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_ping")::equals
+						)
+						.isPresent()
+				),
+			"3A example safety guide must retain the registered acceptance-function button"
+		);
+		check(
+			helpActionNodes.stream()
+				.noneMatch(node -> node.style().filter("ui_icon_red"::equals).isPresent()),
+			"the safety-guide article must not repeat its catalogue document icon"
+		);
+		List<NodeDefinition> historyNodes = new ArrayList<>();
+		collectNodes(
+			snapshot.pages()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "player/history"))
+				.root(),
+			historyNodes
+		);
+		check(
+			historyNodes.stream().filter(node -> node.type().name().equals("SCROLL")).count() == 2,
+			"3A history page must keep exactly two local scroll regions"
+		);
+		check(
+			historyNodes.stream()
+				.filter(node -> node.id().filter("history_open_detail"::equals).isPresent())
+				.map(NodeDefinition::content)
+				.filter(ButtonContent.class::isInstance)
+				.map(ButtonContent.class::cast)
+				.anyMatch(button ->
+					button.action().type().name().equals("HISTORY_DETAIL")
+				),
+			"3A example history list must expose the typed server-authoritative detail action"
+		);
+		check(
+			snapshot.playerRoutes()
+				.get(Identifier.fromNamespaceAndPath("pixel_tzz", "runner_task"))
+				.page()
+				.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_runner"))
+				&& snapshot.playerRoutes()
+					.get(Identifier.fromNamespaceAndPath("pixel_tzz", "hunter_task"))
+					.page()
+					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/task_hunter"))
+				&& snapshot.playerRoutes()
+					.get(Identifier.fromNamespaceAndPath("pixel_tzz", "ended_history"))
+					.page()
+					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/history")),
+			"3A example must retain runner, hunter, and ended-history routing"
+		);
+		check(
+			snapshot.playerData()
+				.keySet()
+				.containsAll(
+					Set.of(
+						Identifier.fromNamespaceAndPath("pixel_tzz", "player_role"),
+						Identifier.fromNamespaceAndPath("pixel_tzz", "player_life_state"),
+						Identifier.fromNamespaceAndPath("pixel_tzz", "hunter_spawn"),
+						Identifier.fromNamespaceAndPath("pixel_tzz", "current_task_name"),
+						Identifier.fromNamespaceAndPath("pixel_tzz", "main_branch_progress")
+					)
+				),
+			"3A example must retain identity, personal field, task, and progress grants"
+		);
+		check(
+			snapshot.playerActions()
+					.keySet()
+					.containsAll(
+						Set.of(
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help"),
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help_catalog"),
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help_terminal"),
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help_visibility"),
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help_history"),
+							Identifier.fromNamespaceAndPath("pixel_tzz", "open_help_actions")
+						)
+					)
+				&& snapshot.playerActions()
+					.get(Identifier.fromNamespaceAndPath("pixel_tzz", "open_help"))
+					.operation() instanceof PlayerOpenPageOperation
+				&& snapshot.playerActions()
+					.get(Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_ping"))
+					.operation() instanceof PlayerRunFunctionOperation functionOperation
+				&& functionOperation.function()
+					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance_3a/player/ping")),
+			"3A example must retain help navigation actions and the registered acceptance function"
 		);
 		check(
 			snapshot.phases()
@@ -2999,6 +3763,133 @@ public final class FoundationSelfCheck {
 		);
 	}
 
+	private static String personalMetadataDataJson(
+		final String game,
+		final String surface,
+		final boolean declareName
+	) {
+		String name = declareName
+			? ",\n  \"name\": {\"text\": \"路线偏好\"}"
+			: "";
+		return """
+			{
+			  "format_version": 1,
+			  "game": "%s",
+			  "source": {"type": "initialized"},
+			  "surfaces": ["%s"],
+			  "audience": {
+			    "exclude_host": true,
+			    "online_only": true
+			  }%s
+			}
+			""".formatted(game, surface, name);
+	}
+
+	private static String personalMetadataExclusiveDataJson(final String sourceType) {
+		return """
+			{
+			  "format_version": 1,
+			  "game": "pixel_tzz:main",
+			  "source": {
+			    "type": "%s",
+			    "id": "pixel_tzz:profile/route_choice"
+			  },
+			  "surfaces": ["terminal"],
+			  "audience": {
+			    "exclude_host": true,
+			    "online_only": true
+			  }
+			}
+			""".formatted(sourceType);
+	}
+
+	private static String personalMetadataExclusiveFieldJson() {
+		return """
+			{
+			  "format_version": 1,
+			  "game": "pixel_tzz:main",
+			  "version": 1,
+			  "name": {"text": "路线偏好"},
+			  "scope": "player",
+			  "type": "exclusive_choice",
+			  "required": true,
+			  "editable_by": "player",
+			  "invalidates_ready": false,
+			  "roles": ["pixel_tzz:runner"],
+			  "phases": ["pixel_tzz:setup"],
+			  "migration": "preserve",
+			  "reservation_scope": "game_instance",
+			  "release_when_role_mismatch": true,
+			  "show_occupant": false,
+			  "options": [
+			    {
+			      "value": "steady",
+			      "name": {"text": "稳健路线"},
+			      "description": {"text": "按计划推进。"}
+			    }
+			  ]
+			}
+			""";
+	}
+
+	private static String personalMetadataPageJson(final String binding) {
+		return """
+			{
+			  "format_version": 1,
+			  "game": "pixel_tzz:main",
+			  "title": {"text": "Personal metadata"},
+			  "theme": "pixel_tzz:control_console",
+			  "root": {
+			    "type": "text",
+			    "text": {"bind": "%s"}
+			  }
+			}
+			""".formatted(binding);
+	}
+
+	private static String personalMetadataProgressPageJson(final String binding) {
+		return """
+			{
+			  "format_version": 1,
+			  "game": "pixel_tzz:main",
+			  "title": {"text": "Personal metadata type"},
+			  "theme": "pixel_tzz:control_console",
+			  "root": {
+			    "type": "progress",
+			    "value": {"bind": "%s"},
+			    "min": {"literal": 0},
+			    "max": {"literal": 100}
+			  }
+			}
+			""".formatted(binding);
+	}
+
+	private static Source pixelTzzFixtureSource(
+		final DefinitionType type,
+		final String path,
+		final String json
+	) {
+		return new Source(
+			type,
+			Identifier.fromNamespaceAndPath("pixel_tzz", path),
+			Identifier.fromNamespaceAndPath(
+				"pixel_tzz",
+				"pixel_tzz_pro/" + type.directory() + "/" + path + ".json"
+			),
+			"personal-metadata-self-check",
+			json
+		);
+	}
+
+	private static List<Source> appendSources(
+		final List<Source> sources,
+		final Source... additions
+	) {
+		List<Source> result = new ArrayList<>(sources);
+		result.addAll(List.of(additions));
+		return List.copyOf(result);
+	}
+
 	private static Source source(
 		final DefinitionType type,
 		final String path,
@@ -3071,6 +3962,45 @@ public final class FoundationSelfCheck {
 		} else if (node.content() instanceof RepeatContent repeat) {
 			collectNodes(repeat.template(), output);
 		}
+	}
+
+	private static boolean containsBoundFallback(
+		final JsonElement value,
+		final String primaryBinding,
+		final String fallbackBinding
+	) {
+		if (value.isJsonObject()) {
+			var object = value.getAsJsonObject();
+			if (
+				object.has("bind")
+					&& object.get("bind").isJsonPrimitive()
+					&& object.get("bind").getAsString().equals(primaryBinding)
+					&& object.has("fallback")
+					&& object.get("fallback").isJsonObject()
+			) {
+				var fallback = object.getAsJsonObject("fallback");
+				if (
+					fallback.has("bind")
+						&& fallback.get("bind").isJsonPrimitive()
+						&& fallback.get("bind").getAsString().equals(fallbackBinding)
+				) {
+					return true;
+				}
+			}
+			return object.entrySet()
+				.stream()
+				.anyMatch(entry ->
+					containsBoundFallback(entry.getValue(), primaryBinding, fallbackBinding)
+				);
+		}
+		if (value.isJsonArray()) {
+			for (JsonElement element : value.getAsJsonArray()) {
+				if (containsBoundFallback(element, primaryBinding, fallbackBinding)) {
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	private static void checkProblem(

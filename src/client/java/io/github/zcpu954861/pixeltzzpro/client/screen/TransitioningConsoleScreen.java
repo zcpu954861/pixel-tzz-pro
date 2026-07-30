@@ -8,6 +8,7 @@ import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.wi
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState.RequestKind;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.ConsoleScreenViewport;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Motion;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.NavigationTransitionTimeline.Sample;
@@ -195,11 +196,14 @@ public abstract class TransitioningConsoleScreen extends Screen {
 		long now = Util.getMillis();
 		startMotionIfNeeded(now);
 		Sample current = sample(now);
+		ConsoleScreenViewport.Layout canvas = consoleCanvas();
 		graphics.pose().pushMatrix();
+		graphics.pose().translate(canvas.x(), canvas.y());
+		graphics.pose().scale((float)canvas.scale(), (float)canvas.scale());
 		if (current.scale() != 1.0F) {
-			graphics.pose().translate(this.width / 2.0F, this.height / 2.0F);
+			graphics.pose().translate(designWidth() / 2.0F, designHeight() / 2.0F);
 			graphics.pose().scale(current.scale(), current.scale());
-			graphics.pose().translate(-this.width / 2.0F, -this.height / 2.0F);
+			graphics.pose().translate(-designWidth() / 2.0F, -designHeight() / 2.0F);
 		}
 		graphics.pose().translate(current.translateX(), current.translateY());
 		return new NavigationFrame(current.veilAlpha());
@@ -217,15 +221,51 @@ public abstract class TransitioningConsoleScreen extends Screen {
 	}
 
 	protected final int transitionMouseX(final int mouseX) {
-		return navigationLocked() ? HIDDEN_MOUSE : mouseX;
+		return navigationLocked()
+			? HIDDEN_MOUSE
+			: (int)Math.floor(referenceMouseX(mouseX));
 	}
 
 	protected final int transitionMouseY(final int mouseY) {
-		return navigationLocked() ? HIDDEN_MOUSE : mouseY;
+		return navigationLocked()
+			? HIDDEN_MOUSE
+			: (int)Math.floor(referenceMouseY(mouseY));
+	}
+
+	protected final int designWidth() {
+		return ConsoleScreenViewport.REFERENCE_WIDTH;
+	}
+
+	protected final int designHeight() {
+		return ConsoleScreenViewport.REFERENCE_HEIGHT;
+	}
+
+	protected final double referenceMouseX(final double mouseX) {
+		return consoleCanvas().toReferenceX(mouseX);
+	}
+
+	protected final double referenceMouseY(final double mouseY) {
+		return consoleCanvas().toReferenceY(mouseY);
+	}
+
+	protected final MouseButtonEvent referenceMouseEvent(final MouseButtonEvent event) {
+		return new MouseButtonEvent(
+			referenceMouseX(event.x()),
+			referenceMouseY(event.y()),
+			event.buttonInfo()
+		);
 	}
 
 	protected final boolean navigationLocked() {
 		return this.motion != null;
+	}
+
+	/**
+	 * Built-in console surfaces are host-only unless a subclass explicitly represents an ordinary
+	 * player-terminal confirmation.
+	 */
+	boolean requiresCurrentHost() {
+		return true;
 	}
 
 	/**
@@ -270,12 +310,13 @@ public abstract class TransitioningConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(final MouseButtonEvent event, final boolean doubleClick) {
-		return interactionLocked() || super.mouseClicked(event, doubleClick);
+		return interactionLocked()
+			|| super.mouseClicked(referenceMouseEvent(event), doubleClick);
 	}
 
 	@Override
 	public boolean mouseReleased(final MouseButtonEvent event) {
-		return interactionLocked() || super.mouseReleased(event);
+		return interactionLocked() || super.mouseReleased(referenceMouseEvent(event));
 	}
 
 	@Override
@@ -284,7 +325,13 @@ public abstract class TransitioningConsoleScreen extends Screen {
 		final double deltaX,
 		final double deltaY
 	) {
-		return interactionLocked() || super.mouseDragged(event, deltaX, deltaY);
+		ConsoleScreenViewport.Layout canvas = consoleCanvas();
+		return interactionLocked()
+			|| super.mouseDragged(
+				referenceMouseEvent(event),
+				canvas.toReferenceLength(deltaX),
+				canvas.toReferenceLength(deltaY)
+			);
 	}
 
 	@Override
@@ -295,7 +342,12 @@ public abstract class TransitioningConsoleScreen extends Screen {
 		final double verticalAmount
 	) {
 		return interactionLocked()
-			|| super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
+			|| super.mouseScrolled(
+				referenceMouseX(mouseX),
+				referenceMouseY(mouseY),
+				horizontalAmount,
+				verticalAmount
+			);
 	}
 
 	@Override
@@ -359,9 +411,13 @@ public abstract class TransitioningConsoleScreen extends Screen {
 		return NavigationTransitionTimeline.sample(
 			this.motion,
 			Math.max(0L, now - this.motionStartedAt),
-			this.width,
+			designWidth(),
 			screenEffectScale()
 		);
+	}
+
+	private ConsoleScreenViewport.Layout consoleCanvas() {
+		return ConsoleScreenViewport.fit(this.width, this.height);
 	}
 
 	private double screenEffectScale() {

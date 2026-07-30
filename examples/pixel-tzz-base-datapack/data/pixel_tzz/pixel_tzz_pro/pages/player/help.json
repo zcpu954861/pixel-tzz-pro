@@ -1,0 +1,900 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "终端指南"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_terminal_help",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 14,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_manual_index",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "fixed",
+            "value": 56
+          }
+        },
+        "child": {
+          "type": "row",
+          "layout": {
+            "width": {
+              "mode": "fill"
+            },
+            "height": {
+              "mode": "fill"
+            },
+            "gap": 12,
+            "padding": {
+              "vertical": 9,
+              "horizontal": 13
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_brand",
+                  "text": {
+                    "text": "MANUAL LIBRARY / 指南索引"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "左右切换并选择要翻阅的内容"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "style": "utility_label",
+              "text": {
+                "text": "04 DOCUMENTS"
+              }
+            },
+            {
+              "type": "button",
+              "id": "help_open_catalog",
+              "style": "secondary_button",
+              "layout": {
+                "width": {
+                  "mode": "fixed",
+                  "value": 126
+                },
+                "height": {
+                  "mode": "fixed",
+                  "value": 32
+                }
+              },
+              "label": {
+                "text": "查看全部指南"
+              },
+              "action": {
+                "type": "registered",
+                "action": "pixel_tzz:open_help_catalog"
+              },
+              "events": {
+                "press": {
+                  "motion": "button_press",
+                  "sound": "button_press"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "type": "carousel",
+        "id": "help_documents",
+        "style": "ui_carousel",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          }
+        },
+        "children": [
+          {
+            "type": "card",
+            "id": "help_document_terminal",
+            "style": "ui_manual_stage",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 24,
+                "padding": {
+                  "vertical": 19,
+                  "horizontal": 42
+                },
+                "cross_align": "center"
+              },
+              "responsive": {
+                "compact": {
+                  "type": "column",
+                  "layout": {
+                    "gap": 9,
+                    "cross_align": "center"
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "card",
+                  "style": "ui_manual_cover_cyan",
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 142
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 184
+                    }
+                  },
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "height": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "padding": {
+                        "vertical": 22,
+                        "horizontal": 22
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_info",
+                        "text": {
+                          "text": "TERMINAL HANDBOOK"
+                        },
+                        "wrap": true,
+                        "max_lines": 3,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_manual_number_cyan",
+                        "text": {
+                          "text": "01"
+                        }
+                      },
+                      {
+                        "type": "spacer",
+                        "layout": {
+                          "height": {
+                            "mode": "weight",
+                            "value": 1
+                          }
+                        }
+                      },
+                      {
+                        "type": "divider",
+                        "style": "ui_divider_cyan",
+                        "direction": "horizontal",
+                        "thickness": 1
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_portal_title_info",
+                        "text": {
+                          "text": "终端基础"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "PIXEL TZZ PRO"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_info",
+                      "text": {
+                        "text": "TERMINAL BASICS / 终端基础"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "ui_portal_title_info",
+                      "text": {
+                        "text": "玩家终端怎么使用"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "认识首页、返回逻辑与同步提示，快速找到当前任务和本人可见的游戏内容。"
+                      },
+                      "wrap": true,
+                      "max_lines": 4,
+                      "overflow": "ellipsis"
+                    },
+                    {
+                      "type": "spacer",
+                      "layout": {
+                        "height": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "id": "help_open_terminal_guide",
+                      "style": "secondary_button",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 158
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 33
+                        }
+                      },
+                      "label": {
+                        "text": "翻阅这份指南"
+                      },
+                      "action": {
+                        "type": "registered",
+                        "action": "pixel_tzz:open_help_terminal"
+                      },
+                      "events": {
+                        "press": {
+                          "motion": "button_press",
+                          "sound": "button_press"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "id": "help_document_visibility",
+            "style": "ui_manual_stage",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 24,
+                "padding": {
+                  "vertical": 19,
+                  "horizontal": 42
+                },
+                "cross_align": "center"
+              },
+              "responsive": {
+                "compact": {
+                  "type": "column",
+                  "layout": {
+                    "gap": 9,
+                    "cross_align": "center"
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "card",
+                  "style": "ui_manual_cover_green",
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 142
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 184
+                    }
+                  },
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "height": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "padding": {
+                        "vertical": 22,
+                        "horizontal": 22
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_success",
+                        "text": {
+                          "text": "VISIBILITY HANDBOOK"
+                        },
+                        "wrap": true,
+                        "max_lines": 3,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_manual_number_green",
+                        "text": {
+                          "text": "02"
+                        }
+                      },
+                      {
+                        "type": "spacer",
+                        "layout": {
+                          "height": {
+                            "mode": "weight",
+                            "value": 1
+                          }
+                        }
+                      },
+                      {
+                        "type": "divider",
+                        "style": "runner_divider",
+                        "direction": "horizontal",
+                        "thickness": 1
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_portal_title_success",
+                        "text": {
+                          "text": "可见范围"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "PIXEL TZZ PRO"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_success",
+                      "text": {
+                        "text": "VISIBLE CONTENT / 可见内容"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "ui_portal_title_success",
+                      "text": {
+                        "text": "为什么每个人看到的不同"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "数据包按身份、阶段和任务决定公开范围；没有授权的内容不会先下载再隐藏。"
+                      },
+                      "wrap": true,
+                      "max_lines": 4,
+                      "overflow": "ellipsis"
+                    },
+                    {
+                      "type": "spacer",
+                      "layout": {
+                        "height": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "id": "help_open_visibility_guide",
+                      "style": "ui_button_success",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 158
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 33
+                        }
+                      },
+                      "label": {
+                        "text": "翻阅这份指南"
+                      },
+                      "action": {
+                        "type": "registered",
+                        "action": "pixel_tzz:open_help_visibility"
+                      },
+                      "events": {
+                        "press": {
+                          "motion": "button_press",
+                          "sound": "button_press"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "id": "help_document_history",
+            "style": "ui_manual_stage",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 24,
+                "padding": {
+                  "vertical": 19,
+                  "horizontal": 42
+                },
+                "cross_align": "center"
+              },
+              "responsive": {
+                "compact": {
+                  "type": "column",
+                  "layout": {
+                    "gap": 9,
+                    "cross_align": "center"
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "card",
+                  "style": "ui_manual_cover_gold",
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 142
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 184
+                    }
+                  },
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "height": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "padding": {
+                        "vertical": 22,
+                        "horizontal": 22
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_brand",
+                        "text": {
+                          "text": "EVENT ARCHIVE"
+                        },
+                        "wrap": true,
+                        "max_lines": 3,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_manual_number_gold",
+                        "text": {
+                          "text": "03"
+                        }
+                      },
+                      {
+                        "type": "spacer",
+                        "layout": {
+                          "height": {
+                            "mode": "weight",
+                            "value": 1
+                          }
+                        }
+                      },
+                      {
+                        "type": "divider",
+                        "style": "ui_divider_gold",
+                        "direction": "horizontal",
+                        "thickness": 1
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_portal_title_brand",
+                        "text": {
+                          "text": "事件回顾"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "PIXEL TZZ PRO"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_brand",
+                      "text": {
+                        "text": "EVENT ARCHIVE / 事件回顾"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "ui_portal_title_brand",
+                      "text": {
+                        "text": "回看本局已经发生的事"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "时间线只收录已发生且允许回顾的事件，详情会注明时刻、任务与触发者。"
+                      },
+                      "wrap": true,
+                      "max_lines": 4,
+                      "overflow": "ellipsis"
+                    },
+                    {
+                      "type": "spacer",
+                      "layout": {
+                        "height": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "id": "help_open_history_guide",
+                      "style": "primary_button",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 158
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 33
+                        }
+                      },
+                      "label": {
+                        "text": "翻阅这份指南"
+                      },
+                      "action": {
+                        "type": "registered",
+                        "action": "pixel_tzz:open_help_history"
+                      },
+                      "events": {
+                        "press": {
+                          "motion": "button_press",
+                          "sound": "button_press"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "id": "help_document_actions",
+            "style": "ui_manual_stage",
+            "layout": {
+              "width": {
+                "mode": "fill"
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "row",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 24,
+                "padding": {
+                  "vertical": 19,
+                  "horizontal": 42
+                },
+                "cross_align": "center"
+              },
+              "responsive": {
+                "compact": {
+                  "type": "column",
+                  "layout": {
+                    "gap": 9,
+                    "cross_align": "center"
+                  }
+                }
+              },
+              "children": [
+                {
+                  "type": "card",
+                  "style": "ui_manual_cover_red",
+                  "layout": {
+                    "width": {
+                      "mode": "fixed",
+                      "value": 142
+                    },
+                    "height": {
+                      "mode": "fixed",
+                      "value": 184
+                    }
+                  },
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "height": {
+                        "mode": "fill"
+                      },
+                      "gap": 6,
+                      "padding": {
+                        "vertical": 22,
+                        "horizontal": 22
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "text",
+                        "style": "ui_kicker_danger",
+                        "text": {
+                          "text": "ACTION SAFETY"
+                        },
+                        "wrap": true,
+                        "max_lines": 3,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "text",
+                        "style": "ui_manual_number_red",
+                        "text": {
+                          "text": "04"
+                        }
+                      },
+                      {
+                        "type": "spacer",
+                        "layout": {
+                          "height": {
+                            "mode": "weight",
+                            "value": 1
+                          }
+                        }
+                      },
+                      {
+                        "type": "divider",
+                        "style": "hunter_divider",
+                        "direction": "horizontal",
+                        "thickness": 1
+                      },
+                      {
+                        "type": "text",
+                        "style": "hunter_title",
+                        "text": {
+                          "text": "安全操作"
+                        }
+                      },
+                      {
+                        "type": "text",
+                        "style": "utility_label",
+                        "text": {
+                          "text": "PIXEL TZZ PRO"
+                        }
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "column",
+                  "layout": {
+                    "width": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 8
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_danger",
+                      "text": {
+                        "text": "SAFE ACTIONS / 安全操作"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "hunter_title",
+                      "text": {
+                        "text": "按钮执行前后会发生什么"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "rule_body",
+                      "text": {
+                        "text": "玩家按钮只调用预先注册的操作，服务端会再次检查页面、身份、次数与冷却。"
+                      },
+                      "wrap": true,
+                      "max_lines": 4,
+                      "overflow": "ellipsis"
+                    },
+                    {
+                      "type": "spacer",
+                      "layout": {
+                        "height": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "id": "help_open_actions_guide",
+                      "style": "danger_button",
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 158
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 33
+                        }
+                      },
+                      "label": {
+                        "text": "翻阅这份指南"
+                      },
+                      "action": {
+                        "type": "registered",
+                        "action": "pixel_tzz:open_help_actions"
+                      },
+                      "events": {
+                        "press": {
+                          "motion": "button_press",
+                          "sound": "button_press"
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,346 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "终端基础"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_help_terminal",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 9,
+      "padding": {
+        "vertical": 16,
+        "horizontal": 18
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "card",
+        "style": "ui_doc_cyan",
+        "child": {
+          "type": "row",
+          "layout": {
+            "gap": 12,
+            "padding": {
+              "vertical": 11,
+              "horizontal": 13
+            },
+            "cross_align": "center"
+          },
+          "children": [
+            {
+              "type": "text",
+              "style": "ui_icon_cyan",
+              "text": {
+                "text": "▤"
+              }
+            },
+            {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "weight",
+                  "value": 1
+                },
+                "gap": 3
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_info",
+                  "text": {
+                    "text": "GUIDE 01 / 终端基础"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "玩家终端怎么使用"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "玩家首页只保留最常用的内容：当前进程、任务入口、过去事件、个人信息与帮助。"
+                  },
+                  "wrap": true,
+                  "max_lines": 3,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "gap": 9,
+          "cross_align": "stretch"
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_article_main",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1.45
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 7,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "三步找到需要的内容"
+                  }
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_cyan",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_step_info",
+                      "text": {
+                        "text": "01"
+                      }
+                    },
+                    {
+                      "type": "column",
+                      "layout": {
+                        "gap": 2
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "progress_value",
+                          "text": {
+                            "text": "先看当前进程"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "rule_body",
+                          "text": {
+                            "text": "首页最上方把当前阶段和正在进行的任务放在一起。"
+                          },
+                          "wrap": true,
+                          "max_lines": 2,
+                          "overflow": "ellipsis"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_step_info",
+                      "text": {
+                        "text": "02"
+                      }
+                    },
+                    {
+                      "type": "column",
+                      "layout": {
+                        "gap": 2
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "progress_value",
+                          "text": {
+                            "text": "再进入对应页面"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "rule_body",
+                          "text": {
+                            "text": "任务、个人档案与回顾各自只展示一类信息，避免首页堆满细节。"
+                          },
+                          "wrap": true,
+                          "max_lines": 2,
+                          "overflow": "ellipsis"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "row",
+                  "layout": {
+                    "gap": 8,
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_step_info",
+                      "text": {
+                        "text": "03"
+                      }
+                    },
+                    {
+                      "type": "column",
+                      "layout": {
+                        "gap": 2
+                      },
+                      "children": [
+                        {
+                          "type": "text",
+                          "style": "progress_value",
+                          "text": {
+                            "text": "用外壳返回"
+                          }
+                        },
+                        {
+                          "type": "text",
+                          "style": "rule_body",
+                          "text": {
+                            "text": "终端统一提供返回和关闭，不需要在页面正文里寻找重复按钮。"
+                          },
+                          "wrap": true,
+                          "max_lines": 2,
+                          "overflow": "ellipsis"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_doc_cyan",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 7,
+                "padding": {
+                  "vertical": 10,
+                  "horizontal": 12
+                }
+              },
+              "children": [
+                {
+                  "type": "text",
+                  "style": "ui_kicker_info",
+                  "text": {
+                    "text": "SYNC BADGE / 同步提示"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "progress_value",
+                  "text": {
+                    "text": "只看右上角即可"
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "rule_body",
+                  "text": {
+                    "text": "「已同步」表示当前页面已经拿到最新服务端数据；正常的短暂请求不会用红字制造误会。"
+                  },
+                  "wrap": true,
+                  "max_lines": 5,
+                  "overflow": "ellipsis"
+                },
+                {
+                  "type": "spacer",
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  }
+                },
+                {
+                  "type": "text",
+                  "style": "utility_label",
+                  "text": {
+                    "text": "提示：普通终端可随时关闭；强制流程会使用另一套不可跳过的页面。"
+                  },
+                  "wrap": true,
+                  "max_lines": 4,
+                  "overflow": "ellipsis"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

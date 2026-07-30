@@ -2,7 +2,12 @@ package io.github.zcpu954861.pixeltzzpro;
 
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientConsoleState.RequestKind;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.ActivePage;
+import io.github.zcpu954861.pixeltzzpro.client.ClientPageState.PageStatus;
+import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState;
 import io.github.zcpu954861.pixeltzzpro.client.ClientTimelineState;
+import io.github.zcpu954861.pixeltzzpro.client.screen.DataDrivenPageScreen;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
@@ -10,6 +15,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPay
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload.ActionEntry;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ExclusiveChoiceMutationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.FlowActionC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
@@ -21,6 +27,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.Exc
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FieldSchema;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.FlowContext;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.PagePurpose;
+import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.TerminalContext;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PrepareOperationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ResourceReportC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
@@ -28,15 +35,26 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.StatefulRequest;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload.Intent;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalOpenC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContext;
+import io.github.zcpu954861.pixeltzzpro.ui.runtime.PageDocumentCache.Key;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
+import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.OptionalLong;
@@ -48,9 +66,9 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 
 /**
- * Small protocol-v10 codec and trust-boundary check without a test framework.
+ * Small protocol-v11 codec and trust-boundary check without a test framework.
  */
-public final class ProtocolV10SelfCheck {
+public final class ProtocolV11SelfCheck {
 	private static final UUID FLOW_INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000101");
 	private static final UUID PAGE_INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000102");
 	private static final UUID TOKEN = UUID.fromString("00000000-0000-0000-0000-000000000103");
@@ -58,11 +76,11 @@ public final class ProtocolV10SelfCheck {
 	private static final Identifier OPERATION = Identifier.parse("pixel_tzz:test_operation");
 	private static final Identifier FLOW = Identifier.parse("pixel_tzz:test_flow");
 
-	private ProtocolV10SelfCheck() {
+	private ProtocolV11SelfCheck() {
 	}
 
 	public static void main(final String[] args) {
-		check(NetworkProtocol.CURRENT_VERSION == 10, "exclusive live mutations require protocol v10");
+		check(NetworkProtocol.CURRENT_VERSION == 11, "player terminals require protocol v11");
 		checkSessionSnapshot();
 		checkStatefulRequests();
 		checkConfirmationPayloads();
@@ -71,15 +89,268 @@ public final class ProtocolV10SelfCheck {
 		checkFlowPayloads();
 		checkResourceReports();
 		checkForcedPagePayloads();
+		checkTerminalPayloads();
+		checkTerminalOpenFailureProjection();
+		checkTerminalInvalidationProjection();
+		checkTakeoverHostActionContract();
 		checkHostUiPayload();
 		checkHostSubtitlePayload();
 		checkTimelinePushSupersedesPendingResponse();
 		checkConsoleCommitResultSurvivesSessionPush();
+		checkHostConsoleProjectionRevoked();
+		checkHostConsoleSourceBoundary();
 		checkNoTargetReviewRemainsTargetless();
-		System.out.println("PROTOCOL_V10_SELF_CHECK=PASS");
+		System.out.println("PROTOCOL_V11_SELF_CHECK=PASS");
+	}
+
+	private static void checkTerminalInvalidationProjection() {
+		UUID terminalSession = UUID.fromString(
+			"00000000-0000-0000-0000-000000000108"
+		);
+		UUID pageInstance = UUID.fromString(
+			"00000000-0000-0000-0000-000000000109"
+		);
+		String message = "配置已重载，本次终端页面已失效。";
+		TerminalInvalidationS2CPayload invalidation = new TerminalInvalidationS2CPayload(
+			terminalSession,
+			pageInstance,
+			5L,
+			"definition_reloaded",
+			message
+		);
+		check(
+			roundTrip(TerminalInvalidationS2CPayload.STREAM_CODEC, invalidation)
+				.equals(invalidation),
+			"terminal invalidation codec round-trip failed"
+		);
+		expectRejected(
+			() -> new TerminalInvalidationS2CPayload(
+				terminalSession,
+				pageInstance,
+				5L,
+				"Definition Reloaded",
+				message
+			),
+			"terminal invalidation reason must be a stable local value"
+		);
+		expectRejected(
+			() -> new TerminalInvalidationS2CPayload(
+				terminalSession,
+				pageInstance,
+				5L,
+				"definition_reloaded",
+				" "
+			),
+			"terminal invalidation must provide a player-facing message"
+		);
+
+		ClientPageState.beginConnection();
+		ActivePage active = new ActivePage(
+			pageInstance,
+			3L,
+			5L,
+			null,
+			null,
+			Map.of(),
+			new Key(
+				3L,
+				Identifier.parse("pixel_tzz:terminal/home"),
+				"00".repeat(PageBundleS2CPayload.HASH_LENGTH)
+			),
+			null,
+			PagePurpose.NORMAL,
+			Optional.empty(),
+			Optional.of(new TerminalContext(terminalSession, 2L, 1, 11L, true)),
+			BindingContext.empty()
+		);
+		setStaticObject(ClientPageState.class, "activePage", active);
+		setStaticObject(ClientPageState.class, "pagePurpose", PagePurpose.NORMAL);
+		setStaticObject(ClientPageState.class, "pageStatus", PageStatus.READY);
+		setStaticObject(ClientPageState.class, "pageMessage", "");
+		setStaticObject(
+			ClientPageState.class,
+			"pendingTerminalOpenRequestSequence",
+			Long.valueOf(77L)
+		);
+
+		check(
+			!ClientPageState.acceptTerminalInvalidation(
+				new TerminalInvalidationS2CPayload(
+					terminalSession,
+					pageInstance,
+					4L,
+					"stale_projection",
+					"过期消息不得覆盖当前页面。"
+				)
+			),
+			"a stale terminal invalidation must be ignored"
+		);
+		check(
+			!ClientPageState.acceptTerminalInvalidation(
+				new TerminalInvalidationS2CPayload(
+					UUID.randomUUID(),
+					pageInstance,
+					5L,
+					"wrong_session",
+					"错误会话不得关闭当前页面。"
+				)
+			),
+			"an unrelated terminal session must not invalidate the current page"
+		);
+		check(
+			!ClientPageState.acceptTerminalInvalidation(
+				new TerminalInvalidationS2CPayload(
+					terminalSession,
+					UUID.randomUUID(),
+					5L,
+					"wrong_page",
+					"错误页面不得关闭当前页面。"
+				)
+			),
+			"an unrelated terminal page must not be invalidated"
+		);
+		check(
+			ClientPageState.activePage().isPresent()
+				&& ClientPageState.pageStatus() == PageStatus.READY,
+			"rejected terminal invalidations must preserve the current projection"
+		);
+
+		check(
+			ClientPageState.acceptTerminalInvalidation(invalidation),
+			"a matching non-stale terminal invalidation must be accepted"
+		);
+		check(
+			ClientPageState.activePage().isEmpty()
+				&& ClientPageState.pagePurpose() == PagePurpose.NORMAL
+				&& ClientPageState.pageStatus() == PageStatus.ERROR,
+			"a matching invalidation must release the page into a NORMAL safety state"
+		);
+		check(
+			ClientPageState.pageMessage().equals(message),
+			"terminal invalidation must preserve the exact server-authored Chinese message"
+		);
+		check(
+			!ClientPageState.terminalOpenPending(),
+			"terminal invalidation must clear pending terminal state"
+		);
+		check(
+			ClientPageState.closeActivePage()
+				&& ClientPageState.pagePurpose() == PagePurpose.PREVIEW
+				&& ClientPageState.pageStatus() == PageStatus.IDLE,
+			"the invalidated NORMAL safety page must remain closeable"
+		);
+	}
+
+	private static void checkTakeoverHostActionContract() {
+		try {
+			Field field = DataDrivenPageScreen.class.getDeclaredField("TAKEOVER_HOST_ACTION");
+			field.setAccessible(true);
+			ActionEntry action = (ActionEntry) field.get(null);
+			check(
+				action.operationType().equals("takeover_host")
+					&& action.operationId().equals(Identifier.parse("pixel-tzz-pro:host/takeover"))
+					&& action.section().equals("system")
+					&& action.order() == -100
+					&& action.labelJson().equals("{\"text\":\"接管主持人\"}")
+					&& action.descriptionJson()
+						.equals("{\"text\":\"以至少 2 级 OP 权限接管离线或失去控制的主持人。\"}")
+					&& action.color().equals("#E94F64")
+					&& action.enabled()
+					&& action.disabledReasonJson().isEmpty()
+					&& action.targetMode().equals("none")
+					&& action.minimumTargets() == 0
+					&& action.maximumTargets() == 0
+					&& action.requiresConfirmation(),
+				"the terminal takeover fallback must match the existing console operation contract"
+			);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not inspect terminal takeover fallback", error);
+		}
+	}
+
+	private static void checkTerminalOpenFailureProjection() {
+		long failedSequence = 601L;
+		String serverMessage = "当前世界尚未配置活动游戏，请先完成游戏初始化。";
+		ClientPageState.beginConnection();
+		setStaticObject(
+			ClientPageState.class,
+			"pendingTerminalOpenRequestSequence",
+			Long.valueOf(failedSequence)
+		);
+		setStaticObject(ClientPageState.class, "pagePurpose", PagePurpose.NORMAL);
+		setStaticObject(ClientPageState.class, "pageStatus", PageStatus.LOADING);
+		setStaticObject(ClientPageState.class, "pageMessage", "");
+
+		ClientPageState.acceptOperationResult(
+			new OperationResultS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				failedSequence,
+				OperationCode.DEFINITION_UNAVAILABLE,
+				serverMessage,
+				7L,
+				3L,
+				false
+			)
+		);
+		check(
+			!ClientPageState.terminalOpenPending(),
+			"a matching terminal-open failure must clear the pending request"
+		);
+		check(
+			ClientPageState.pageStatus() == PageStatus.ERROR,
+			"a matching terminal-open failure must end the NORMAL loading state"
+		);
+		check(
+			ClientPageState.pageMessage().equals(serverMessage),
+			"a matching terminal-open failure must preserve the exact server-authored message"
+		);
+
+		long successfulSequence = 602L;
+		ClientPageState.beginConnection();
+		setStaticObject(
+			ClientPageState.class,
+			"pendingTerminalOpenRequestSequence",
+			Long.valueOf(successfulSequence)
+		);
+		setStaticObject(ClientPageState.class, "pagePurpose", PagePurpose.NORMAL);
+		setStaticObject(ClientPageState.class, "pageStatus", PageStatus.LOADING);
+		setStaticObject(ClientPageState.class, "pageMessage", "");
+		ClientPageState.acceptOperationResult(
+			new OperationResultS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				successfulSequence,
+				OperationCode.SUCCESS,
+				"",
+				8L,
+				3L,
+				false
+			)
+		);
+		check(
+			ClientPageState.terminalOpenPending(),
+			"a successful terminal-open result must wait for the authoritative page bundle"
+		);
+		check(
+			ClientPageState.pagePurpose() == PagePurpose.NORMAL
+				&& ClientPageState.pageStatus() == PageStatus.LOADING,
+			"a successful terminal-open result must keep the NORMAL loading projection"
+		);
+
+		ClientPageState.disconnect();
+		check(
+			!ClientPageState.terminalOpenPending(),
+			"disconnect must clear a pending terminal-open request"
+		);
+		check(
+			ClientPageState.pagePurpose() == PagePurpose.PREVIEW
+				&& ClientPageState.pageStatus() == PageStatus.IDLE,
+			"disconnect must reset the terminal-open projection"
+		);
 	}
 
 	private static void checkConsoleCommitResultSurvivesSessionPush() {
+		ClientSessionState.beginConnection();
+		ClientSessionState.acceptSnapshot(sessionSnapshot(7L, 3L, true));
 		ClientConsoleState.beginConnection();
 		long prepareSequence = 41L;
 		long commitSequence = 42L;
@@ -154,6 +425,246 @@ public final class ProtocolV10SelfCheck {
 			"expected failures must prefer stable Chinese copy over raw authority diagnostics"
 		);
 		ClientConsoleState.disconnect();
+		ClientSessionState.disconnect();
+	}
+
+	private static void checkHostConsoleProjectionRevoked() {
+		ClientSessionState.beginConnection();
+		ClientSessionState.acceptSnapshot(sessionSnapshot(7L, 3L, true));
+		ClientConsoleState.beginConnection();
+		ClientConsoleState.acceptConsole(hostConsoleSnapshot(51L, 7L, 3L));
+		check(
+			ClientConsoleState.snapshot()
+				.filter(ConsoleSnapshotS2CPayload::currentPlayerHost)
+				.isPresent(),
+			"the fixture must begin with a host console projection"
+		);
+
+		setConsolePending(52L, RequestKind.TARGETS, OPERATION);
+		ClientConsoleState.acceptTargets(
+			new TargetSnapshotS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				52L,
+				"transfer_host",
+				OPERATION,
+				7L,
+				3L,
+				"single",
+				0,
+				0,
+				List.of()
+			)
+		);
+		check(
+			ClientConsoleState.targets().isPresent(),
+			"the fixture must retain host-only target metadata before demotion"
+		);
+
+		setStaticLong(ClientConsoleState.class, "nextRequestSequence", 73L);
+		long revisionBeforeDemotion = ClientConsoleState.revision();
+		SessionSnapshotS2CPayload demoted = sessionSnapshot(8L, 3L, false);
+		ClientSessionState.acceptSnapshot(demoted);
+		ClientConsoleState.acceptSessionProjection(demoted);
+		check(
+			ClientConsoleState.snapshot().isEmpty()
+				&& ClientConsoleState.targets().isEmpty(),
+			"losing host authority must immediately clear console and target projections"
+		);
+		check(
+			ClientConsoleState.revision() > revisionBeforeDemotion,
+			"host demotion must advance the observable console revision"
+		);
+		check(
+			staticLong(ClientConsoleState.class, "nextRequestSequence") == 73L,
+			"host demotion must not reset the connection-level console request sequence"
+		);
+
+		ClientSessionState.beginConnection();
+		ClientSessionState.acceptSnapshot(sessionSnapshot(8L, 3L, true));
+		ClientConsoleState.beginConnection();
+		ClientConsoleState.acceptConsole(hostConsoleSnapshot(53L, 8L, 3L));
+		String successMessage = "主持人已成功转交。";
+		setConsolePending(54L, RequestKind.COMMIT, OPERATION);
+		ClientConsoleState.acceptOperationResult(
+			new OperationResultS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				54L,
+				OperationCode.SUCCESS,
+				successMessage,
+				9L,
+				3L,
+				false
+			)
+		);
+		check(
+			ClientConsoleState.lastResult()
+				.filter(result -> result.successfulCommit(OPERATION))
+				.isPresent(),
+			"the fixture must settle the host-transfer COMMIT before demotion"
+		);
+		SessionSnapshotS2CPayload settledDemotion = sessionSnapshot(9L, 3L, false);
+		ClientSessionState.acceptSnapshot(settledDemotion);
+		ClientConsoleState.acceptSessionProjection(settledDemotion);
+		check(
+			ClientConsoleState.snapshot().isEmpty(),
+			"a settled transfer must still revoke the old host console projection"
+		);
+		check(
+			ClientConsoleState.lastResult()
+				.filter(result -> result.successfulCommit(OPERATION))
+				.isPresent()
+				&& ClientConsoleState.feedback().equals(successMessage)
+				&& !ClientConsoleState.feedbackError(),
+			"host demotion must preserve the already-settled correlated COMMIT result"
+		);
+		ClientConsoleState.disconnect();
+		ClientSessionState.disconnect();
+	}
+
+	private static ConsoleSnapshotS2CPayload hostConsoleSnapshot(
+		final long requestSequence,
+		final long stateRevision,
+		final long definitionGeneration
+	) {
+		return new ConsoleSnapshotS2CPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			requestSequence,
+			stateRevision,
+			definitionGeneration,
+			"ready",
+			"",
+			Optional.of(GAME),
+			Optional.of(Identifier.parse("pixel_tzz:setup")),
+			"{\"text\":\"全员逃走中\"}",
+			"{\"text\":\"设置\"}",
+			List.of(),
+			true,
+			true,
+			Optional.empty(),
+			List.of(),
+			List.of(
+				new ActionEntry(
+					"transfer_host",
+					OPERATION,
+					"primary",
+					0,
+					"{\"text\":\"转交主持人\"}",
+					"{\"text\":\"把主持权限转交给另一名玩家\"}",
+					"gold",
+					true,
+					"",
+					"single",
+					1,
+					1,
+					true
+				)
+			),
+			Optional.empty(),
+			Optional.empty(),
+			0L,
+			List.of()
+		);
+	}
+
+	private static void checkHostConsoleSourceBoundary() {
+		Path controlPath = Path.of(
+			"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
+				+ "ControlConsoleScreen.java"
+		);
+		String source;
+		try {
+			source = Files.readString(controlPath, StandardCharsets.UTF_8);
+		} catch (IOException error) {
+			throw new AssertionError("could not inspect the host-console client boundary", error);
+		}
+		String visibleConsole = methodSource(
+			source,
+			"private Optional<ConsoleSnapshotS2CPayload> visibleConsole("
+		);
+		check(
+			visibleConsole.contains("session.currentPlayerHost()")
+				&& !visibleConsole.contains("adminEligible()"),
+			"the host console permission view must depend only on currentPlayerHost"
+		);
+		String render = methodSource(source, "public void extractRenderState(");
+		check(
+			render.contains(
+				"Optional<ConsoleSnapshotS2CPayload> console = visibleConsole(snapshot);"
+			)
+				&& !render.contains("ClientConsoleState.snapshot()"),
+			"host-console rendering must consume the permission-filtered console view"
+		);
+
+		try {
+			String supervisor = Files.readString(
+				Path.of(
+					"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
+						+ "LivePageSupervisor.java"
+				),
+				StandardCharsets.UTF_8
+			);
+			check(
+				supervisor.contains(
+					"current instanceof TransitioningConsoleScreen console"
+				)
+					&& supervisor.contains("console.requiresCurrentHost()")
+					&& supervisor.contains(
+						"!ClientSessionState.snapshot().currentPlayerHost()"
+					)
+					&& supervisor.contains(
+						"ClientConsoleState.hostCommitResolutionPending()"
+					)
+					&& supervisor.contains("openPlayerTerminal(client, null)"),
+				"every host-only console child must leave cached administrator UI after demotion"
+			);
+			String recap = Files.readString(
+				Path.of(
+					"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
+						+ "RecapScreen.java"
+				),
+				StandardCharsets.UTF_8
+			);
+			String recapHostRequirement = methodSource(
+				recap,
+				"boolean requiresCurrentHost()"
+			);
+			check(
+				recapHostRequirement.contains("return false;"),
+				"participant recap must not be redirected through the host-only screen gate"
+			);
+			String confirmation = Files.readString(
+				Path.of(
+					"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
+						+ "OperationConfirmationScreen.java"
+				),
+				StandardCharsets.UTF_8
+			);
+			String affectedPlayers = Files.readString(
+				Path.of(
+					"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
+						+ "AffectedPlayersScreen.java"
+				),
+				StandardCharsets.UTF_8
+			);
+			check(
+				confirmation.contains(
+					"return !this.action.operationType().equals(\"player_action\")"
+				)
+					&& confirmation.contains(
+						"ClientPageState.isTerminalHostControlOperation("
+				)
+					&& affectedPlayers.contains(
+						"return !this.action.operationType().equals(\"player_action\");"
+					),
+				"ordinary-player and terminal host-control confirmations must remain usable after "
+					+ "host-only screen gating"
+			);
+		} catch (IOException error) {
+			throw new AssertionError(
+				"could not inspect host-console child-screen revocation",
+				error
+			);
+		}
 	}
 
 	private static void checkNoTargetReviewRemainsTargetless() {
@@ -221,12 +732,20 @@ public final class ProtocolV10SelfCheck {
 		final long stateRevision,
 		final long definitionGeneration
 	) {
+		return sessionSnapshot(stateRevision, definitionGeneration, true);
+	}
+
+	private static SessionSnapshotS2CPayload sessionSnapshot(
+		final long stateRevision,
+		final long definitionGeneration,
+		final boolean currentPlayerHost
+	) {
 		return new SessionSnapshotS2CPayload(
 			NetworkProtocol.CURRENT_VERSION,
 			Optional.empty(),
 			true,
 			true,
-			true,
+			currentPlayerHost,
 			true,
 			stateRevision,
 			1L,
@@ -308,6 +827,60 @@ public final class ProtocolV10SelfCheck {
 			field.setLong(null, value);
 		} catch (ReflectiveOperationException error) {
 			throw new AssertionError("could not prepare timeline response gate fixture", error);
+		}
+	}
+
+	private static long staticLong(
+		final Class<?> owner,
+		final String fieldName
+	) {
+		try {
+			Field field = owner.getDeclaredField(fieldName);
+			field.setAccessible(true);
+			return field.getLong(null);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not inspect static long fixture", error);
+		}
+	}
+
+	private static String methodSource(
+		final String source,
+		final String signature
+	) {
+		int start = source.indexOf(signature);
+		if (start < 0) {
+			throw new AssertionError("missing source method: " + signature);
+		}
+		int body = source.indexOf('{', start);
+		if (body < 0) {
+			throw new AssertionError("missing source method body: " + signature);
+		}
+		int depth = 0;
+		for (int index = body; index < source.length(); index++) {
+			char value = source.charAt(index);
+			if (value == '{') {
+				depth++;
+			} else if (value == '}') {
+				depth--;
+				if (depth == 0) {
+					return source.substring(start, index + 1);
+				}
+			}
+		}
+		throw new AssertionError("unterminated source method: " + signature);
+	}
+
+	private static void setStaticObject(
+		final Class<?> owner,
+		final String fieldName,
+		final Object value
+	) {
+		try {
+			Field field = owner.getDeclaredField(fieldName);
+			field.setAccessible(true);
+			field.set(null, value);
+		} catch (ReflectiveOperationException error) {
+			throw new AssertionError("could not prepare protocol projection fixture", error);
 		}
 	}
 
@@ -967,6 +1540,251 @@ public final class ProtocolV10SelfCheck {
 		check(
 			roundTrip(ForcedPageReleaseS2CPayload.STREAM_CODEC, release).equals(release),
 			"forced page release codec round-trip failed"
+		);
+	}
+
+	private static void checkTerminalPayloads() {
+		UUID terminalSession = UUID.fromString(
+			"00000000-0000-0000-0000-000000000105"
+		);
+		Identifier actionId = Identifier.parse("pixel-tzz-pro:system/takeover_host");
+		check(
+			Arrays.stream(TerminalIntentC2SPayload.class.getRecordComponents())
+				.noneMatch(component -> component.getName().equals("requestId")),
+			"terminal intent packets must not expose a client-selected persistent request UUID"
+		);
+		TerminalOpenC2SPayload open = new TerminalOpenC2SPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			7L
+		);
+		check(
+			roundTrip(TerminalOpenC2SPayload.STREAM_CODEC, open).equals(open),
+			"terminal open codec round-trip failed"
+		);
+
+		TerminalIntentC2SPayload action = new TerminalIntentC2SPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			terminalSession,
+			PAGE_INSTANCE,
+			3L,
+			5L,
+			2L,
+			8L,
+			Intent.ACTION,
+			Optional.of("takeover_host"),
+			Optional.of(actionId)
+		);
+		TerminalIntentC2SPayload decodedAction = roundTrip(
+			TerminalIntentC2SPayload.STREAM_CODEC,
+			action
+		);
+		check(
+			decodedAction.equals(action),
+			"terminal action codec round-trip failed"
+		);
+		TerminalIntentC2SPayload back = new TerminalIntentC2SPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			terminalSession,
+			PAGE_INSTANCE,
+			3L,
+			5L,
+			2L,
+			9L,
+			Intent.BACK,
+			Optional.empty(),
+			Optional.empty()
+		);
+		TerminalIntentC2SPayload decodedBack = roundTrip(
+			TerminalIntentC2SPayload.STREAM_CODEC,
+			back
+		);
+		check(
+			decodedBack.equals(back),
+			"terminal back codec round-trip failed"
+		);
+		TerminalIntentC2SPayload historyDetail = new TerminalIntentC2SPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			terminalSession,
+			PAGE_INSTANCE,
+			3L,
+			5L,
+			2L,
+			10L,
+			Intent.HISTORY_DETAIL,
+			Optional.of("open_history_detail"),
+			Optional.empty(),
+			Optional.of("task-instance/checkpoint/0")
+		);
+		check(
+			roundTrip(
+				TerminalIntentC2SPayload.STREAM_CODEC,
+				historyDetail
+			).equals(historyDetail),
+			"terminal history-detail codec round-trip failed"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				10L,
+				Intent.ACTION,
+				Optional.empty(),
+				Optional.of(actionId)
+			),
+			"terminal ACTION must require both stable IDs"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				10L,
+				Intent.REFRESH,
+				Optional.of("refresh"),
+				Optional.of(actionId)
+			),
+			"terminal REFRESH must forbid action IDs"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				10L,
+				Intent.HISTORY_DETAIL,
+				Optional.of("open_history_detail"),
+				Optional.empty(),
+				Optional.empty()
+			),
+			"terminal HISTORY_DETAIL must require an opaque record key"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				10L,
+				Intent.HISTORY_DETAIL,
+				Optional.of("open_history_detail"),
+				Optional.of(actionId),
+				Optional.of("task-instance/checkpoint/0")
+			),
+			"terminal HISTORY_DETAIL must forbid client-selected page/action IDs"
+		);
+		byte[] binding = """
+			{"viewer":{},"session":{},"flow":{},"fields":{},"flow_fields":{}}
+			""".strip().getBytes(StandardCharsets.UTF_8);
+		TerminalBindingDeltaS2CPayload delta = new TerminalBindingDeltaS2CPayload(
+			terminalSession,
+			PAGE_INSTANCE,
+			3L,
+			6L,
+			2L,
+			binding
+		);
+		TerminalBindingDeltaS2CPayload decodedDelta = roundTrip(
+			TerminalBindingDeltaS2CPayload.STREAM_CODEC,
+			delta
+		);
+		check(
+			decodedDelta.sessionId().equals(terminalSession)
+				&& decodedDelta.pageInstanceId().equals(PAGE_INSTANCE)
+				&& decodedDelta.generation() == 3L
+				&& decodedDelta.stateRevision() == 6L
+				&& decodedDelta.routeRevision() == 2L
+				&& Arrays.equals(decodedDelta.bindingJson(), binding),
+			"terminal binding delta codec round-trip failed"
+		);
+		expectRejected(
+			() -> new TerminalBindingDeltaS2CPayload(
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				6L,
+				2L,
+				new byte[0]
+			),
+			"terminal binding delta must not be empty"
+		);
+
+		byte[] pageHash = new byte[PageBundleS2CPayload.HASH_LENGTH];
+		byte[] themeHash = new byte[PageBundleS2CPayload.HASH_LENGTH];
+		PageBundleS2CPayload normal = new PageBundleS2CPayload(
+			PAGE_INSTANCE,
+			3L,
+			5L,
+			Identifier.parse("pixel_tzz:terminal/home"),
+			Identifier.parse("pixel_tzz:control_console"),
+			pageHash,
+			"{}".getBytes(StandardCharsets.UTF_8),
+			themeHash,
+			"{}".getBytes(StandardCharsets.UTF_8),
+			List.of(),
+			PagePurpose.NORMAL,
+			Optional.empty(),
+			Optional.of(new TerminalContext(terminalSession, 2L, 1, 11L, true)),
+			binding
+		);
+		PageBundleS2CPayload decodedNormal = roundTrip(
+			PageBundleS2CPayload.STREAM_CODEC,
+			normal
+		);
+		check(
+			decodedNormal.purpose() == PagePurpose.NORMAL
+				&& decodedNormal.flowContext().isEmpty()
+				&& decodedNormal.terminalContext().equals(normal.terminalContext()),
+			"normal terminal bundle context round-trip failed"
+		);
+		expectRejected(
+			() -> new PageBundleS2CPayload(
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				Identifier.parse("pixel_tzz:terminal/home"),
+				Identifier.parse("pixel_tzz:control_console"),
+				pageHash,
+				"{}".getBytes(StandardCharsets.UTF_8),
+				themeHash,
+				"{}".getBytes(StandardCharsets.UTF_8),
+				List.of(),
+				PagePurpose.NORMAL,
+				Optional.empty(),
+				Optional.empty(),
+				binding
+			),
+			"normal terminal pages must require terminal context"
+		);
+		expectRejected(
+			() -> new PageBundleS2CPayload(
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				Identifier.parse("pixel_tzz:terminal/home"),
+				Identifier.parse("pixel_tzz:control_console"),
+				pageHash,
+				"{}".getBytes(StandardCharsets.UTF_8),
+				themeHash,
+				"{}".getBytes(StandardCharsets.UTF_8),
+				List.of(),
+				PagePurpose.PREVIEW,
+				Optional.empty(),
+				Optional.of(new TerminalContext(terminalSession, 2L, 1, 11L, false)),
+				binding
+			),
+			"preview pages must forbid terminal context"
 		);
 	}
 

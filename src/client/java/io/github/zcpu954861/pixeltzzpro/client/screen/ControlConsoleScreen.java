@@ -57,6 +57,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	private ConsoleButton actionButton;
 	private ConsoleButton catalogButton;
 	private ConsoleButton rosterButton;
+	private final Screen terminalReturnScreen;
 	private final List<ConsoleButton> quickActionButtons = new ArrayList<>();
 	private long observedConsoleRevision = Long.MIN_VALUE;
 	private String widgetLayoutKey = "";
@@ -66,13 +67,14 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 
 	public ControlConsoleScreen(final Screen parent) {
 		super(Component.translatable("pixel_tzz_pro.menu.open"), parent, Motion.ROOT_ENTER);
+		this.terminalReturnScreen = parent;
 	}
 
 	@Override
 	protected void init() {
 		Snapshot session = ClientSessionState.snapshot();
 		if (
-			(session.adminEligible() || session.currentPlayerHost())
+			session.currentPlayerHost()
 				&& !ClientConsoleState.pending()
 		) {
 			ClientConsoleState.requestConsole();
@@ -84,10 +86,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		this.clearWidgets();
 		this.quickActionButtons.clear();
 		Snapshot session = ClientSessionState.snapshot();
-		Optional<ConsoleSnapshotS2CPayload> console =
-			session.adminEligible() || session.currentPlayerHost()
-				? ClientConsoleState.snapshot()
-				: Optional.empty();
+		Optional<ConsoleSnapshotS2CPayload> console = visibleConsole(session);
 		int panelX = panelX();
 		int panelY = panelY();
 		int panelWidth = panelWidth();
@@ -262,10 +261,14 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		if (navigationLocked()) {
 			return;
 		}
+		Snapshot session = ClientSessionState.snapshot();
+		if (!session.currentPlayerHost()) {
+			LivePageSupervisor.openPlayerTerminal(this.minecraft, this.terminalReturnScreen);
+			return;
+		}
 		long revision = ClientConsoleState.revision();
 		if (this.observedConsoleRevision != revision) {
 			this.observedConsoleRevision = revision;
-			Snapshot session = ClientSessionState.snapshot();
 			Optional<ConsoleSnapshotS2CPayload> console = visibleConsole(session);
 			if (!this.widgetLayoutKey.equals(widgetLayoutKey(session, console))) {
 				rebuildConsoleWidgets();
@@ -276,7 +279,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private Optional<ConsoleSnapshotS2CPayload> visibleConsole(final Snapshot session) {
-		return session.adminEligible() || session.currentPlayerHost()
+		return session.currentPlayerHost()
 			? ClientConsoleState.snapshot()
 			: Optional.empty();
 	}
@@ -309,7 +312,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private void dispatchQuickAction(final int index) {
-		ClientConsoleState.snapshot()
+		visibleConsole(ClientSessionState.snapshot())
 			.map(ControlConsoleScreen::contextQuickActions)
 			.filter(actions -> index >= 0 && index < actions.size())
 			.map(actions -> actions.get(index))
@@ -375,7 +378,9 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private void openPrimaryAction() {
-		ConsoleSnapshotS2CPayload console = ClientConsoleState.snapshot().orElse(null);
+		ConsoleSnapshotS2CPayload console = visibleConsole(
+			ClientSessionState.snapshot()
+		).orElse(null);
 		if (console == null) {
 			return;
 		}
@@ -403,7 +408,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		NavigationFrame transition = beginNavigationFrame(graphics);
 		try {
 			Snapshot snapshot = ClientSessionState.snapshot();
-			Optional<ConsoleSnapshotS2CPayload> console = ClientConsoleState.snapshot();
+			Optional<ConsoleSnapshotS2CPayload> console = visibleConsole(snapshot);
 			int panelX = panelX();
 			int panelY = panelY();
 			int panelWidth = panelWidth();
@@ -908,7 +913,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		final Optional<ConsoleSnapshotS2CPayload> console
 	) {
 		return console.isEmpty()
-			&& (snapshot.adminEligible() || snapshot.currentPlayerHost())
+			&& snapshot.currentPlayerHost()
 			&& ClientConsoleState.pending();
 	}
 
@@ -1435,11 +1440,11 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelWidth() {
-		return Math.max(1, Math.min(620, this.width - 12));
+		return Math.max(1, Math.min(620, designWidth() - 12));
 	}
 
 	private int panelHeight() {
-		return Math.max(1, Math.min(330, this.height - 12));
+		return Math.max(1, Math.min(330, designHeight() - 12));
 	}
 
 	private int footerHeight() {
@@ -1447,11 +1452,11 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private int panelX() {
-		return (this.width - panelWidth()) / 2;
+		return (designWidth() - panelWidth()) / 2;
 	}
 
 	private int panelY() {
-		return (this.height - panelHeight()) / 2;
+		return (designHeight() - panelHeight()) / 2;
 	}
 
 	@Override

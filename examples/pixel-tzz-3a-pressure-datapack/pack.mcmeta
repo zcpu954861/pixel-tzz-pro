@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": {
+      "text": "Pixel TZZ Pro 3A 人工压力验收覆盖包",
+      "color": "aqua"
+    },
+    "min_format": [107, 1],
+    "max_format": [107, 1]
+  }
+}

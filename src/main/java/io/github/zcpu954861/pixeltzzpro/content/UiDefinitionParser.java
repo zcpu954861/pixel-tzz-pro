@@ -29,6 +29,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConditionOperator;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.CrossAlign;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Direction;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.DividerContent;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.DurationTicksText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.Easing;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.EventBinding;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ExistsCondition;
@@ -135,7 +136,9 @@ public final class UiDefinitionParser {
 		"dossier",
 		"target",
 		"broadcast",
-		"warning"
+		"warning",
+		"portal",
+		"manual"
 	);
 	private static final Set<String> ACCENT_EDGES = Set.of("none", "left", "top", "right", "bottom");
 	private static final Set<String> STYLE_PROPERTIES = Set.of(
@@ -156,6 +159,7 @@ public final class UiDefinitionParser {
 		"opacity",
 		"shadow",
 		"navigation_arrows",
+		"obfuscated",
 		"frame_style",
 		"accent_edge",
 		"arrow_travel",
@@ -188,6 +192,7 @@ public final class UiDefinitionParser {
 		"viewer.life_state",
 		"viewer.life_state_name",
 		"viewer.ready",
+		"viewer.initialized",
 		"session.game",
 		"session.game_name",
 		"session.phase",
@@ -203,6 +208,84 @@ public final class UiDefinitionParser {
 		"flow.total",
 		"flow.remaining",
 		"flow.percent",
+		"terminal.connected",
+		"terminal.loading",
+		"terminal.history_enabled",
+		"terminal.page",
+		"terminal.route",
+		"terminal.status",
+		"task.exists",
+		"task.paused",
+		"task.id",
+		"task.name",
+		"task.description",
+		"task.status",
+		"task.result",
+		"task.elapsed_ticks",
+		"task.remaining_ticks",
+		"task.duration_ticks",
+		"task.progress",
+		"task.progress_min",
+		"task.progress_max",
+		"task.statistics",
+		"history.enabled",
+		"history.empty",
+		"history.count",
+		"history.source",
+		"history.items",
+		"detail.exists",
+		"detail.status",
+		"detail.id",
+		"detail.title",
+		"detail.summary",
+		"detail.source",
+		"detail.source_name",
+		"detail.event_count",
+		"detail.category",
+		"detail.color",
+		"detail.icon",
+		"detail.game_time",
+		"detail.task_time",
+		"detail.game_time_ticks",
+		"detail.task_time_ticks",
+		"detail.game_time_text",
+		"detail.task_time_text",
+		"detail.task",
+		"detail.task_name",
+		"detail.actor.uuid",
+		"detail.actor.name",
+		"detail.targets",
+		"detail.statistics",
+		"detail.result",
+		"detail.details",
+		"detail.metadata",
+		"detail.detail_available",
+		"item.id",
+		"item.title",
+		"item.summary",
+		"item.source",
+		"item.source_name",
+		"item.event_count",
+		"item.category",
+		"item.color",
+		"item.icon",
+		"item.game_time",
+		"item.task_time",
+		"item.game_time_ticks",
+		"item.task_time_ticks",
+		"item.game_time_text",
+		"item.task_time_text",
+		"item.task",
+		"item.task_name",
+		"item.actor.uuid",
+		"item.actor.name",
+		"item.targets",
+		"item.statistics",
+		"item.result",
+		"item.details",
+		"item.detail_available",
+		"item.label",
+		"item.value",
 		"item.uuid",
 		"item.name",
 		"item.online",
@@ -214,7 +297,8 @@ public final class UiDefinitionParser {
 		"item.team_name",
 		"item.life_state",
 		"item.life_state_name",
-		"item.ready"
+		"item.ready",
+		"item.initialized"
 	);
 	private static final Set<String> LOCAL_ACTIONS = Set.of(
 		"back",
@@ -354,6 +438,21 @@ public final class UiDefinitionParser {
 					: parseTextTemplate(fallbackElement, pointer + "/fallback", itemScope);
 				return parsed == null ? null : new BoundText(parsed, Optional.ofNullable(fallback));
 			}
+			if (object.has("duration_ticks")) {
+				Reader reader = new Reader(object, pointer, this.issues);
+				JsonElement ticksElement = reader.requiredElement("duration_ticks");
+				JsonElement fallbackElement = reader.optionalElement("fallback");
+				reader.finish();
+				ValueExpression ticks = ticksElement == null
+					? null
+					: parseValue(ticksElement, pointer + "/duration_ticks", itemScope);
+				TextTemplate fallback = fallbackElement == null
+					? null
+					: parseTextTemplate(fallbackElement, pointer + "/fallback", itemScope);
+				return ticks == null
+					? null
+					: new DurationTicksText(ticks, Optional.ofNullable(fallback));
+			}
 			if (object.has("concat")) {
 				Reader reader = new Reader(object, pointer, this.issues);
 				JsonArray array = reader.requiredArray("concat");
@@ -469,6 +568,12 @@ public final class UiDefinitionParser {
 			if (path.startsWith("flow/fields/")) {
 				return validateNamespacedBinding(path, "flow/fields/", pointer);
 			}
+			if (path.startsWith("personal/")) {
+				return validateNamespacedBinding(path, "personal/", pointer);
+			}
+			if (path.startsWith("personal_meta/")) {
+				return validatePersonalMetadataBinding(path, pointer);
+			}
 			if (path.startsWith("ui/")) {
 				String[] segments = path.split("/", -1);
 				if (
@@ -503,6 +608,38 @@ public final class UiDefinitionParser {
 			String rawId = path.substring(prefix.length());
 			if (parseIdentifier(rawId) == null) {
 				add("INVALID_IDENTIFIER", pointer, "binding field must be explicitly namespaced");
+				return null;
+			}
+			return new BindingValue(path);
+		}
+
+		private BindingValue validatePersonalMetadataBinding(
+			final String path,
+			final String pointer
+		) {
+			String suffix = path.substring("personal_meta/".length());
+			int propertySeparator = suffix.lastIndexOf('/');
+			String property = propertySeparator < 0
+				? ""
+				: suffix.substring(propertySeparator + 1);
+			if (
+				propertySeparator <= 0
+					|| (!property.equals("name") && !property.equals("value_name"))
+			) {
+				add(
+					"UNKNOWN_BINDING",
+					pointer,
+					"personal metadata exposes only the /name and /value_name properties"
+				);
+				return null;
+			}
+			String rawId = suffix.substring(0, propertySeparator);
+			if (parseIdentifier(rawId) == null) {
+				add(
+					"INVALID_IDENTIFIER",
+					pointer,
+					"personal metadata identifier must be explicitly namespaced"
+				);
 				return null;
 			}
 			return new BindingValue(path);
@@ -681,12 +818,16 @@ public final class UiDefinitionParser {
 					"TYPE_MISMATCH",
 					pointer,
 					property.equals("frame_style")
-						? "frame_style must be plain, rail, dossier, target, broadcast, or warning"
+						? "frame_style must be plain, rail, dossier, target, broadcast, warning, portal, or manual"
 						: "accent_edge must be none, left, top, right, or bottom"
 				);
 				return false;
 			}
-			if (property.equals("shadow") || property.equals("navigation_arrows")) {
+			if (
+				property.equals("shadow")
+					|| property.equals("navigation_arrows")
+					|| property.equals("obfuscated")
+			) {
 				if (value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) {
 					return true;
 				}
@@ -811,7 +952,7 @@ public final class UiDefinitionParser {
 			reader.finish();
 			NodeDefinition node = rootNode == null
 				? null
-				: parseNode(rootNode, "/root", null, true, false, 1);
+				: parseNode(rootNode, "/root", null, true, false, false, 1);
 			if (game == null || title == null || theme == null || node == null) {
 				return null;
 			}
@@ -855,6 +996,7 @@ public final class UiDefinitionParser {
 			final NodeType parentType,
 			final boolean rootNode,
 			final boolean itemScope,
+			final boolean historyItemScope,
 			final int depth
 		) {
 			this.nodeCount++;
@@ -895,7 +1037,14 @@ public final class UiDefinitionParser {
 			);
 			NodeContent content = type == null
 				? null
-				: parseNodeContent(reader, type, pointer, itemScope, depth);
+				: parseNodeContent(
+					reader,
+					type,
+					pointer,
+					itemScope,
+					historyItemScope,
+					depth
+				);
 			reader.finish();
 			if (type == null || content == null) {
 				return null;
@@ -919,16 +1068,18 @@ public final class UiDefinitionParser {
 			final NodeType type,
 			final String pointer,
 			final boolean itemScope,
+			final boolean historyItemScope,
 			final int depth
 		) {
 			return switch (type) {
-				case ROW, COLUMN, GRID, FLOW, OVERLAY -> {
+				case ROW, COLUMN, GRID, FLOW, OVERLAY, CAROUSEL -> {
 					JsonArray childrenArray = reader.requiredArray("children");
 					List<NodeDefinition> children = parseChildren(
 						childrenArray,
 						pointer + "/children",
 						type,
 						itemScope,
+						historyItemScope,
 						depth + 1
 					);
 					if (type == NodeType.GRID) {
@@ -948,6 +1099,17 @@ public final class UiDefinitionParser {
 							}
 						}
 					}
+					if (type == NodeType.CAROUSEL) {
+						for (NodeDefinition child : children) {
+							if (child.id().isEmpty()) {
+								add(
+									"MISSING_KEY",
+									child.pointer() + "/id",
+									"carousel direct children require stable ids"
+								);
+							}
+						}
+					}
 					yield new ChildrenContent(children);
 				}
 				case SCROLL -> {
@@ -956,7 +1118,15 @@ public final class UiDefinitionParser {
 					JsonObject childObject = reader.requiredObject("child");
 					NodeDefinition child = childObject == null
 						? null
-						: parseNode(childObject, pointer + "/child", type, false, itemScope, depth + 1);
+						: parseNode(
+							childObject,
+							pointer + "/child",
+							type,
+							false,
+							itemScope,
+							historyItemScope,
+							depth + 1
+						);
 					yield child == null
 						? null
 						: new SingleChildContent(child, Optional.ofNullable(direction), showScrollbar);
@@ -965,7 +1135,15 @@ public final class UiDefinitionParser {
 					JsonObject childObject = reader.requiredObject("child");
 					NodeDefinition child = childObject == null
 						? null
-						: parseNode(childObject, pointer + "/child", type, false, itemScope, depth + 1);
+						: parseNode(
+							childObject,
+							pointer + "/child",
+							type,
+							false,
+							itemScope,
+							historyItemScope,
+							depth + 1
+						);
 					yield child == null
 						? null
 						: new SingleChildContent(child, Optional.empty(), false);
@@ -1044,7 +1222,11 @@ public final class UiDefinitionParser {
 					JsonObject actionObject = reader.requiredObject("action");
 					UiAction action = actionObject == null
 						? null
-						: parseAction(actionObject, pointer + "/action");
+						: parseAction(
+							actionObject,
+							pointer + "/action",
+							historyItemScope
+						);
 					yield label == null || action == null
 						? null
 						: new ButtonContent(
@@ -1128,9 +1310,20 @@ public final class UiDefinitionParser {
 						);
 					}
 					JsonObject templateObject = reader.requiredObject("template");
+					boolean historyTemplate =
+						items instanceof BindingValue binding
+							&& binding.path().equals("history.items");
 					NodeDefinition template = templateObject == null
 						? null
-						: parseNode(templateObject, pointer + "/template", type, false, true, depth + 1);
+						: parseNode(
+							templateObject,
+							pointer + "/template",
+							type,
+							false,
+							true,
+							historyTemplate,
+							depth + 1
+						);
 					yield items == null || key == null || template == null
 						? null
 						: new RepeatContent(items, key, maximumItems, estimatedHeight, template);
@@ -1176,6 +1369,7 @@ public final class UiDefinitionParser {
 			final String pointer,
 			final NodeType parent,
 			final boolean itemScope,
+			final boolean historyItemScope,
 			final int depth
 		) {
 			if (array == null) {
@@ -1201,6 +1395,7 @@ public final class UiDefinitionParser {
 					parent,
 					false,
 					itemScope,
+					historyItemScope,
 					depth
 				);
 				if (child != null) {
@@ -1282,8 +1477,16 @@ public final class UiDefinitionParser {
 			columnSpan
 				.filter(value -> value < 1)
 				.ifPresent(value -> add("OUT_OF_RANGE", pointer + "/column_span", "column_span must be positive"));
-			if ((anchor.isPresent() || offsetX.isPresent() || offsetY.isPresent()) && parentType != NodeType.OVERLAY) {
-				add("INVALID_LAYOUT", pointer, "anchor and offsets are only valid on overlay children");
+			if (
+				(anchor.isPresent() || offsetX.isPresent() || offsetY.isPresent())
+					&& parentType != NodeType.OVERLAY
+					&& parentType != NodeType.CAROUSEL
+			) {
+				add(
+					"INVALID_LAYOUT",
+					pointer,
+					"anchor and offsets are only valid on overlay or carousel children"
+				);
 			}
 			validateOffset(offsetX, pointer + "/offset_x");
 			validateOffset(offsetY, pointer + "/offset_y");
@@ -1539,7 +1742,11 @@ public final class UiDefinitionParser {
 			return Map.copyOf(result);
 		}
 
-		private UiAction parseAction(final JsonObject object, final String pointer) {
+		private UiAction parseAction(
+			final JsonObject object,
+			final String pointer,
+			final boolean historyItemScope
+		) {
 			Reader reader = new Reader(object, pointer, this.issues);
 			ActionType type = reader.requiredEnum("type", ActionType.class);
 			Optional<String> name = Optional.empty();
@@ -1556,6 +1763,12 @@ public final class UiDefinitionParser {
 				if (registered.isEmpty()) {
 					add("MISSING_KEY", pointer + "/action", "registered action ID is required");
 				}
+			} else if (type == ActionType.HISTORY_DETAIL && !historyItemScope) {
+				add(
+					"UNSUPPORTED_COMBINATION",
+					pointer,
+					"history_detail is only allowed inside a Repeat template bound to history.items"
+				);
 			}
 			reader.finish();
 			return type == null ? null : new UiAction(type, name, registered);

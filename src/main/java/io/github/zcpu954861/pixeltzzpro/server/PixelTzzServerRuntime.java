@@ -32,10 +32,14 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.SelectionMode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTaskState;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
 import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.AssetReference;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ActionType;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.BindingValue;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ButtonContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ChildrenContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.FieldInputContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.NodeDefinition;
@@ -78,6 +82,10 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2S
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.FlowCompletionStatus;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload.Target;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalOpenC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Accepted;
@@ -100,6 +108,15 @@ import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.PanelActionAu
 import io.github.zcpu954861.pixeltzzpro.server.ForcedFlowAuthority.PredicateContext;
 import io.github.zcpu954861.pixeltzzpro.server.HostAuthority.Actor;
 import io.github.zcpu954861.pixeltzzpro.server.HostAuthority.OnlineTarget;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.ActionRequest;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.ConfirmedRequest;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.ExecutionResult;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.Finalization;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.Preparation;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.PreparedAction;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.PushPage;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.RunFunction;
+import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.SessionAuthorization;
 import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.ApprovalContext;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration;
@@ -121,6 +138,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReadinessInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -168,6 +186,16 @@ public final class PixelTzzServerRuntime {
 	private static final Map<UUID, Integer> LAST_TIMELINE_VIEW_REQUEST_TICK = new HashMap<>();
 	// ponytail: 2B permits one preview per player; replace this map with a page stack when real nested flows arrive.
 	private static final Map<UUID, PreviewPageInstance> PREVIEW_INSTANCES = new HashMap<>();
+	private static final PlayerTerminalSessions PLAYER_TERMINAL_SESSIONS =
+		new PlayerTerminalSessions();
+	private static final ControlRequestGate TERMINAL_OPEN_REQUEST_GATE =
+		new ControlRequestGate();
+	private static final Map<UUID, String> LAST_TERMINAL_BINDING_HASHES =
+		new HashMap<>();
+	private static final Map<UUID, PendingPlayerActionConfirmation>
+		PLAYER_ACTION_CONFIRMATIONS = new HashMap<>();
+	private static final Map<UUID, PendingTerminalHostConfirmation>
+		TERMINAL_HOST_CONFIRMATIONS = new HashMap<>();
 	private static final ConfirmationTokens CONFIRMATIONS = new ConfirmationTokens();
 	private static final ControlRequestGate CONTROL_REQUEST_GATE = new ControlRequestGate();
 	private static final FlowActionRequestGate FLOW_ACTION_REQUEST_GATE =
@@ -176,6 +204,11 @@ public final class PixelTzzServerRuntime {
 	private static final HostFlowBossBar HOST_FLOW_BOSS_BAR = new HostFlowBossBar();
 	private static boolean hostConsoleRefreshPending;
 	private static boolean serverStopping;
+	private static int lastTerminalProjectionTick = Integer.MIN_VALUE;
+	private static TerminalFrozenSnapshot terminalFrozenSnapshot;
+	private static final int TERMINAL_PROJECTION_INTERVAL_TICKS = 20;
+	private static final String PLAYER_ACTION_OPERATION_TYPE = "player_action";
+	private static final String TERMINAL_HOST_CONTROL_NODE_ID = "system_host_control";
 	private static final Identifier CLAIM_HOST_OPERATION = PixelTzzPro.id("host/claim");
 	private static final Identifier TRANSFER_HOST_OPERATION = PixelTzzPro.id("host/transfer");
 	private static final Identifier TAKEOVER_HOST_OPERATION = PixelTzzPro.id("host/takeover");
@@ -231,8 +264,8 @@ public final class PixelTzzServerRuntime {
 
 	static void timelineStateChanged(final MinecraftServer server) {
 		hostConsoleRefreshPending = true;
-		sendSnapshots(server, false);
 		pushTimelineViews(server);
+		sendSnapshots(server, false);
 		refreshTabListDisplay(server);
 	}
 
@@ -295,12 +328,28 @@ public final class PixelTzzServerRuntime {
 		);
 		ServerPlayNetworking.registerGlobalReceiver(
 			HostUiStateC2SPayload.TYPE,
-			(payload, context) ->
-				HOST_FLOW_BOSS_BAR.setViewerInConsole(context.player().getUUID(), payload.visible())
+			(payload, context) -> {
+				ServerPlayer player = context.player();
+				if (!verified(player)) {
+					return;
+				}
+				HOST_FLOW_BOSS_BAR.setViewerInConsole(
+					player.getUUID(),
+					payload.visible() && canViewConsole(context.server(), player)
+				);
+			}
 		);
 		ServerPlayNetworking.registerGlobalReceiver(
 			TimelineViewRequestC2SPayload.TYPE,
 			PixelTzzServerRuntime::onTimelineViewRequest
+		);
+		ServerPlayNetworking.registerGlobalReceiver(
+			TerminalOpenC2SPayload.TYPE,
+			PixelTzzServerRuntime::onTerminalOpen
+		);
+		ServerPlayNetworking.registerGlobalReceiver(
+			TerminalIntentC2SPayload.TYPE,
+			PixelTzzServerRuntime::onTerminalIntent
 		);
 	}
 
@@ -617,7 +666,7 @@ public final class PixelTzzServerRuntime {
 				context.player(),
 				payload.request().requestSequence(),
 				OperationCode.FORBIDDEN,
-				"只有当前主持人或具备管理权限的玩家可以打开控制台。",
+				"只有当前主持人可以打开主持人控制台；非主持人管理员请使用玩家终端中的接管入口。",
 				PixelTzzWorldState.get(context.server()).stateRevision(),
 				DefinitionRegistry.INSTANCE.view().active().generation(),
 				false
@@ -850,6 +899,8 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
 		IssuedConfirmation issued = CONFIRMATIONS.issue(
 			player.getUUID(),
 			audited.binding().orElseThrow(),
@@ -986,6 +1037,24 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
+		if (TERMINAL_HOST_CONFIRMATIONS.containsKey(payload.tokenId())) {
+			commitTerminalHostConfirmation(
+				context.server(),
+				player,
+				payload,
+				pending
+			);
+			return;
+		}
+		if (pending.operation().type().equals(PLAYER_ACTION_OPERATION_TYPE)) {
+			commitPlayerActionConfirmation(
+				context.server(),
+				player,
+				payload,
+				pending
+			);
+			return;
+		}
 		PreparedOperation current = prepareOperation(
 			context.server(),
 			player,
@@ -1071,6 +1140,8 @@ public final class PixelTzzServerRuntime {
 		).orElse(Rejection.MISSING);
 		boolean canceled = CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId())
 			== ConfirmationTokens.CancelResult.CANCELED;
+		PLAYER_ACTION_CONFIRMATIONS.remove(payload.tokenId());
+		TERMINAL_HOST_CONFIRMATIONS.remove(payload.tokenId());
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
 		persistConfirmationAudit(
 			wrapper,
@@ -3259,6 +3330,8 @@ public final class PixelTzzServerRuntime {
 			);
 			HOST_FLOW_BOSS_BAR.clear();
 			CONFIRMATIONS.clear();
+			PLAYER_ACTION_CONFIRMATIONS.clear();
+			TERMINAL_HOST_CONFIRMATIONS.clear();
 		}
 		if (removeFlowMembersOperation(binding.operation())) {
 			releaseForcedPages(
@@ -6486,6 +6559,34 @@ public final class PixelTzzServerRuntime {
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
 		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		/*
+		 * A page sent to a verified live connection must also be writable by that connection.
+		 * Server startup deliberately marks persisted members offline before clients handshake.
+		 * Reconcile that marker again at the page-delivery boundary so a missed/ordered-late
+		 * handshake reconciliation cannot restore a visually valid but permanently rejected page.
+		 */
+		FlowMemberState ordinaryMember = root == null
+			? null
+			: root.core()
+				.activeForcedFlow()
+				.map(ForcedFlowInstance::runtime)
+				.map(ForcedFlowRuntime::members)
+				.map(members -> members.get(player.getUUID()))
+				.orElse(null);
+		if (
+			ordinaryMember != null
+				&& ordinaryMember.status() == FlowMemberStatus.OFFLINE
+		) {
+			if (!restoreMemberOnline(server, player)) {
+				PixelTzzPro.LOGGER.warn(
+					"Refusing to send an unwritable offline forced page to {}",
+					player.getUUID()
+				);
+				return;
+			}
+			wrapper = PixelTzzWorldState.get(server);
+			root = wrapper.currentV3().orElse(null);
+		}
 		WorldStateV2 state = root == null ? null : root.core();
 		ForcedFlowInstance instance = root == null
 			? null
@@ -7061,6 +7162,2700 @@ public final class PixelTzzServerRuntime {
 		return value.toString();
 	}
 
+	private static void onTerminalOpen(
+		final TerminalOpenC2SPayload payload,
+		final ServerPlayNetworking.Context context
+	) {
+		ServerPlayer player = context.player();
+		if (!verified(player) || !NetworkProtocol.isCompatible(payload.protocolVersion())) {
+			return;
+		}
+		ControlRequestGate.Decision admitted = TERMINAL_OPEN_REQUEST_GATE.admit(
+			player.getUUID(),
+			payload.requestSequence(),
+			System.currentTimeMillis()
+		);
+		if (admitted != ControlRequestGate.Decision.ACCEPTED) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				admitted == ControlRequestGate.Decision.RATE_LIMITED
+					? OperationCode.RATE_LIMITED
+					: OperationCode.REQUEST_REPLAYED,
+				admitted == ControlRequestGate.Decision.RATE_LIMITED
+					? "玩家终端打开请求过于频繁，请稍后再试。"
+					: "玩家终端打开请求已经失效，请重新打开暂停菜单。",
+				PixelTzzWorldState.get(context.server()).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		TerminalAuthorityResult resolved = resolveTerminalAuthority(
+			context.server(),
+			player
+		);
+		if (!resolved.successful()) {
+			sendTerminalOpenFailure(
+				context.server(),
+				player,
+				payload.requestSequence(),
+				resolved
+			);
+			return;
+		}
+		TerminalAuthority authority = resolved.authority().orElseThrow();
+		PlayerTerminalSessions.Session previousVisibleSession =
+			PLAYER_TERMINAL_SESSIONS.find(player.getUUID()).orElse(null);
+		PlayerTerminalSessions.OpenResult opened = PLAYER_TERMINAL_SESSIONS.open(
+			player.getUUID(),
+			authority.definitions().generation(),
+			authority.root().stateRevision(),
+			authority.route().routeId(),
+			authority.route().pageId().orElseThrow(),
+			authority.takeoverAllowed(),
+			context.server().getTickCount()
+		);
+		if (!opened.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.RESOURCE_BLOCKED,
+				opened.message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.Session session = opened.session().orElseThrow();
+		TerminalPageBundleResult delivery = sendTerminalPageBundle(
+			context.server(),
+			player,
+			authority,
+			session
+		);
+		if (!delivery.successful()) {
+			failTerminalPageMutationDelivery(
+				context.server(),
+				player,
+				authority,
+				previousVisibleSession == null ? session : previousVisibleSession,
+				Optional.of(payload.requestSequence()),
+				delivery
+			);
+		}
+	}
+
+	private static void sendTerminalOpenFailure(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final long requestSequence,
+		final TerminalAuthorityResult result
+	) {
+		sendOperationResult(
+			player,
+			requestSequence,
+			result.code(),
+			result.message(),
+			PixelTzzWorldState.get(server).stateRevision(),
+			DefinitionRegistry.INSTANCE.view().active().generation(),
+			false
+		);
+	}
+
+	private static void onTerminalIntent(
+		final TerminalIntentC2SPayload payload,
+		final ServerPlayNetworking.Context context
+	) {
+		ServerPlayer player = context.player();
+		if (!verified(player) || !NetworkProtocol.isCompatible(payload.protocolVersion())) {
+			return;
+		}
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		if (session == null || !terminalEnvelopeMatches(payload, session)) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				session == null
+					? OperationCode.ACTION_UNAVAILABLE
+					: terminalEnvelopeFailure(payload, session),
+				session == null
+					? "玩家终端会话已经关闭，请重新打开。"
+					: "玩家终端页面或状态已经变化，本次操作未执行。",
+				PixelTzzWorldState.get(context.server()).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.SequenceResult sequence = PLAYER_TERMINAL_SESSIONS.acceptSequence(
+			player.getUUID(),
+			payload.terminalSessionId(),
+			payload.requestSequence(),
+			context.server().getTickCount()
+		);
+		if (sequence.status() != PlayerTerminalSessions.SequenceStatus.ACCEPTED) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				sequence.status() == PlayerTerminalSessions.SequenceStatus.REPLAYED
+					? OperationCode.REQUEST_REPLAYED
+					: OperationCode.REVISION_MISMATCH,
+				sequence.status() == PlayerTerminalSessions.SequenceStatus.REPLAYED
+					? "该玩家终端请求已经处理过。"
+					: "玩家终端请求顺序不一致，请重新打开终端。",
+				PixelTzzWorldState.get(context.server()).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+		session = sequence.session().orElseThrow();
+		cancelPendingPlayerActionConfirmations(player.getUUID());
+		cancelPendingTerminalHostConfirmations(player.getUUID());
+
+		TerminalAuthorityResult resolved = resolveTerminalAuthority(
+			context.server(),
+			player
+		);
+		if (!resolved.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				resolved.code(),
+				resolved.message(),
+				PixelTzzWorldState.get(context.server()).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			invalidateTerminalSession(
+				context.server(),
+				player,
+				session,
+				"authority_unavailable",
+				resolved.message()
+			);
+			return;
+		}
+		TerminalAuthority authority = resolved.authority().orElseThrow();
+		if (
+			resynchronizeTerminalIntentPage(
+				context.server(),
+				player,
+				payload.requestSequence(),
+				session,
+				authority
+			)
+		) {
+			return;
+		}
+		switch (payload.intent()) {
+			case BACK -> handleTerminalBack(
+				context.server(),
+				player,
+				payload,
+				authority
+			);
+			case REFRESH -> handleTerminalRefresh(
+				context.server(),
+				player,
+				payload,
+				authority
+			);
+			case ACTION -> handleTerminalRegisteredAction(
+				context.server(),
+				player,
+				payload,
+				authority
+			);
+			case HISTORY_DETAIL -> handleTerminalHistoryDetail(
+				context.server(),
+				player,
+				payload,
+				authority
+			);
+		}
+	}
+
+	/**
+	 * Reconciles a clicked terminal page with the current route and every server-owned child-page
+	 * authorization before the intent is dispatched.
+	 *
+	 * <p>The request sequence has already been consumed at this point. If authority changed between
+	 * periodic refreshes, the visible page is replaced first and this click is rejected neutrally;
+	 * the player may then act against the freshly issued page instance.
+	 */
+	private static boolean resynchronizeTerminalIntentPage(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final long requestSequence,
+		final PlayerTerminalSessions.Session session,
+		final TerminalAuthority authority
+	) {
+		Identifier rootPage = authority.route().pageId().orElseThrow();
+		if (terminalRouteChanged(session, authority, rootPage)) {
+			PlayerTerminalSessions.MutationResult replaced =
+				PLAYER_TERMINAL_SESSIONS.replaceRoute(
+					player.getUUID(),
+					authority.definitions().generation(),
+					authority.root().stateRevision(),
+					authority.route().routeId(),
+					rootPage,
+					authority.takeoverAllowed()
+				);
+			if (!replaced.successful()) {
+				failTerminalPageMutation(
+					server,
+					player,
+					session,
+					Optional.of(requestSequence),
+					OperationCode.SNAPSHOT_INVALID,
+					authority.root().stateRevision(),
+					authority.definitions().generation(),
+					"intent_route_replace_failed",
+					replaced.message()
+				);
+				return true;
+			}
+			TerminalPageBundleResult delivery = sendTerminalPageBundle(
+				server,
+				player,
+				authority,
+				replaced.session().orElseThrow()
+			);
+			if (!delivery.successful()) {
+				failTerminalPageMutationDelivery(
+					server,
+					player,
+					authority,
+					session,
+					Optional.of(requestSequence),
+					delivery
+				);
+				return true;
+			}
+			clearPendingPlayerActionConfirmations(player.getUUID());
+			clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+			CONFIRMATIONS.cancelOperator(player.getUUID());
+			sendOperationResult(
+				player,
+				requestSequence,
+				OperationCode.REVISION_MISMATCH,
+				"玩家终端入口已经变化，页面已更新，请重新操作。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return true;
+		}
+
+		int retainedDepth = authorizedTerminalStackDepth(
+			server,
+			player,
+			authority,
+			session
+		);
+		if (retainedDepth >= session.stack().size()) {
+			return false;
+		}
+		PlayerTerminalSessions.MutationResult truncated =
+			PLAYER_TERMINAL_SESSIONS.truncateToDepth(
+				player.getUUID(),
+				retainedDepth,
+				authority.root().stateRevision(),
+				authority.takeoverAllowed()
+			);
+		if (!truncated.successful()) {
+			failTerminalPageMutation(
+				server,
+				player,
+				session,
+				Optional.of(requestSequence),
+				OperationCode.SNAPSHOT_INVALID,
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				"intent_navigation_truncate_failed",
+				truncated.message()
+			);
+			return true;
+		}
+		TerminalPageBundleResult delivery = sendTerminalPageBundle(
+			server,
+			player,
+			authority,
+			truncated.session().orElseThrow()
+		);
+		if (!delivery.successful()) {
+			failTerminalPageMutationDelivery(
+				server,
+				player,
+				authority,
+				session,
+				Optional.of(requestSequence),
+				delivery
+			);
+			return true;
+		}
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		CONFIRMATIONS.cancelOperator(player.getUUID());
+		sendOperationResult(
+			player,
+			requestSequence,
+			OperationCode.ACTION_UNAVAILABLE,
+			"当前页面已不再适用于你的身份或游戏阶段，已返回上一级。",
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			false
+		);
+		return true;
+	}
+
+	private static boolean terminalEnvelopeMatches(
+		final TerminalIntentC2SPayload payload,
+		final PlayerTerminalSessions.Session session
+	) {
+		return session.sessionId().equals(payload.terminalSessionId())
+			&& session.current().instanceId().equals(payload.pageInstanceId())
+			&& session.definitionGeneration() == payload.definitionGeneration()
+			&& session.stateRevision() == payload.stateRevision()
+			&& session.routeRevision() == payload.routeRevision();
+	}
+
+	private static OperationCode terminalEnvelopeFailure(
+		final TerminalIntentC2SPayload payload,
+		final PlayerTerminalSessions.Session session
+	) {
+		if (session.definitionGeneration() != payload.definitionGeneration()) {
+			return OperationCode.DEFINITION_GENERATION_STALE;
+		}
+		if (session.stateRevision() != payload.stateRevision()) {
+			return OperationCode.STATE_REVISION_STALE;
+		}
+		if (
+			!session.sessionId().equals(payload.terminalSessionId())
+				|| !session.current().instanceId().equals(payload.pageInstanceId())
+		) {
+			return OperationCode.NODE_MISMATCH;
+		}
+		return OperationCode.REVISION_MISMATCH;
+	}
+
+	private static void handleTerminalBack(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority
+	) {
+		PlayerTerminalSessions.Session previousVisibleSession =
+			PLAYER_TERMINAL_SESSIONS.find(player.getUUID()).orElse(null);
+		if (previousVisibleSession == null) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"玩家终端会话已经关闭，请重新打开。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.MutationResult result = PLAYER_TERMINAL_SESSIONS.back(
+			player.getUUID(),
+			authority.root().stateRevision()
+		);
+		if (!result.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				result.message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.Session updated = result.session().orElseThrow();
+		TerminalPageBundleResult delivery = sendTerminalPageBundle(
+			server,
+			player,
+			authority,
+			updated
+		);
+		if (!delivery.successful()) {
+			failTerminalPageMutationDelivery(
+				server,
+				player,
+				authority,
+				previousVisibleSession,
+				Optional.of(payload.requestSequence()),
+				delivery
+			);
+			return;
+		}
+		sendOperationResult(
+			player,
+			payload.requestSequence(),
+			OperationCode.SUCCESS,
+			"已返回上一级页面。",
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			false
+		);
+	}
+
+	private static void handleTerminalRefresh(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority
+	) {
+		PlayerTerminalSessions.Session previousVisibleSession =
+			PLAYER_TERMINAL_SESSIONS.find(player.getUUID()).orElse(null);
+		if (previousVisibleSession == null) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"玩家终端会话已经关闭，请重新打开。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.MutationResult result = PLAYER_TERMINAL_SESSIONS.reissue(
+			player.getUUID(),
+			authority.definitions().generation(),
+			authority.root().stateRevision(),
+			authority.takeoverAllowed()
+		);
+		if (!result.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.SNAPSHOT_INVALID,
+				result.message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		TerminalPageBundleResult delivery = sendTerminalPageBundle(
+			server,
+			player,
+			authority,
+			result.session().orElseThrow()
+		);
+		if (!delivery.successful()) {
+			failTerminalPageMutationDelivery(
+				server,
+				player,
+				authority,
+				previousVisibleSession,
+				Optional.of(payload.requestSequence()),
+				delivery
+			);
+			return;
+		}
+		sendOperationResult(
+			player,
+			payload.requestSequence(),
+			OperationCode.SUCCESS,
+			"玩家终端内容已同步。",
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			false
+		);
+	}
+
+	private static void handleTerminalRegisteredAction(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority
+	) {
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		if (session == null) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"玩家终端会话已经关闭，请重新打开。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		if (terminalHostControlRequest(payload)) {
+			handleTerminalHostControl(
+				server,
+				player,
+				payload,
+				authority,
+				session
+			);
+			return;
+		}
+		SessionAuthorization authorization = terminalActionAuthorization(
+			authority,
+			player,
+			session,
+			payload.requestSequence()
+		);
+		ActionRequest request = terminalActionRequest(payload, authorization);
+		Preparation prepared = PlayerActionAuthority.prepare(
+			authority.root(),
+			authority.definitions(),
+			authorization,
+			request,
+			terminalActionPredicates(server, player, authority),
+			playerActionWorldTick(server)
+		);
+		if (prepared.confirmation().isPresent()) {
+			issuePlayerActionConfirmation(
+				server,
+				player,
+				authority,
+				session,
+				authorization,
+				request,
+				prepared
+			);
+			return;
+		}
+		if (!prepared.accepted()) {
+			sendPlayerActionRejection(
+				player,
+				payload.requestSequence(),
+				prepared,
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		executePreparedPlayerAction(
+			server,
+			player,
+			payload.requestSequence(),
+			prepared
+		);
+	}
+
+	private static boolean terminalHostControlRequest(
+		final TerminalIntentC2SPayload payload
+	) {
+		return payload.nodeId()
+			.filter(TERMINAL_HOST_CONTROL_NODE_ID::equals)
+			.isPresent()
+			&& payload.actionId()
+				.filter(operation ->
+					operation.equals(CLAIM_HOST_OPERATION)
+						|| operation.equals(TAKEOVER_HOST_OPERATION)
+				)
+				.isPresent();
+	}
+
+	private static Optional<OperationKey> terminalHostOperation(
+		final TerminalAuthority authority
+	) {
+		if (!authority.takeoverAllowed()) {
+			return Optional.empty();
+		}
+		return authority.state().host().isEmpty()
+			? Optional.of(new OperationKey("claim_host", CLAIM_HOST_OPERATION))
+			: Optional.of(new OperationKey("takeover_host", TAKEOVER_HOST_OPERATION));
+	}
+
+	private static void handleTerminalHostControl(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session
+	) {
+		OperationKey operation = terminalHostOperation(authority).orElse(null);
+		if (
+			operation == null
+				|| payload.actionId().filter(operation.id()::equals).isEmpty()
+		) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"主持人状态或你的管理员权限已经变化，请查看更新后的玩家终端。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PreparedOperation prepared = prepareOperation(
+			server,
+			player,
+			operation,
+			List.of()
+		);
+		if (!prepared.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				prepared.code(),
+				prepared.message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		if (!ServerPlayNetworking.canSend(player, ConfirmationS2CPayload.TYPE)) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"客户端不支持主持人操作所需的二次确认页面。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		Binding initialBinding = prepared.binding().orElseThrow();
+		boolean replacing = CONFIRMATIONS.hasPending(player.getUUID());
+		if (
+			!persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_ISSUED,
+				Optional.of(player.getUUID()),
+				Optional.of(initialBinding),
+				replacing
+					? "issued a replacement terminal host confirmation"
+					: "issued a terminal host confirmation",
+				System.currentTimeMillis()
+			)
+		) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.INTERNAL_ERROR,
+				"无法持久化确认审计，主持人操作未开始。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		PreparedOperation audited = prepareOperation(
+			server,
+			player,
+			operation,
+			List.of()
+		);
+		if (!audited.successful()) {
+			clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+			CONFIRMATIONS.cancelOperator(player.getUUID());
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				audited.code(),
+				audited.message(),
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		Binding terminalBinding = terminalHostControlBinding(
+			audited.binding().orElseThrow(),
+			session,
+			payload.requestSequence()
+		);
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		IssuedConfirmation issued = CONFIRMATIONS.issue(
+			player.getUUID(),
+			terminalBinding,
+			audited.prompt().orElseThrow()
+		);
+		TERMINAL_HOST_CONFIRMATIONS.put(
+			issued.tokenId(),
+			new PendingTerminalHostConfirmation(
+				player.getUUID(),
+				session.sessionId(),
+				session.current().instanceId(),
+				session.definitionGeneration(),
+				session.routeRevision(),
+				payload.requestSequence(),
+				operation
+			)
+		);
+		ServerPlayNetworking.send(
+			player,
+			new ConfirmationS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				payload.requestSequence(),
+				issued.tokenId(),
+				operation.type(),
+				operation.id(),
+				issued.prompt().title().json(),
+				issued.prompt().consequences().stream().map(RichText::json).toList(),
+				sortedTargets(audited.targets()),
+				audited.contextSummary(),
+				issued.validForMilliseconds(),
+				terminalBinding.stateRevision(),
+				terminalBinding.definitionGeneration()
+			)
+		);
+	}
+
+	private static void handleTerminalHistoryDetail(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority
+	) {
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		String nodeId = payload.nodeId().orElse("");
+		String recordKey = payload.historyRecordKey().orElse("");
+		PageDefinition sourcePage = session == null
+			? null
+			: authority.definitions().pages().get(session.current().pageId());
+		if (
+			session == null
+				|| sourcePage == null
+				|| !sourcePage.game().equals(authority.game().id())
+				|| !historyDetailButtonMatches(sourcePage.root(), nodeId, false)
+		) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.NODE_MISMATCH,
+				"历史详情入口已经变化，本次请求未执行。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalProjector.HistoryDetailTarget target =
+			PlayerTerminalProjector.resolveHistoryDetail(
+				server,
+				authority.definitions(),
+				authority.root(),
+				player,
+				new PlayerTerminalProjector.SessionMetadata(
+					session.sessionId(),
+					session.current().instanceId(),
+					session.current().pageId(),
+					session.routeId(),
+					session.definitionGeneration(),
+					session.stateRevision(),
+					true,
+					session.current()
+						.historyRecord()
+						.map(PlayerTerminalSessions.HistoryRecordRef::recordKey)
+				),
+				recordKey
+			).orElse(null);
+		if (target == null) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"这条历史记录已不可见，详情未打开。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerTerminalSessions.MutationResult pushed =
+			PLAYER_TERMINAL_SESSIONS.pushHistoryDetail(
+				player.getUUID(),
+				target.pageId(),
+				target.recordKey(),
+				authority.root().stateRevision()
+			);
+		if (!pushed.successful()) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.SNAPSHOT_INVALID,
+				"历史详情页面当前不可用，请返回后重试。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		TerminalPageBundleResult delivery = sendTerminalPageBundle(
+			server,
+			player,
+			authority,
+			pushed.session().orElseThrow()
+		);
+		if (!delivery.successful()) {
+			failTerminalPageMutationDelivery(
+				server,
+				player,
+				authority,
+				session,
+				Optional.of(payload.requestSequence()),
+				delivery
+			);
+			return;
+		}
+		sendOperationResult(
+			player,
+			payload.requestSequence(),
+			OperationCode.SUCCESS,
+			"已打开该事件的公开详情。",
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			false
+		);
+	}
+
+	static boolean historyDetailButtonMatches(
+		final NodeDefinition node,
+		final String nodeId,
+		final boolean historyItemScope
+	) {
+		if (
+			node.id().filter(nodeId::equals).isPresent()
+				&& node.content() instanceof ButtonContent button
+		) {
+			return historyItemScope
+				&& button.action().type() == ActionType.HISTORY_DETAIL;
+		}
+		if (node.content() instanceof ChildrenContent children) {
+			return children.children()
+				.stream()
+				.anyMatch(child ->
+					historyDetailButtonMatches(child, nodeId, historyItemScope)
+				);
+		}
+		if (node.content() instanceof SingleChildContent single) {
+			return historyDetailButtonMatches(
+				single.child(),
+				nodeId,
+				historyItemScope
+			);
+		}
+		if (node.content() instanceof RepeatContent repeat) {
+			boolean templateScope =
+				repeat.items() instanceof BindingValue binding
+					&& binding.path().equals("history.items");
+			return historyDetailButtonMatches(
+				repeat.template(),
+				nodeId,
+				templateScope
+			);
+		}
+		return false;
+	}
+
+	private static SessionAuthorization terminalActionAuthorization(
+		final TerminalAuthority authority,
+		final ServerPlayer player,
+		final PlayerTerminalSessions.Session session,
+		final long acceptedRequestSequence
+	) {
+		return new SessionAuthorization(
+			authority.game().id(),
+			player.getUUID(),
+			session.sessionId(),
+			session.current().instanceId(),
+			session.current().pageId(),
+			session.definitionGeneration(),
+			session.stateRevision(),
+			session.routeRevision(),
+			acceptedRequestSequence,
+			true
+		);
+	}
+
+	private static ActionRequest terminalActionRequest(
+		final TerminalIntentC2SPayload payload,
+		final SessionAuthorization authorization
+	) {
+		return new ActionRequest(
+			payload.terminalSessionId(),
+			payload.pageInstanceId(),
+			payload.definitionGeneration(),
+			payload.stateRevision(),
+			payload.routeRevision(),
+			payload.requestSequence(),
+			PlayerActionAuthority.deriveRequestId(
+				authorization.sessionId(),
+				authorization.nextRequestSequence()
+			),
+			payload.nodeId().orElseThrow(),
+			payload.actionId().orElseThrow()
+		);
+	}
+
+	private static PlayerActionAuthority.PredicateEvaluator terminalActionPredicates(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority
+	) {
+		FrozenPredicateEvaluator evaluator = new FrozenPredicateEvaluator(
+			server,
+			authority.definitions().predicateDocuments()
+		);
+		PredicateContext context = panelPredicateContext(authority.state(), player);
+		return (predicate, ignored) -> evaluator.evaluate(predicate, context);
+	}
+
+	private static Binding terminalHostControlBinding(
+		final Binding base,
+		final PlayerTerminalSessions.Session session,
+		final long acceptedRequestSequence
+	) {
+		String material = String.join(
+			"\n",
+			base.relatedStateSha256(),
+			session.sessionId().toString(),
+			session.current().instanceId().toString(),
+			session.current().pageId().toString(),
+			Long.toString(session.definitionGeneration()),
+			Long.toString(session.routeRevision()),
+			Long.toString(acceptedRequestSequence),
+			base.operation().type(),
+			base.operation().id().toString()
+		);
+		return new Binding(
+			base.operation(),
+			base.targetIds(),
+			base.gameId(),
+			base.phaseId(),
+			base.definitionGeneration(),
+			base.stateRevision(),
+			sha256(material.getBytes(StandardCharsets.UTF_8))
+		);
+	}
+
+	static boolean terminalHostControlSequenceIsCurrent(
+		final PlayerTerminalSessions.Session session,
+		final UUID expectedSessionId,
+		final UUID expectedPageInstanceId,
+		final long expectedDefinitionGeneration,
+		final long expectedRouteRevision,
+		final long acceptedRequestSequence
+	) {
+		Objects.requireNonNull(session, "session");
+		Objects.requireNonNull(expectedSessionId, "expectedSessionId");
+		Objects.requireNonNull(expectedPageInstanceId, "expectedPageInstanceId");
+		return acceptedRequestSequence < Long.MAX_VALUE
+			&& session.sessionId().equals(expectedSessionId)
+			&& session.current().instanceId().equals(expectedPageInstanceId)
+			&& session.definitionGeneration() == expectedDefinitionGeneration
+			&& session.routeRevision() == expectedRouteRevision
+			&& session.nextRequestSequence() == acceptedRequestSequence + 1L;
+	}
+
+	private static void commitTerminalHostConfirmation(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final CommitConfirmationC2SPayload payload,
+		final Binding pendingBinding
+	) {
+		PendingTerminalHostConfirmation pending =
+			TERMINAL_HOST_CONFIRMATIONS.remove(payload.tokenId());
+		if (pending == null || !pending.playerId().equals(player.getUUID())) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"玩家终端主持人确认上下文已经失效，请返回后重新操作。",
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		TerminalAuthorityResult resolved = resolveTerminalAuthority(server, player);
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		if (
+			!resolved.successful()
+				|| session == null
+				|| !terminalHostControlSequenceIsCurrent(
+					session,
+					pending.sessionId(),
+					pending.pageInstanceId(),
+					pending.definitionGeneration(),
+					pending.routeRevision(),
+					pending.acceptedRequestSequence()
+				)
+		) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				resolved.successful() && session != null
+					? "二次确认期间玩家终端已经处理了其他操作，请重新发起并审阅。"
+					: resolved.successful()
+						? "玩家终端会话已经关闭，请重新打开。"
+						: resolved.message(),
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		TerminalAuthority authority = resolved.authority().orElseThrow();
+		OperationKey operation = terminalHostOperation(authority).orElse(null);
+		if (operation == null || !operation.equals(pending.operation())) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"主持人状态或你的管理员权限已经变化，请重新发起并审阅。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+
+		PreparedOperation current = prepareOperation(
+			server,
+			player,
+			operation,
+			List.of()
+		);
+		if (!current.successful()) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				current.code(),
+				current.message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		Binding currentBinding = terminalHostControlBinding(
+			current.binding().orElseThrow(),
+			session,
+			pending.acceptedRequestSequence()
+		);
+		ConsumeResult consumed = CONFIRMATIONS.consume(
+			player.getUUID(),
+			payload.tokenId(),
+			currentBinding
+		);
+		if (consumed instanceof Rejected rejected) {
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				confirmationCode(rejected),
+				rejected.reason().message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		if (!(consumed instanceof Accepted) || !pendingBinding.equals(currentBinding)) {
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"玩家终端主持人确认内容已经变化，请重新审阅。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+
+		Binding executable = current.binding().orElseThrow();
+		StatefulRequest authoritativeRequest = new StatefulRequest(
+			NetworkProtocol.CURRENT_VERSION,
+			payload.request().requestSequence(),
+			executable.gameId(),
+			executable.definitionGeneration(),
+			executable.stateRevision(),
+			Optional.empty(),
+			Optional.empty()
+		);
+		executeConfirmedOperation(server, player, authoritativeRequest, current);
+	}
+
+	private static void issuePlayerActionConfirmation(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session,
+		final SessionAuthorization authorization,
+		final ActionRequest request,
+		final Preparation preparation
+	) {
+		if (!ServerPlayNetworking.canSend(player, ConfirmationS2CPayload.TYPE)) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"客户端不支持该操作所需的二次确认页面。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		PlayerActionAuthority.ConfirmationChallenge challenge =
+			preparation.confirmation().orElseThrow();
+		Binding binding = playerActionConfirmationBinding(
+			authority,
+			session,
+			challenge
+		);
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		IssuedConfirmation issued = CONFIRMATIONS.issue(
+			player.getUUID(),
+			binding,
+			new Prompt(
+				challenge.confirmation().title(),
+				challenge.confirmation().consequences()
+			)
+		);
+		PLAYER_ACTION_CONFIRMATIONS.put(
+			issued.tokenId(),
+			new PendingPlayerActionConfirmation(
+				player.getUUID(),
+				authorization,
+				request,
+				challenge
+			)
+		);
+		Target target = confirmationTarget(
+			server,
+			authority.state(),
+			authority.definitions(),
+			player.getUUID(),
+			player.getPlainTextName(),
+			Set.of()
+		);
+		ServerPlayNetworking.send(
+			player,
+			new ConfirmationS2CPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				request.requestSequence(),
+				issued.tokenId(),
+				PLAYER_ACTION_OPERATION_TYPE,
+				challenge.actionId(),
+				issued.prompt().title().json(),
+				issued.prompt().consequences().stream().map(RichText::json).toList(),
+				List.of(target),
+				truncate(
+					"『"
+						+ authority.game().name().plainText()
+						+ "』 · 玩家终端 · "
+						+ player.getPlainTextName(),
+					ConfirmationS2CPayload.MAX_CONTEXT_LENGTH
+				),
+				issued.validForMilliseconds(),
+				binding.stateRevision(),
+				binding.definitionGeneration()
+			)
+		);
+	}
+
+	private static Binding playerActionConfirmationBinding(
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session,
+		final PlayerActionAuthority.ConfirmationChallenge challenge
+	) {
+		Identifier phaseId = authority.state().activePhaseId().orElseThrow();
+		UUID gameInstanceId = authority.root()
+			.core()
+			.activeGameInstanceId()
+			.orElseThrow();
+		String material = String.join(
+			"\n",
+			authority.game().id().toString(),
+			gameInstanceId.toString(),
+			phaseId.toString(),
+			session.sessionId().toString(),
+			session.current().instanceId().toString(),
+			session.current().pageId().toString(),
+			Long.toString(session.routeRevision()),
+			challenge.nodeId(),
+			challenge.actionId().toString(),
+			challenge.requestId().toString(),
+			Long.toString(challenge.requestSequence()),
+			Long.toString(challenge.definitionGeneration())
+		);
+		return new Binding(
+			new OperationKey(PLAYER_ACTION_OPERATION_TYPE, challenge.actionId()),
+			List.of(authority.player().playerId()),
+			Optional.of(authority.game().id()),
+			Optional.of(phaseId),
+			authority.definitions().generation(),
+			authority.root().stateRevision(),
+			sha256(material.getBytes(StandardCharsets.UTF_8))
+		);
+	}
+
+	static boolean playerActionConfirmationSequenceIsCurrent(
+		final PlayerTerminalSessions.Session session,
+		final PlayerActionAuthority.ConfirmationChallenge challenge
+	) {
+		Objects.requireNonNull(session, "session");
+		Objects.requireNonNull(challenge, "challenge");
+		return challenge.requestSequence() < Long.MAX_VALUE
+			&& session.nextRequestSequence() == challenge.requestSequence() + 1L;
+	}
+
+	private static void commitPlayerActionConfirmation(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final CommitConfirmationC2SPayload payload,
+		final Binding pendingBinding
+	) {
+		PendingPlayerActionConfirmation pending =
+			PLAYER_ACTION_CONFIRMATIONS.remove(payload.tokenId());
+		if (pending == null || !pending.playerId().equals(player.getUUID())) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"玩家终端确认上下文已经失效，请返回后重新操作。",
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+		TerminalAuthorityResult resolved = resolveTerminalAuthority(server, player);
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		if (!resolved.successful() || session == null) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				resolved.successful()
+					? "玩家终端会话已经关闭，请重新打开。"
+					: resolved.message(),
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+		TerminalAuthority authority = resolved.authority().orElseThrow();
+		PlayerActionAuthority.ConfirmationChallenge challenge = pending.challenge();
+		if (!playerActionConfirmationSequenceIsCurrent(session, challenge)) {
+			CONFIRMATIONS.cancel(player.getUUID(), payload.tokenId());
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"二次确认期间玩家终端已经处理了其他操作，请重新发起并审阅。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		Binding currentBinding = playerActionConfirmationBinding(
+			authority,
+			session,
+			challenge
+		);
+		ConsumeResult consumed = CONFIRMATIONS.consume(
+			player.getUUID(),
+			payload.tokenId(),
+			currentBinding
+		);
+		if (consumed instanceof Rejected rejected) {
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				confirmationCode(rejected),
+				rejected.reason().message(),
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		if (
+			!(consumed instanceof Accepted)
+				|| !pendingBinding.equals(currentBinding)
+		) {
+			sendOperationResult(
+				player,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_CONTEXT_CHANGED,
+				"玩家终端确认内容已经变化，请重新审阅。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+
+		SessionAuthorization authorization = terminalActionAuthorization(
+			authority,
+			player,
+			session,
+			pending.request().requestSequence()
+		);
+		ConfirmedRequest confirmed = new ConfirmedRequest(
+			challenge.sessionId(),
+			challenge.pageInstanceId(),
+			challenge.nodeId(),
+			challenge.actionId(),
+			challenge.requestId(),
+			challenge.requestSequence(),
+			challenge.definitionGeneration(),
+			challenge.routeRevision()
+		);
+		Preparation preparation = PlayerActionAuthority.prepare(
+			authority.root(),
+			authority.definitions(),
+			authorization,
+			pending.request(),
+			terminalActionPredicates(server, player, authority),
+			playerActionWorldTick(server),
+			Optional.of(confirmed)
+		);
+		if (!preparation.accepted()) {
+			sendPlayerActionRejection(
+				player,
+				payload.request().requestSequence(),
+				preparation,
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		executePreparedPlayerAction(
+			server,
+			player,
+			payload.request().requestSequence(),
+			preparation
+		);
+	}
+
+	private static void executePreparedPlayerAction(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final long responseSequence,
+		final Preparation preparation
+	) {
+		PreparedAction prepared = preparation.prepared().orElseThrow();
+		boolean opensPage = prepared.target() instanceof PushPage;
+		PlayerTerminalSessions.Session previousVisibleSession = opensPage
+			? PLAYER_TERMINAL_SESSIONS.find(player.getUUID()).orElse(null)
+			: null;
+		if (opensPage && previousVisibleSession == null) {
+			sendOperationResult(
+				player,
+				responseSequence,
+				OperationCode.ACTION_UNAVAILABLE,
+				"玩家终端会话已经关闭，本次页面操作未执行。",
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		PixelTzzWorldState.CommitV4Result reserved = wrapper.commitV4(
+			prepared.authorizedStateRevision(),
+			ignored -> preparation.nextState().orElseThrow()
+		);
+		if (!reserved.committed()) {
+			sendOperationResult(
+				player,
+				responseSequence,
+				OperationCode.STATE_REVISION_STALE,
+				"游戏状态在执行前发生变化，本次操作未开始。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
+
+		ExecutionResult execution;
+		boolean pagePushed = false;
+		if (prepared.target() instanceof PushPage push) {
+			PlayerTerminalSessions.MutationResult pushed =
+				PLAYER_TERMINAL_SESSIONS.pushAuthorized(
+				player.getUUID(),
+				push.pageId(),
+				prepared.pageInstanceId(),
+				prepared.nodeId(),
+				prepared.actionId(),
+				reserved.state().orElseThrow().stateRevision()
+			);
+			pagePushed = pushed.successful();
+			execution = pagePushed
+				? ExecutionResult.pageOpened(push.pageId())
+				: ExecutionResult.failed("page_push_failed", pushed.message());
+		} else if (prepared.target() instanceof RunFunction run) {
+			RegisteredPlayerFunctionRunner.Result invoked =
+				RegisteredPlayerFunctionRunner.invoke(
+					server,
+					run.functionId(),
+					prepared.functionContext(
+						reserved.state().orElseThrow().stateRevision()
+					),
+					player
+				);
+			execution = invoked.authorityResult();
+		} else {
+			execution = ExecutionResult.failed(
+				"target_unavailable",
+				"服务器无法识别已授权的玩家操作目标"
+			);
+		}
+
+		WorldStateV4 latest = wrapper.currentV4().orElse(null);
+		Finalization finalized = latest == null
+			? null
+			: PlayerActionAuthority.finalizeInvocation(latest, prepared, execution);
+		if (
+			finalized == null
+				|| (!finalized.finalized() && !finalized.alreadyFinalized())
+		) {
+			String message =
+				"玩家操作已进入结果未知状态；为防止重复执行，服务器不会自动重试。";
+			if (pagePushed) {
+				failTerminalPageMutation(
+					server,
+					player,
+					previousVisibleSession,
+					Optional.of(responseSequence),
+					OperationCode.INTERNAL_ERROR,
+					wrapper.stateRevision(),
+					DefinitionRegistry.INSTANCE.view().active().generation(),
+					"registered_page_finalize_failed",
+					message
+				);
+			} else {
+				sendOperationResult(
+					player,
+					responseSequence,
+					OperationCode.INTERNAL_ERROR,
+					message,
+					wrapper.stateRevision(),
+					DefinitionRegistry.INSTANCE.view().active().generation(),
+					false
+				);
+			}
+			return;
+		}
+		WorldStateV4 finalState = latest;
+		if (finalized.finalized()) {
+			WorldStateV4 candidate = finalized.nextState().orElseThrow();
+			if (finalized.audit().isPresent()) {
+				candidate = withPlayerActionAudit(
+					candidate,
+					finalized.audit().orElseThrow()
+				);
+			}
+			final WorldStateV4 committedCandidate = candidate;
+			PixelTzzWorldState.CommitV4Result committed = wrapper.commitV4(
+				latest.stateRevision(),
+				ignored -> committedCandidate
+			);
+			if (!committed.committed()) {
+				String message =
+					"玩家操作结果无法持久化；为防止重复执行，服务器不会自动重试。";
+				if (pagePushed) {
+					failTerminalPageMutation(
+						server,
+						player,
+						previousVisibleSession,
+						Optional.of(responseSequence),
+						OperationCode.INTERNAL_ERROR,
+						wrapper.stateRevision(),
+						DefinitionRegistry.INSTANCE.view().active().generation(),
+						"registered_page_commit_failed",
+						message
+					);
+				} else {
+					sendOperationResult(
+						player,
+						responseSequence,
+						OperationCode.INTERNAL_ERROR,
+						message,
+						wrapper.stateRevision(),
+						DefinitionRegistry.INSTANCE.view().active().generation(),
+						false
+					);
+				}
+				return;
+			}
+			finalState = committed.state().orElseThrow();
+		}
+
+		TerminalAuthorityResult resolved = resolveTerminalAuthority(server, player);
+		if (pagePushed) {
+			if (!resolved.successful()) {
+				failTerminalPageMutation(
+					server,
+					player,
+					previousVisibleSession,
+					Optional.of(responseSequence),
+					resolved.code(),
+					finalState.stateRevision(),
+					DefinitionRegistry.INSTANCE.view().active().generation(),
+					"registered_page_authority_unavailable",
+					resolved.message()
+				);
+				return;
+			}
+			TerminalAuthority authority = resolved.authority().orElseThrow();
+			PlayerTerminalSessions.MutationResult touched =
+				PLAYER_TERMINAL_SESSIONS.touchProjection(
+					player.getUUID(),
+					finalState.stateRevision(),
+					authority.takeoverAllowed()
+				);
+			if (!touched.successful()) {
+				failTerminalPageMutation(
+					server,
+					player,
+					previousVisibleSession,
+					Optional.of(responseSequence),
+					OperationCode.SNAPSHOT_INVALID,
+					finalState.stateRevision(),
+					authority.definitions().generation(),
+					"registered_page_projection_reissue_failed",
+					"目标页面已经入栈，但服务端无法建立新的页面实例。"
+				);
+				return;
+			}
+			TerminalPageBundleResult delivery = sendTerminalPageBundle(
+				server,
+				player,
+				authority,
+				touched.session().orElseThrow()
+			);
+			if (!delivery.successful()) {
+				failTerminalPageMutationDelivery(
+					server,
+					player,
+					authority,
+					previousVisibleSession,
+					Optional.of(responseSequence),
+					delivery
+				);
+				return;
+			}
+		} else {
+			refreshOpenPlayerTerminals(server, false);
+		}
+
+		boolean successful = execution.success();
+		sendOperationResult(
+			player,
+			responseSequence,
+			successful
+				? OperationCode.SUCCESS
+				: execution.code().equals("function_failed")
+					? OperationCode.CALLBACK_FAILED
+					: OperationCode.ACTION_UNAVAILABLE,
+			playerActionFeedback(preparation, execution, successful),
+			finalState.stateRevision(),
+			DefinitionRegistry.INSTANCE.view().active().generation(),
+			false
+		);
+	}
+
+	private static WorldStateV4 withPlayerActionAudit(
+		final WorldStateV4 state,
+		final PlayerActionAuthority.AuditEntry audit
+	) {
+		WorldStateV2 core = state.core().core();
+		Optional<UUID> flowInstanceId = core.activeForcedFlow()
+			.map(ForcedFlowInstance::identity)
+			.map(WorldStateV2.ForcedFlowIdentity::instanceId);
+		WorldStateV2 revised = core.withAudit(
+			core.audit().append(
+				new AuditEvent(
+					core.audit().totalEvents(),
+					AuditEventType.PLAYER_ACTION,
+					System.currentTimeMillis(),
+					Optional.of(audit.playerId()),
+					Optional.of(audit.playerId()),
+					flowInstanceId,
+					truncate(
+						audit.actionId()
+							+ " request="
+							+ audit.requestId()
+							+ "; "
+							+ audit.summary(),
+						1_024
+					)
+				)
+			)
+		);
+		return state.withCore(state.core().withCore(revised));
+	}
+
+	private static String playerActionFeedback(
+		final Preparation preparation,
+		final ExecutionResult execution,
+		final boolean successful
+	) {
+		Optional<RichText> registered = preparation.feedback().flatMap(feedback ->
+			successful ? feedback.success() : feedback.failed()
+		);
+		return registered
+			.map(RichText::plainText)
+			.filter(value -> !value.isBlank())
+			.orElseGet(() ->
+				execution.summary().isBlank()
+					? successful ? "操作已完成。" : "操作未能完成。"
+					: execution.summary()
+			);
+	}
+
+	private static void sendPlayerActionRejection(
+		final ServerPlayer player,
+		final long responseSequence,
+		final Preparation preparation,
+		final long stateRevision,
+		final long definitionGeneration,
+		final boolean refreshRequired
+	) {
+		String message = preparation.feedback()
+			.flatMap(feedback -> feedback.denied())
+			.map(RichText::plainText)
+			.filter(value -> !value.isBlank())
+			.orElse(preparation.message());
+		sendOperationResult(
+			player,
+			responseSequence,
+			playerActionOperationCode(preparation.code()),
+			message,
+			stateRevision,
+			definitionGeneration,
+			refreshRequired
+		);
+	}
+
+	private static OperationCode playerActionOperationCode(
+		final PlayerActionAuthority.Code code
+	) {
+		return switch (code) {
+			case DEFINITION_GENERATION_STALE -> OperationCode.DEFINITION_GENERATION_STALE;
+			case STATE_REVISION_STALE -> OperationCode.STATE_REVISION_STALE;
+			case ROUTE_REVISION_STALE, SESSION_STALE -> OperationCode.REVISION_MISMATCH;
+			case REQUEST_REPLAYED, OUTCOME_UNKNOWN -> OperationCode.REQUEST_REPLAYED;
+			case SCHEMA_BLOCKED -> OperationCode.SCHEMA_BLOCKED;
+			case PLAYER_OFFLINE -> OperationCode.TARGET_OFFLINE;
+			case HOST_FORBIDDEN, AUDIENCE_MISMATCH, PREDICATE_DENIED ->
+				OperationCode.PERMISSION_DENIED;
+			case PHASE_MISMATCH, GAME_MISMATCH -> OperationCode.PHASE_MISMATCH;
+			case TASK_MISMATCH, TASK_STATE_MISMATCH -> OperationCode.TASK_STATE_MISMATCH;
+			case NODE_MISMATCH -> OperationCode.NODE_MISMATCH;
+			case CONFIRMATION_REQUIRED -> OperationCode.CONFIRMATION_MISSING;
+			case CONFIRMATION_INVALID -> OperationCode.CONFIRMATION_CONTEXT_CHANGED;
+			case CLOCK_INVALID, LEDGER_FULL, INVOCATION_MISSING, INVOCATION_FINAL,
+				INTERNAL_ERROR, PREDICATE_FAILED -> OperationCode.INTERNAL_ERROR;
+			case PREPARED, FINALIZED, ALREADY_FINALIZED -> OperationCode.SUCCESS;
+			case PLAYER_NOT_REGISTERED, PAGE_UNAVAILABLE, ACTION_UNAVAILABLE,
+				USAGE_EXHAUSTED, COOLDOWN_ACTIVE -> OperationCode.ACTION_UNAVAILABLE;
+		};
+	}
+
+	private static void cancelPendingPlayerActionConfirmations(final UUID playerId) {
+		List<UUID> tokenIds = PLAYER_ACTION_CONFIRMATIONS.entrySet()
+			.stream()
+			.filter(entry -> entry.getValue().playerId().equals(playerId))
+			.map(Map.Entry::getKey)
+			.toList();
+		for (UUID tokenId : tokenIds) {
+			PLAYER_ACTION_CONFIRMATIONS.remove(tokenId);
+			CONFIRMATIONS.cancel(playerId, tokenId);
+		}
+	}
+
+	private static void cancelPendingTerminalHostConfirmations(final UUID playerId) {
+		List<UUID> tokenIds = TERMINAL_HOST_CONFIRMATIONS.entrySet()
+			.stream()
+			.filter(entry -> entry.getValue().playerId().equals(playerId))
+			.map(Map.Entry::getKey)
+			.toList();
+		for (UUID tokenId : tokenIds) {
+			TERMINAL_HOST_CONFIRMATIONS.remove(tokenId);
+			CONFIRMATIONS.cancel(playerId, tokenId);
+		}
+	}
+
+	private static void clearPendingPlayerActionConfirmations(final UUID playerId) {
+		PLAYER_ACTION_CONFIRMATIONS.entrySet().removeIf(
+			entry -> entry.getValue().playerId().equals(playerId)
+		);
+	}
+
+	private static void clearPendingTerminalHostConfirmationMetadata(
+		final UUID playerId
+	) {
+		TERMINAL_HOST_CONFIRMATIONS.entrySet().removeIf(
+			entry -> entry.getValue().playerId().equals(playerId)
+		);
+	}
+
+	private static TerminalAuthorityResult resolveTerminalAuthority(
+		final MinecraftServer server,
+		final ServerPlayer player
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV4 root = wrapper.currentV4().orElse(null);
+		if (!wrapper.isSchemaCompatible() || root == null) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.SCHEMA_BLOCKED,
+				"世界数据正在迁移或版本不兼容，玩家终端暂不可用。"
+			);
+		}
+		if (hasCurrentForcedPage(root.core(), player.getUUID())) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.ACTIVE_FLOW_EXISTS,
+				"请先完成当前强制流程。"
+			);
+		}
+		WorldStateV2 state = root.core().core();
+		if (
+			state.host()
+				.map(WorldStateV2.HostRecord::playerId)
+				.filter(player.getUUID()::equals)
+				.isPresent()
+		) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.NOT_HOST,
+				"主持人应打开主持人控制台。"
+			);
+		}
+		View live = DefinitionRegistry.INSTANCE.view();
+		boolean frozenTimeline = root.core().timeline().isPresent();
+		if (!frozenTimeline && (!live.healthy() || !live.active().usable())) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.DEFINITION_UNAVAILABLE,
+				"玩家终端定义当前不可用，请联系主持人查看数据包诊断。"
+			);
+		}
+		Identifier gameId = state.activeGameId().orElse(null);
+		Identifier phaseId = state.activePhaseId().orElse(null);
+		PlayerRecord record = state.players().get(player.getUUID());
+		if (gameId == null || phaseId == null || record == null) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.DEFINITION_UNAVAILABLE,
+				"当前世界尚未建立完整的玩家终端上下文。"
+			);
+		}
+		DefinitionSnapshot definitions;
+		try {
+			definitions = terminalDefinitionSnapshot(root.core(), live.active());
+		} catch (IllegalStateException error) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.SNAPSHOT_INVALID,
+				"本局冻结的玩家终端定义无法恢复，请查看服务端日志。"
+			);
+		}
+		GameDefinition game = definitions.games().get(gameId);
+		if (game == null) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.DEFINITION_UNAVAILABLE,
+				"当前游戏没有可用的玩家终端定义。"
+			);
+		}
+		Optional<Identifier> taskId = root.core()
+			.timeline()
+			.flatMap(WorldStateV3.TimelineInstance::currentTask)
+			.map(WorldStateV3.TaskInstance::taskId);
+		Optional<PlayerTaskState> taskState = terminalTaskState(root.core());
+		FrozenPredicateEvaluator predicates = new FrozenPredicateEvaluator(
+			server,
+			definitions.predicateDocuments()
+		);
+		PredicateContext predicateContext = panelPredicateContext(state, player);
+		PlayerTerminalRouter.Resolution route = PlayerTerminalRouter.resolve(
+			definitions,
+			game,
+			new PlayerTerminalRouter.Context(
+				gameId,
+				phaseId,
+				record,
+				state.host().map(WorldStateV2.HostRecord::playerId),
+				true,
+				taskId,
+				taskState
+			),
+			(predicate, ignored) -> {
+				try {
+					return predicates.evaluate(predicate, predicateContext);
+				} catch (RuntimeException error) {
+					PixelTzzPro.LOGGER.warn(
+						"Player-terminal route predicate {} failed for {}",
+						predicate,
+						player.getUUID(),
+						error
+					);
+					return false;
+				}
+			}
+		);
+		if (route.pageId().isEmpty()) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.DEFINITION_UNAVAILABLE,
+				route.message().isBlank() ? "当前没有适用于你的玩家终端页面。" : route.message()
+			);
+		}
+		PageDefinition page = definitions.pages().get(route.pageId().orElseThrow());
+		if (page == null || !page.game().equals(gameId)) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.SNAPSHOT_INVALID,
+				"玩家终端路由引用了不可用页面。"
+			);
+		}
+		/*
+		 * A non-host OP stays inside the ordinary player terminal. This flag means that the
+		 * terminal may expose exactly one built-in host-ownership action: Claim while no host
+		 * exists, or Take over while another player is host. The client chooses the matching
+		 * fixed operation from the authoritative SessionSnapshot; both operations are still
+		 * revalidated and confirmed by the server.
+		 */
+		boolean takeoverAllowed = isAdminEligible(player)
+			&& state.host()
+				.map(host -> !host.playerId().equals(player.getUUID()))
+				.orElse(true);
+		return TerminalAuthorityResult.resolved(
+			new TerminalAuthority(
+				root,
+				state,
+				definitions,
+				game,
+				record,
+				route,
+				taskId,
+				taskState,
+				takeoverAllowed
+			)
+		);
+	}
+
+	private static DefinitionSnapshot terminalDefinitionSnapshot(
+		final WorldStateV3 root,
+		final DefinitionSnapshot live
+	) {
+		WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+		if (timeline == null) {
+			return live;
+		}
+		String sha256 = timeline.snapshot().sha256();
+		TerminalFrozenSnapshot cached = terminalFrozenSnapshot;
+		if (
+			cached != null
+				&& cached.timelineInstanceId().equals(timeline.instanceId())
+				&& cached.sha256().equals(sha256)
+		) {
+			return cached.definitions();
+		}
+		TimelineSnapshotCompiler.RestoreResult restored = TimelineSnapshotCompiler.restore(
+			timeline.gameId(),
+			timeline.snapshot()
+		);
+		if (!restored.success()) {
+			throw new IllegalStateException(restored.code() + ": " + restored.message());
+		}
+		DefinitionSnapshot definitions = restored.snapshot().orElseThrow();
+		terminalFrozenSnapshot = new TerminalFrozenSnapshot(
+			timeline.instanceId(),
+			sha256,
+			definitions
+		);
+		return definitions;
+	}
+
+	private static Optional<PlayerTaskState> terminalTaskState(final WorldStateV3 root) {
+		WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+		WorldStateV3.TaskInstance task = timeline == null
+			? null
+			: timeline.currentTask().orElse(null);
+		if (timeline == null || task == null) {
+			return Optional.empty();
+		}
+		if (
+			timeline.status() == WorldStateV3.TimelineStatus.BLOCKED
+				|| task.status() == WorldStateV3.TaskStatus.BLOCKED
+		) {
+			return Optional.of(PlayerTaskState.BLOCKED);
+		}
+		if (timeline.paused()) {
+			return Optional.of(PlayerTaskState.PAUSED);
+		}
+		if (timeline.status() == WorldStateV3.TimelineStatus.INTERMISSION) {
+			return Optional.of(PlayerTaskState.INTERMISSION);
+		}
+		return Optional.of(
+			switch (task.status()) {
+				case STARTING -> PlayerTaskState.STARTING;
+				case RUNNING -> PlayerTaskState.RUNNING;
+				case SETTLING -> PlayerTaskState.SETTLING;
+				case SETTLED -> PlayerTaskState.SETTLED;
+				case INTERRUPTED -> PlayerTaskState.INTERRUPTED;
+				case BLOCKED -> PlayerTaskState.BLOCKED;
+			}
+		);
+	}
+
+	private static TerminalPageBundleResult sendTerminalPageBundle(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session
+	) {
+		if (!ServerPlayNetworking.canSend(player, PageBundleS2CPayload.TYPE)) {
+			return TerminalPageBundleResult.failed(
+				"page_bundle_unsupported",
+				"客户端当前无法接收玩家终端页面。"
+			);
+		}
+		PageDefinition page = authority.definitions().pages().get(
+			session.current().pageId()
+		);
+		if (page == null || !page.game().equals(authority.game().id())) {
+			return TerminalPageBundleResult.failed(
+				"page_unavailable",
+				"玩家终端目标页面当前不可用。"
+			);
+		}
+		ThemeDefinition theme = page.theme().equals(BuiltInUiResources.defaultTheme().id())
+			? BuiltInUiResources.defaultTheme()
+			: authority.definitions().themes().get(page.theme());
+		if (theme == null) {
+			return TerminalPageBundleResult.failed(
+				"theme_unavailable",
+				"玩家终端页面主题当前不可用。"
+			);
+		}
+		TerminalBindingResult bindingResult = terminalBindingDocument(
+			server,
+			player,
+			authority,
+			session
+		);
+		if (!bindingResult.successful()) {
+			return TerminalPageBundleResult.failed(
+				bindingResult.status(),
+				bindingResult.message()
+			);
+		}
+		byte[] binding = bindingResult.document().orElseThrow();
+		try {
+			PageBundleS2CPayload.TerminalContext terminal =
+				new PageBundleS2CPayload.TerminalContext(
+					session.sessionId(),
+					session.routeRevision(),
+					session.stack().size(),
+					session.nextRequestSequence(),
+					authority.takeoverAllowed()
+				);
+			ServerPlayNetworking.send(
+				player,
+				new PageBundleS2CPayload(
+					session.current().instanceId(),
+					authority.definitions().generation(),
+					authority.root().stateRevision(),
+					page.id(),
+					theme.id(),
+					HexFormat.of().parseHex(page.sha256()),
+					page.canonicalDocument().getBytes(StandardCharsets.UTF_8),
+					HexFormat.of().parseHex(theme.sha256()),
+					theme.canonicalDocument().getBytes(StandardCharsets.UTF_8),
+					collectFieldSchemas(authority.definitions(), page),
+					PageBundleS2CPayload.PagePurpose.NORMAL,
+					Optional.empty(),
+					Optional.of(terminal),
+					binding
+				)
+			);
+		} catch (RuntimeException error) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not send player-terminal page bundle {} to {}",
+				page.id(),
+				player.getUUID(),
+				error
+			);
+			return TerminalPageBundleResult.failed(
+				"page_bundle_send_failed",
+				"玩家终端页面下发失败。"
+			);
+		}
+		LAST_TERMINAL_BINDING_HASHES.put(player.getUUID(), sha256(binding));
+		return TerminalPageBundleResult.sent();
+	}
+
+	private static TerminalBindingResult terminalBindingDocument(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session
+	) {
+		PlayerTerminalProjector.Projection projection;
+		try {
+			projection = PlayerTerminalProjector.project(
+				server,
+				authority.definitions(),
+				authority.root(),
+				player,
+				new PlayerTerminalProjector.SessionMetadata(
+					session.sessionId(),
+					session.current().instanceId(),
+					session.current().pageId(),
+					session.routeId(),
+					session.definitionGeneration(),
+					session.stateRevision(),
+					true,
+					session.current()
+						.historyRecord()
+						.map(PlayerTerminalSessions.HistoryRecordRef::recordKey),
+					session.current().navigationGrant().isPresent()
+				)
+			);
+		} catch (RuntimeException | StackOverflowError error) {
+			PixelTzzPro.LOGGER.warn(
+				"Could not project player terminal for {}",
+				player.getUUID(),
+				error
+			);
+			return TerminalBindingResult.failed(
+				"projection_failed",
+				terminalProjectionFailureMessage("projection_failed")
+			);
+		}
+		if (!projection.summary().status().equals("ok")) {
+			PixelTzzPro.LOGGER.warn(
+				"Rejected closed player-terminal projection for {} with status {}",
+				player.getUUID(),
+				projection.summary().status()
+			);
+			return TerminalBindingResult.failed(
+				projection.summary().status(),
+				terminalProjectionFailureMessage(projection.summary().status())
+			);
+		}
+		return TerminalBindingResult.projected(projection.bindingDocument());
+	}
+
+	static String terminalProjectionFailureMessage(final String status) {
+		Objects.requireNonNull(status, "status");
+		return switch (status) {
+			case "binding_limit" -> "玩家终端公开数据超过安全上限，页面已关闭。";
+			case "frozen_snapshot_invalid" ->
+				"当前游戏的冻结定义无法安全恢复，玩家终端已关闭。";
+			case "projection_failed" -> "玩家终端公开数据生成失败，页面已关闭。";
+			default -> "玩家终端公开数据当前不可用，页面已关闭。";
+		};
+	}
+
+	private static void failTerminalPageMutationDelivery(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session previousVisibleSession,
+		final Optional<Long> requestSequence,
+		final TerminalPageBundleResult delivery
+	) {
+		if (delivery.successful()) {
+			throw new IllegalArgumentException(
+				"successful terminal page delivery cannot enter failure closure"
+			);
+		}
+		failTerminalPageMutation(
+			server,
+			player,
+			previousVisibleSession,
+			requestSequence,
+			OperationCode.SNAPSHOT_INVALID,
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			delivery.status(),
+			delivery.message()
+		);
+	}
+
+	private static void failTerminalPageMutation(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final PlayerTerminalSessions.Session previousVisibleSession,
+		final Optional<Long> requestSequence,
+		final OperationCode operationCode,
+		final long stateRevision,
+		final long definitionGeneration,
+		final String reason,
+		final String message
+	) {
+		requestSequence.ifPresent(sequence ->
+			sendOperationResult(
+				player,
+				sequence,
+				operationCode,
+				message,
+				stateRevision,
+				definitionGeneration,
+				false
+			)
+		);
+		invalidateTerminalSession(
+			server,
+			player,
+			previousVisibleSession,
+			reason,
+			message
+		);
+	}
+
+	private static String sha256(final byte[] bytes) {
+		try {
+			return HexFormat.of().formatHex(
+				MessageDigest.getInstance("SHA-256").digest(bytes)
+			);
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is unavailable", error);
+		}
+	}
+
+	private static boolean terminalRouteChanged(
+		final PlayerTerminalSessions.Session session,
+		final TerminalAuthority authority,
+		final Identifier rootPage
+	) {
+		return !session.routeId().equals(authority.route().routeId())
+			|| !session.rootPage().equals(rootPage);
+	}
+
+	/**
+	 * Returns the number of leading frames that remain authorized by the current game state.
+	 *
+	 * <p>Navigation grants are rebound to their source buttons without consuming action usage or
+	 * cooldown. History frames are retained only while the same opaque record remains visible and
+	 * still resolves to the same registered detail page.
+	 */
+	private static int authorizedTerminalStackDepth(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session
+	) {
+		List<PlayerTerminalSessions.Frame> stack = session.stack();
+		PlayerActionAuthority.PredicateEvaluator predicates =
+			terminalActionPredicates(server, player, authority);
+		for (int index = 1; index < stack.size(); index++) {
+			PlayerTerminalSessions.Frame frame = stack.get(index);
+			if (frame.navigationGrant().isPresent()) {
+				PlayerTerminalSessions.NavigationGrant grant =
+					frame.navigationGrant().orElseThrow();
+				PlayerActionAuthority.NavigationValidation validation =
+					PlayerActionAuthority.validateNavigationGrant(
+						authority.root(),
+						authority.definitions(),
+						player.getUUID(),
+						true,
+						grant,
+						frame.pageId(),
+						predicates
+					);
+				if (!validation.allowed()) {
+					PixelTzzPro.LOGGER.debug(
+						"Player terminal navigation grant became unavailable for {} at depth {}: {} ({})",
+						player.getUUID(),
+						index,
+						validation.message(),
+						validation.denialCode().map(Enum::name).orElse("unknown")
+					);
+					return index;
+				}
+			}
+			PlayerTerminalSessions.HistoryRecordRef history =
+				frame.historyRecord().orElse(null);
+			if (
+				history != null
+					&& !historyDetailFrameStillAuthorized(
+						server,
+						player,
+						authority,
+						session,
+						frame,
+						history
+					)
+			) {
+				PixelTzzPro.LOGGER.debug(
+					"Player terminal history frame became unavailable for {} at depth {}",
+					player.getUUID(),
+					index
+				);
+				if (frame.navigationGrant().isPresent()) {
+					// A same-page history selection is secondary to the still-valid page grant.
+					// Keep the page and let the projector recover to another visible record.
+					continue;
+				}
+				return index;
+			}
+			if (frame.navigationGrant().isEmpty() && history == null) {
+				PixelTzzPro.LOGGER.debug(
+					"Player terminal frame has no authorization anchor for {} at depth {}",
+					player.getUUID(),
+					index
+				);
+				return index;
+			}
+		}
+		return stack.size();
+	}
+
+	private static boolean historyDetailFrameStillAuthorized(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalAuthority authority,
+		final PlayerTerminalSessions.Session session,
+		final PlayerTerminalSessions.Frame frame,
+		final PlayerTerminalSessions.HistoryRecordRef history
+	) {
+		PlayerTerminalProjector.HistoryDetailTarget target =
+			PlayerTerminalProjector.resolveHistoryDetail(
+				server,
+				authority.definitions(),
+				authority.root(),
+				player,
+				new PlayerTerminalProjector.SessionMetadata(
+					session.sessionId(),
+					frame.instanceId(),
+					frame.pageId(),
+					session.routeId(),
+					authority.definitions().generation(),
+					authority.root().stateRevision(),
+					true,
+					Optional.of(history.recordKey())
+				),
+				history.recordKey()
+			).orElse(null);
+		return target != null
+			&& target.recordKey().equals(history.recordKey())
+			&& target.pageId().equals(frame.pageId());
+	}
+
+	private static void refreshOpenPlayerTerminals(
+		final MinecraftServer server,
+		final boolean forcePageBundle
+	) {
+		for (PlayerTerminalSessions.Session existing : PLAYER_TERMINAL_SESSIONS.snapshot()) {
+			ServerPlayer player = server.getPlayerList().getPlayer(existing.playerId());
+			if (player == null || !verified(player)) {
+				PLAYER_TERMINAL_SESSIONS.remove(existing.playerId());
+				LAST_TERMINAL_BINDING_HASHES.remove(existing.playerId());
+				continue;
+			}
+			if (terminalTransitionsToParticipantRecap(server, player)) {
+				releaseTerminalSessionForRecap(server, player, existing);
+				continue;
+			}
+			TerminalAuthorityResult resolved = resolveTerminalAuthority(server, player);
+			if (!resolved.successful()) {
+				invalidateTerminalSession(
+					server,
+					player,
+					existing,
+					"route_unavailable",
+					resolved.message()
+				);
+				continue;
+			}
+			TerminalAuthority authority = resolved.authority().orElseThrow();
+			Identifier rootPage = authority.route().pageId().orElseThrow();
+			boolean routeChanged = terminalRouteChanged(existing, authority, rootPage);
+			if (routeChanged) {
+				PlayerTerminalSessions.MutationResult replaced =
+					PLAYER_TERMINAL_SESSIONS.replaceRoute(
+						player.getUUID(),
+						authority.definitions().generation(),
+						authority.root().stateRevision(),
+						authority.route().routeId(),
+						rootPage,
+						authority.takeoverAllowed()
+					);
+				if (!replaced.successful()) {
+					invalidateTerminalSession(
+						server,
+						player,
+						existing,
+						"route_replace_failed",
+						replaced.message()
+					);
+					continue;
+				}
+				TerminalPageBundleResult delivery = sendTerminalPageBundle(
+					server,
+					player,
+					authority,
+					replaced.session().orElseThrow()
+				);
+				if (!delivery.successful()) {
+					failTerminalPageMutationDelivery(
+						server,
+						player,
+						authority,
+						existing,
+						Optional.empty(),
+						delivery
+					);
+				} else {
+					clearPendingPlayerActionConfirmations(player.getUUID());
+					clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+					CONFIRMATIONS.cancelOperator(player.getUUID());
+				}
+				continue;
+			}
+			int retainedDepth = authorizedTerminalStackDepth(
+				server,
+				player,
+				authority,
+				existing
+			);
+			if (retainedDepth < existing.stack().size()) {
+				PlayerTerminalSessions.MutationResult truncated =
+					PLAYER_TERMINAL_SESSIONS.truncateToDepth(
+						player.getUUID(),
+						retainedDepth,
+						authority.root().stateRevision(),
+						authority.takeoverAllowed()
+					);
+				if (!truncated.successful()) {
+					invalidateTerminalSession(
+						server,
+						player,
+						existing,
+						"navigation_truncate_failed",
+						truncated.message()
+					);
+					continue;
+				}
+				PlayerTerminalSessions.MutationResult reissued =
+					PLAYER_TERMINAL_SESSIONS.reissue(
+						player.getUUID(),
+						authority.definitions().generation(),
+						authority.root().stateRevision(),
+						authority.takeoverAllowed()
+					);
+				if (!reissued.successful()) {
+					invalidateTerminalSession(
+						server,
+						player,
+						existing,
+						"page_reissue_failed",
+						reissued.message()
+					);
+					continue;
+				}
+				TerminalPageBundleResult delivery = sendTerminalPageBundle(
+					server,
+					player,
+					authority,
+					reissued.session().orElseThrow()
+				);
+				if (!delivery.successful()) {
+					failTerminalPageMutationDelivery(
+						server,
+						player,
+						authority,
+						existing,
+						Optional.empty(),
+						delivery
+					);
+					continue;
+				}
+				clearPendingPlayerActionConfirmations(player.getUUID());
+				clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+				CONFIRMATIONS.cancelOperator(player.getUUID());
+				continue;
+			}
+			if (
+				forcePageBundle
+					|| existing.takeoverAllowed() != authority.takeoverAllowed()
+			) {
+				PlayerTerminalSessions.MutationResult reissued =
+					PLAYER_TERMINAL_SESSIONS.reissue(
+						player.getUUID(),
+						authority.definitions().generation(),
+						authority.root().stateRevision(),
+						authority.takeoverAllowed()
+					);
+				if (!reissued.successful()) {
+					invalidateTerminalSession(
+						server,
+						player,
+						existing,
+						"page_reissue_failed",
+						reissued.message()
+					);
+					continue;
+				}
+				TerminalPageBundleResult delivery = sendTerminalPageBundle(
+					server,
+					player,
+					authority,
+					reissued.session().orElseThrow()
+				);
+				if (!delivery.successful()) {
+					failTerminalPageMutationDelivery(
+						server,
+						player,
+						authority,
+						existing,
+						Optional.empty(),
+						delivery
+					);
+				} else {
+					clearPendingPlayerActionConfirmations(player.getUUID());
+					clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+					CONFIRMATIONS.cancelOperator(player.getUUID());
+				}
+				continue;
+			}
+			TerminalBindingResult bindingResult = terminalBindingDocument(
+				server,
+				player,
+				authority,
+				existing
+			);
+			if (!bindingResult.successful()) {
+				failTerminalPageMutation(
+					server,
+					player,
+					existing,
+					Optional.empty(),
+					OperationCode.SNAPSHOT_INVALID,
+					authority.root().stateRevision(),
+					authority.definitions().generation(),
+					bindingResult.status(),
+					bindingResult.message()
+				);
+				continue;
+			}
+			byte[] binding = bindingResult.document().orElseThrow();
+			String bindingHash = sha256(binding);
+			boolean changed = existing.stateRevision() != authority.root().stateRevision()
+				|| !bindingHash.equals(LAST_TERMINAL_BINDING_HASHES.get(player.getUUID()));
+			if (changed) {
+				if (
+					!ServerPlayNetworking.canSend(
+						player,
+						TerminalBindingDeltaS2CPayload.TYPE
+					)
+				) {
+					failTerminalPageMutation(
+						server,
+						player,
+						existing,
+						Optional.empty(),
+						OperationCode.SNAPSHOT_INVALID,
+						authority.root().stateRevision(),
+						authority.definitions().generation(),
+						"binding_delta_unsupported",
+						"客户端当前无法接收玩家终端数据更新。"
+					);
+					continue;
+				}
+				try {
+					ServerPlayNetworking.send(
+						player,
+						new TerminalBindingDeltaS2CPayload(
+							existing.sessionId(),
+							existing.current().instanceId(),
+							existing.definitionGeneration(),
+							authority.root().stateRevision(),
+							existing.routeRevision(),
+							binding
+						)
+					);
+				} catch (RuntimeException error) {
+					PixelTzzPro.LOGGER.warn(
+						"Could not send player-terminal binding delta to {}",
+						player.getUUID(),
+						error
+					);
+					failTerminalPageMutation(
+						server,
+						player,
+						existing,
+						Optional.empty(),
+						OperationCode.SNAPSHOT_INVALID,
+						authority.root().stateRevision(),
+						authority.definitions().generation(),
+						"binding_delta_send_failed",
+						"玩家终端数据更新下发失败。"
+					);
+					continue;
+				}
+				PlayerTerminalSessions.MutationResult touched =
+					PLAYER_TERMINAL_SESSIONS.touchProjection(
+						player.getUUID(),
+						authority.root().stateRevision(),
+						authority.takeoverAllowed()
+					);
+				if (!touched.successful()) {
+					failTerminalPageMutation(
+						server,
+						player,
+						existing,
+						Optional.empty(),
+						OperationCode.SNAPSHOT_INVALID,
+						authority.root().stateRevision(),
+						authority.definitions().generation(),
+						"binding_delta_commit_failed",
+						"玩家终端数据已变化，但服务端无法确认新的页面状态。"
+					);
+					continue;
+				}
+				LAST_TERMINAL_BINDING_HASHES.put(player.getUUID(), bindingHash);
+			}
+		}
+	}
+
+	private static boolean terminalTransitionsToParticipantRecap(
+		final MinecraftServer server,
+		final ServerPlayer player
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		if (
+			root == null
+				|| wrapper.hostId().filter(player.getUUID()::equals).isPresent()
+				|| root.timeline()
+					.filter(timeline ->
+						timeline.status() == WorldStateV3.TimelineStatus.COMPLETED
+							|| timeline.status() == WorldStateV3.TimelineStatus.INTERRUPTED
+					)
+					.isEmpty()
+		) {
+			return false;
+		}
+		TimelineViewS2CPayload recap = TimelineViewBuilder.build(
+			root,
+			player.getUUID(),
+			false,
+			0L,
+			playerId -> server.getPlayerList().getPlayer(playerId) != null
+		);
+		return recap.status().equals("ready") && recap.recapView();
+	}
+
+	private static void releaseTerminalSessionForRecap(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final PlayerTerminalSessions.Session session
+	) {
+		sendTerminalInvalidation(
+			player,
+			session,
+			PixelTzzWorldState.get(server).stateRevision(),
+			"timeline_terminal",
+			"本局已结束，赛后回顾已准备就绪。"
+		);
+		PLAYER_TERMINAL_SESSIONS.remove(player.getUUID());
+		LAST_TERMINAL_BINDING_HASHES.remove(player.getUUID());
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		CONFIRMATIONS.cancelOperator(player.getUUID());
+		PixelTzzPro.LOGGER.info(
+			"Closed player terminal {} for {} because the participant recap is ready",
+			session.sessionId(),
+			player.getUUID()
+		);
+	}
+
+	private static void invalidateTerminalSession(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final PlayerTerminalSessions.Session session,
+		final String reason,
+		final String message
+	) {
+		sendTerminalInvalidation(
+			player,
+			session,
+			PixelTzzWorldState.get(server).stateRevision(),
+			reason,
+			message
+		);
+		PLAYER_TERMINAL_SESSIONS.remove(player.getUUID());
+		LAST_TERMINAL_BINDING_HASHES.remove(player.getUUID());
+		clearPendingPlayerActionConfirmations(player.getUUID());
+		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		CONFIRMATIONS.cancelOperator(player.getUUID());
+		PixelTzzPro.LOGGER.warn(
+			"Invalidated player terminal {} for {}: {} ({})",
+			session.sessionId(),
+			player.getUUID(),
+			message,
+			reason
+		);
+	}
+
+	private static void sendTerminalInvalidation(
+		final ServerPlayer player,
+		final PlayerTerminalSessions.Session session,
+		final long stateRevision,
+		final String reason,
+		final String message
+	) {
+		if (!ServerPlayNetworking.canSend(player, TerminalInvalidationS2CPayload.TYPE)) {
+			return;
+		}
+		ServerPlayNetworking.send(
+			player,
+			new TerminalInvalidationS2CPayload(
+				session.sessionId(),
+				session.current().instanceId(),
+				Math.max(stateRevision, session.stateRevision()),
+				reason,
+				truncate(message, TerminalInvalidationS2CPayload.MAX_MESSAGE_LENGTH)
+			)
+		);
+	}
+
 	private static void onPreviewCatalogRequest(
 		final PreviewCatalogRequestC2SPayload payload,
 		final ServerPlayNetworking.Context context
@@ -7068,16 +9863,25 @@ public final class PixelTzzServerRuntime {
 		if (!verified(context.player())) {
 			return;
 		}
-		sendPreviewCatalog(context.player());
+		sendPreviewCatalog(context.server(), context.player());
 	}
 
-	private static void sendPreviewCatalog(final ServerPlayer player) {
+	private static void sendPreviewCatalog(
+		final MinecraftServer server,
+		final ServerPlayer player
+	) {
 		if (!ServerPlayNetworking.canSend(player, PreviewCatalogS2CPayload.TYPE)) {
 			return;
 		}
 		View definitions = DefinitionRegistry.INSTANCE.view();
-		if (!isAdminEligible(player)) {
-			sendPreviewCatalog(player, definitions.active().generation(), "forbidden", "只有管理员可以打开页面预览器", List.of());
+		if (!canViewConsole(server, player)) {
+			sendPreviewCatalog(
+				player,
+				definitions.active().generation(),
+				"forbidden",
+				"只有当前主持人可以打开页面预览器",
+				List.of()
+			);
 			return;
 		}
 		if (!definitions.healthy() || !definitions.active().usable()) {
@@ -7085,7 +9889,11 @@ public final class PixelTzzServerRuntime {
 				player,
 				definitions.active().generation(),
 				"unavailable",
-				truncateDiagnostic(definitions.diagnosticSummary()),
+				sessionDiagnosticForViewer(
+					true,
+					definitions.healthy(),
+					definitions.diagnosticSummary()
+				),
 				List.of()
 			);
 			return;
@@ -7151,12 +9959,12 @@ public final class PixelTzzServerRuntime {
 		}
 		View definitions = DefinitionRegistry.INSTANCE.view();
 		if (
-			!isAdminEligible(player)
+			!canViewConsole(context.server(), player)
 				|| !definitions.healthy()
 				|| !definitions.active().usable()
 				|| !ServerPlayNetworking.canSend(player, PageBundleS2CPayload.TYPE)
 		) {
-			sendPreviewCatalog(player);
+			sendPreviewCatalog(context.server(), player);
 			return;
 		}
 
@@ -7436,6 +10244,18 @@ public final class PixelTzzServerRuntime {
 		final PageCloseC2SPayload payload,
 		final ServerPlayNetworking.Context context
 	) {
+		if (
+			PLAYER_TERMINAL_SESSIONS.close(
+				context.player().getUUID(),
+				payload.instanceId()
+			)
+		) {
+			LAST_TERMINAL_BINDING_HASHES.remove(context.player().getUUID());
+			clearPendingPlayerActionConfirmations(context.player().getUUID());
+			clearPendingTerminalHostConfirmationMetadata(context.player().getUUID());
+			CONFIRMATIONS.cancelOperator(context.player().getUUID());
+			return;
+		}
 		PreviewPageInstance instance = PREVIEW_INSTANCES.get(context.player().getUUID());
 		if (instance != null && instance.id.equals(payload.instanceId())) {
 			PREVIEW_INSTANCES.remove(context.player().getUUID());
@@ -7465,7 +10285,41 @@ public final class PixelTzzServerRuntime {
 			onPreviewResourceReport(payload, context, instance);
 			return;
 		}
+		PlayerTerminalSessions.Session terminal = PLAYER_TERMINAL_SESSIONS.find(
+			context.player().getUUID()
+		).orElse(null);
+		if (
+			terminal != null
+				&& terminal.current().instanceId().equals(payload.instanceId())
+				&& terminal.definitionGeneration() == payload.generation()
+				&& terminal.current().pageId().equals(payload.pageId())
+		) {
+			onTerminalResourceReport(payload, context, terminal);
+			return;
+		}
 		onForcedResourceReport(payload, context);
+	}
+
+	private static void onTerminalResourceReport(
+		final ResourceReportC2SPayload payload,
+		final ServerPlayNetworking.Context context,
+		final PlayerTerminalSessions.Session session
+	) {
+		if (!payload.requiredMissing() && payload.renderError().isEmpty()) {
+			return;
+		}
+		String message = payload.renderError()
+			.map(value -> "玩家终端页面无法渲染：" + value)
+			.orElse("玩家终端缺少数据包标记为必需的客户端资源。");
+		invalidateTerminalSession(
+			context.server(),
+			context.player(),
+			session,
+			payload.renderError().isPresent()
+				? "render_failed"
+				: "required_resource_missing",
+			message
+		);
 	}
 
 	private static void onPreviewResourceReport(
@@ -7730,6 +10584,42 @@ public final class PixelTzzServerRuntime {
 			}
 		}
 
+		if (
+			lastTerminalProjectionTick == Integer.MIN_VALUE
+				|| currentTick < lastTerminalProjectionTick
+				|| currentTick - lastTerminalProjectionTick
+					>= TERMINAL_PROJECTION_INTERVAL_TICKS
+		) {
+			lastTerminalProjectionTick = currentTick;
+			refreshOpenPlayerTerminals(server, false);
+			Map<UUID, PlayerTerminalSessions.Session> expiring =
+				PLAYER_TERMINAL_SESSIONS.snapshot()
+					.stream()
+					.collect(
+						java.util.stream.Collectors.toMap(
+							PlayerTerminalSessions.Session::playerId,
+							value -> value
+						)
+					);
+			for (UUID playerId : PLAYER_TERMINAL_SESSIONS.expire(currentTick)) {
+				LAST_TERMINAL_BINDING_HASHES.remove(playerId);
+				clearPendingPlayerActionConfirmations(playerId);
+				clearPendingTerminalHostConfirmationMetadata(playerId);
+				CONFIRMATIONS.cancelOperator(playerId);
+				ServerPlayer player = server.getPlayerList().getPlayer(playerId);
+				PlayerTerminalSessions.Session expired = expiring.get(playerId);
+				if (player != null && expired != null) {
+					sendTerminalInvalidation(
+						player,
+						expired,
+						PixelTzzWorldState.get(server).stateRevision(),
+						"session_expired",
+						"玩家终端长时间未操作，已安全关闭；请从暂停菜单重新打开。"
+					);
+				}
+			}
+		}
+
 		if (currentTick % PERMISSION_REFRESH_INTERVAL_TICKS != 0) {
 			return;
 		}
@@ -7754,6 +10644,9 @@ public final class PixelTzzServerRuntime {
 		final boolean success
 	) {
 		int canceledConfirmations = CONFIRMATIONS.clear();
+		PLAYER_ACTION_CONFIRMATIONS.clear();
+		TERMINAL_HOST_CONFIRMATIONS.clear();
+		terminalFrozenSnapshot = null;
 		if (canceledConfirmations > 0) {
 			persistConfirmationAudit(
 				PixelTzzWorldState.get(server),
@@ -7767,6 +10660,7 @@ public final class PixelTzzServerRuntime {
 		if (!success) {
 			PixelTzzPro.LOGGER.warn("Data-pack reload failed; keeping the previous Pixel TZZ state and resources");
 			DefinitionRegistry.INSTANCE.markPlatformReloadFailed();
+			refreshOpenPlayerTerminals(server, true);
 			sendSnapshots(server, false);
 			pushHostConsoleSnapshot(server);
 			sendForcedPages(server);
@@ -7794,6 +10688,7 @@ public final class PixelTzzServerRuntime {
 				.filter(PixelTzzServerRuntime::verified)
 				.forEach(player -> ensurePlayerRegistered(server, player));
 		}
+		refreshOpenPlayerTerminals(server, true);
 		sendSnapshots(server, animateLoad);
 		pushHostConsoleSnapshot(server);
 		// A reload must preserve the active frozen flow and reassert its mandatory page.
@@ -7820,6 +10715,7 @@ public final class PixelTzzServerRuntime {
 				sendSnapshot(server, player, animateLoad);
 			}
 		}
+		refreshOpenPlayerTerminals(server, false);
 	}
 
 	private static void refreshTabListDisplay(final MinecraftServer server) {
@@ -7865,7 +10761,11 @@ public final class PixelTzzServerRuntime {
 				definitions.active().generation(),
 				definitions.active().games().size(),
 				definitions.active().definitionCount(),
-				truncateDiagnostic(definitions.diagnosticSummary()),
+				sessionDiagnosticForViewer(
+					currentPlayerHost,
+					definitions.healthy(),
+					definitions.diagnosticSummary()
+				),
 				animateLoad
 					&& state.isSchemaCompatible()
 					&& definitions.canStartNewFlows()
@@ -7875,6 +10775,20 @@ public final class PixelTzzServerRuntime {
 
 	private static String truncateDiagnostic(final String diagnostic) {
 		return diagnostic.length() <= 1_024 ? diagnostic : diagnostic.substring(0, 1_021) + "...";
+	}
+
+	static String sessionDiagnosticForViewer(
+		final boolean currentPlayerHost,
+		final boolean definitionsHealthy,
+		final String diagnostic
+	) {
+		Objects.requireNonNull(diagnostic, "diagnostic");
+		if (currentPlayerHost) {
+			return truncateDiagnostic(diagnostic);
+		}
+		return definitionsHealthy
+			? "数据包定义已就绪。"
+			: "数据包定义当前不可用，请联系主持人查看详情。";
 	}
 
 	private static boolean persistConfirmationAudit(
@@ -7965,12 +10879,31 @@ public final class PixelTzzServerRuntime {
 		return player.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER);
 	}
 
+	/**
+	 * Durable clock for persisted player-action usage and cooldown records.
+	 *
+	 * <p>{@link MinecraftServer#getTickCount()} restarts from zero for every server process and
+	 * would therefore make a persisted cooldown appear to come from the future after a restart.
+	 * The overworld game time is saved with the world and remains monotonic across normal restarts.
+	 */
+	private static long playerActionWorldTick(final MinecraftServer server) {
+		return server.overworld().getGameTime();
+	}
+
 	private static boolean canViewConsole(
 		final MinecraftServer server,
 		final ServerPlayer player
 	) {
-		return isAdminEligible(player)
-			|| PixelTzzWorldState.get(server).hostId().filter(player.getUUID()::equals).isPresent();
+		/*
+		 * V3A deliberately removes the administrator-console view from non-host OP players.
+		 * Their only elevated UI is the fixed Claim/Take-over action in the least-privilege
+		 * player terminal; returning a full console snapshot here would leak the host roster,
+		 * actions, diagnostics, and flow state even if the client did not render them.
+		 */
+		return PixelTzzWorldState.get(server)
+			.hostId()
+			.filter(player.getUUID()::equals)
+			.isPresent();
 	}
 
 	private static void onPlayerDisconnected(
@@ -8004,11 +10937,11 @@ public final class PixelTzzServerRuntime {
 			.forEach(playerId -> updateMemberConnection(server, playerId, "", false));
 	}
 
-	private static void restoreMemberOnline(
+	private static boolean restoreMemberOnline(
 		final MinecraftServer server,
 		final ServerPlayer player
 	) {
-		updateMemberConnection(server, player.getUUID(), player.getPlainTextName(), true);
+		return updateMemberConnection(server, player.getUUID(), player.getPlainTextName(), true);
 	}
 
 	private static boolean updateReadinessConnection(
@@ -8276,6 +11209,10 @@ public final class PixelTzzServerRuntime {
 		LAST_ADMIN_ELIGIBILITY.remove(playerId);
 		LAST_TIMELINE_VIEW_REQUEST_TICK.remove(playerId);
 		PREVIEW_INSTANCES.remove(playerId);
+		PLAYER_TERMINAL_SESSIONS.remove(playerId);
+		LAST_TERMINAL_BINDING_HASHES.remove(playerId);
+		clearPendingPlayerActionConfirmations(playerId);
+		clearPendingTerminalHostConfirmationMetadata(playerId);
 		HOST_FLOW_BOSS_BAR.removeViewer(playerId);
 		Optional<Binding> canceledBinding = CONFIRMATIONS.pendingBinding(playerId);
 		if (
@@ -8292,6 +11229,7 @@ public final class PixelTzzServerRuntime {
 			);
 		}
 		CONTROL_REQUEST_GATE.remove(playerId);
+		TERMINAL_OPEN_REQUEST_GATE.remove(playerId);
 		FLOW_ACTION_REQUEST_GATE.remove(playerId);
 		RESOURCE_REPORT_GATE.remove(playerId);
 	}
@@ -8302,10 +11240,247 @@ public final class PixelTzzServerRuntime {
 		LAST_ADMIN_ELIGIBILITY.clear();
 		LAST_TIMELINE_VIEW_REQUEST_TICK.clear();
 		PREVIEW_INSTANCES.clear();
+		PLAYER_TERMINAL_SESSIONS.clear();
+		LAST_TERMINAL_BINDING_HASHES.clear();
+		PLAYER_ACTION_CONFIRMATIONS.clear();
+		TERMINAL_HOST_CONFIRMATIONS.clear();
+		terminalFrozenSnapshot = null;
+		lastTerminalProjectionTick = Integer.MIN_VALUE;
 		hostConsoleRefreshPending = false;
 		CONTROL_REQUEST_GATE.clear();
+		TERMINAL_OPEN_REQUEST_GATE.clear();
 		FLOW_ACTION_REQUEST_GATE.clear();
 		RESOURCE_REPORT_GATE.clear();
+	}
+
+	private record TerminalBindingResult(
+		Optional<byte[]> document,
+		String status,
+		String message
+	) {
+		private TerminalBindingResult {
+			document = Objects.requireNonNull(document, "document");
+			status = Objects.requireNonNull(status, "status");
+			message = Objects.requireNonNull(message, "message");
+			if (
+				document.isPresent() != status.equals("ok")
+					|| (document.isEmpty() && message.isBlank())
+			) {
+				throw new IllegalArgumentException(
+					"terminal binding result has mismatched status"
+				);
+			}
+		}
+
+		private boolean successful() {
+			return this.document.isPresent();
+		}
+
+		private static TerminalBindingResult projected(final byte[] document) {
+			return new TerminalBindingResult(
+				Optional.of(Objects.requireNonNull(document, "document")),
+				"ok",
+				""
+			);
+		}
+
+		private static TerminalBindingResult failed(
+			final String status,
+			final String message
+		) {
+			if (status.equals("ok")) {
+				throw new IllegalArgumentException(
+					"failed terminal binding cannot use ok status"
+				);
+			}
+			return new TerminalBindingResult(Optional.empty(), status, message);
+		}
+	}
+
+	private record TerminalPageBundleResult(
+		boolean successful,
+		String status,
+		String message
+	) {
+		private TerminalPageBundleResult {
+			status = Objects.requireNonNull(status, "status");
+			message = Objects.requireNonNull(message, "message");
+			if (successful != status.equals("ok") || (!successful && message.isBlank())) {
+				throw new IllegalArgumentException(
+					"terminal page-bundle result has mismatched status"
+				);
+			}
+		}
+
+		private static TerminalPageBundleResult sent() {
+			return new TerminalPageBundleResult(true, "ok", "");
+		}
+
+		private static TerminalPageBundleResult failed(
+			final String status,
+			final String message
+		) {
+			if (status.equals("ok")) {
+				throw new IllegalArgumentException(
+					"failed terminal page bundle cannot use ok status"
+				);
+			}
+			return new TerminalPageBundleResult(false, status, message);
+		}
+	}
+
+	private record TerminalAuthority(
+		WorldStateV4 root,
+		WorldStateV2 state,
+		DefinitionSnapshot definitions,
+		GameDefinition game,
+		PlayerRecord player,
+		PlayerTerminalRouter.Resolution route,
+		Optional<Identifier> taskId,
+		Optional<PlayerTaskState> taskState,
+		boolean takeoverAllowed
+	) {
+		private TerminalAuthority {
+			Objects.requireNonNull(root, "root");
+			Objects.requireNonNull(state, "state");
+			Objects.requireNonNull(definitions, "definitions");
+			Objects.requireNonNull(game, "game");
+			Objects.requireNonNull(player, "player");
+			Objects.requireNonNull(route, "route");
+			taskId = Objects.requireNonNull(taskId, "taskId");
+			taskState = Objects.requireNonNull(taskState, "taskState");
+			if (route.pageId().isEmpty()) {
+				throw new IllegalArgumentException(
+					"terminal authority requires an executable page route"
+				);
+			}
+		}
+	}
+
+	private record TerminalAuthorityResult(
+		Optional<TerminalAuthority> authority,
+		OperationCode code,
+		String message
+	) {
+		private TerminalAuthorityResult {
+			authority = Objects.requireNonNull(authority, "authority");
+			Objects.requireNonNull(code, "code");
+			message = Objects.requireNonNull(message, "message");
+			if (
+				authority.isPresent() != (code == OperationCode.SUCCESS)
+					|| (authority.isEmpty() && message.isBlank())
+			) {
+				throw new IllegalArgumentException(
+					"terminal authority result has mismatched status"
+				);
+			}
+		}
+
+		private boolean successful() {
+			return this.authority.isPresent();
+		}
+
+		private static TerminalAuthorityResult resolved(
+			final TerminalAuthority authority
+		) {
+			return new TerminalAuthorityResult(
+				Optional.of(authority),
+				OperationCode.SUCCESS,
+				""
+			);
+		}
+
+		private static TerminalAuthorityResult rejected(
+			final OperationCode code,
+			final String message
+		) {
+			if (code == OperationCode.SUCCESS) {
+				throw new IllegalArgumentException(
+					"rejected terminal authority cannot use SUCCESS"
+				);
+			}
+			return new TerminalAuthorityResult(Optional.empty(), code, message);
+		}
+	}
+
+	private record TerminalFrozenSnapshot(
+		UUID timelineInstanceId,
+		String sha256,
+		DefinitionSnapshot definitions
+	) {
+		private TerminalFrozenSnapshot {
+			Objects.requireNonNull(timelineInstanceId, "timelineInstanceId");
+			sha256 = Objects.requireNonNull(sha256, "sha256");
+			Objects.requireNonNull(definitions, "definitions");
+			if (!sha256.matches("[0-9a-f]{64}")) {
+				throw new IllegalArgumentException(
+					"terminal frozen snapshot hash is invalid"
+				);
+			}
+		}
+	}
+
+	private record PendingPlayerActionConfirmation(
+		UUID playerId,
+		SessionAuthorization authorization,
+		ActionRequest request,
+		PlayerActionAuthority.ConfirmationChallenge challenge
+	) {
+		private PendingPlayerActionConfirmation {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(authorization, "authorization");
+			Objects.requireNonNull(request, "request");
+			Objects.requireNonNull(challenge, "challenge");
+			if (
+				!playerId.equals(authorization.playerId())
+					|| !authorization.sessionId().equals(request.sessionId())
+					|| !authorization.pageInstanceId().equals(request.pageInstanceId())
+					|| !challenge.sessionId().equals(request.sessionId())
+					|| !challenge.pageInstanceId().equals(request.pageInstanceId())
+					|| !challenge.requestId().equals(request.requestId())
+			) {
+				throw new IllegalArgumentException(
+					"player-action confirmation has mismatched authority"
+				);
+			}
+		}
+	}
+
+	private record PendingTerminalHostConfirmation(
+		UUID playerId,
+		UUID sessionId,
+		UUID pageInstanceId,
+		long definitionGeneration,
+		long routeRevision,
+		long acceptedRequestSequence,
+		OperationKey operation
+	) {
+		private PendingTerminalHostConfirmation {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(sessionId, "sessionId");
+			Objects.requireNonNull(pageInstanceId, "pageInstanceId");
+			Objects.requireNonNull(operation, "operation");
+			if (
+				definitionGeneration < 0L
+					|| routeRevision < 0L
+					|| acceptedRequestSequence < 0L
+					|| (
+						!operation.equals(
+							new OperationKey("claim_host", CLAIM_HOST_OPERATION)
+						)
+							&& !operation.equals(
+								new OperationKey(
+									"takeover_host",
+									TAKEOVER_HOST_OPERATION
+								)
+							)
+					)
+			) {
+				throw new IllegalArgumentException(
+					"terminal host confirmation has invalid authority"
+				);
+			}
+		}
 	}
 
 	private record CallbackDispatch(OperationCode code, String message) {

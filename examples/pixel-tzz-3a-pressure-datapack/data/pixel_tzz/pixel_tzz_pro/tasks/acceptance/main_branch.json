@@ -1,0 +1,611 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "kind": "main",
+  "name": {
+    "text": "2D 验收 · 分支任务"
+  },
+  "description": {
+    "text": "这是一段专门用于玩家终端压力验收的长任务正文。它会被十项彼此独立的数据授权同时投影，用来确认个人信息页左右两块正文区域只在自身内部滚动，长中文能够自然换行，滚动条不会越过卡片边界，页面标题、返回按钮和底部导航始终保持固定，同时不会因为内容刷新而重绘整张终端。"
+  },
+  "audience": {
+    "role_tags": [
+      "pixel_tzz:active_participant"
+    ],
+    "exclude_host": true,
+    "online_only": false
+  },
+  "completion_policy": "early_or_timeout",
+  "duration_ticks": 6000,
+  "counts_toward_game_time": true,
+  "live_visibility": {
+    "future": "teaser",
+    "history": "hidden",
+    "candidate_visibility": "names_only"
+  },
+  "recap_visibility": "participants",
+  "callbacks": {
+    "on_start": "pixel_tzz:acceptance_2d/timeline/start_branch_task",
+    "on_timeout": "pixel_tzz:acceptance_2d/timeline/timeout_branch_task",
+    "on_settled": "pixel_tzz:acceptance_2d/timeline/capture_result"
+  },
+  "on_start_players": {
+    "function": "pixel_tzz:acceptance_2d/timeline/deploy_hunter",
+    "audience": {
+      "role_tags": [
+        "pixel_tzz:hunter"
+      ],
+      "exclude_host": true,
+      "online_only": false
+    },
+    "fields": {
+      "spawn_point": "pixel_tzz:hunter_spawn"
+    }
+  },
+  "results": [
+    {
+      "id": "success",
+      "name": {
+        "text": "进入超时任务验收"
+      },
+      "semantic": "success",
+      "recap": {
+        "text": "数据包提前提交成功结果，路线进入仅超时任务。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "route": {
+        "next_task": "pixel_tzz:acceptance/timeout_only",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "成功路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_pause": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_resume": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    },
+    {
+      "id": "failure",
+      "name": {
+        "text": "提前失败并结束"
+      },
+      "semantic": "failure",
+      "recap": {
+        "text": "数据包提前提交失败结果，路线不进入仅超时任务。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "allow_host_fallback": true,
+      "route": {
+        "end_phase": "pixel_tzz:ended",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "失败路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    },
+    {
+      "id": "timeout",
+      "name": {
+        "text": "分支任务超时"
+      },
+      "semantic": "neutral",
+      "recap": {
+        "text": "分支任务到时后由任务超时回调提交超时结果。"
+      },
+      "on_apply": "pixel_tzz:acceptance_2d/timeline/faultable_result",
+      "allow_host_fallback": true,
+      "route": {
+        "end_phase": "pixel_tzz:ended",
+        "intermission": {
+          "duration_ticks": 1200,
+          "counts_toward_game_time": false,
+          "name": {
+            "text": "超时路线 · 60 秒确认间隔"
+          },
+          "on_start": "pixel_tzz:acceptance_2d/timeline/capture_result",
+          "on_complete": "pixel_tzz:acceptance_2d/timeline/capture_result"
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "pressure_01",
+      "name": {
+        "text": "压力记录 01"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 01"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第一条人工压力记录，用于确认列表起点与向下滚动。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_02",
+      "name": {
+        "text": "压力记录 02"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 02"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第二条人工压力记录，用于确认列表顺序稳定。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_03",
+      "name": {
+        "text": "压力记录 03"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 03"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第三条人工压力记录，用于确认列表项目不会相互覆盖。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_04",
+      "name": {
+        "text": "压力记录 04"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 04"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第四条人工压力记录，用于确认列表项目点击命中正确。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_05",
+      "name": {
+        "text": "压力记录 05"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 05"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第五条人工压力记录，用于确认中段滚动定位。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_06",
+      "name": {
+        "text": "压力记录 06"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 06"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第六条人工压力记录，用于确认两侧滚动互不干扰。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_07",
+      "name": {
+        "text": "压力记录 07"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 07"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第七条人工压力记录，用于确认滚轮不会带动整个终端。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_08",
+      "name": {
+        "text": "压力记录 08"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 08"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第八条人工压力记录，用于确认临界数量下的列表高度。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_09",
+      "name": {
+        "text": "压力记录 09"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 09"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第九条人工压力记录，列表从这里开始超过常规可视容量。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_10",
+      "name": {
+        "text": "压力记录 10"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 10"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第十条人工压力记录，用于确认双位数编号不会挤压标题。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_11",
+      "name": {
+        "text": "压力记录 11"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 11"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第十一条人工压力记录，用于确认倒数第二项仍可完整点击。"
+        },
+        "color": "#64D8E8",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "该记录只属于 3A 人工压力验收覆盖包。"
+        }
+      }
+    },
+    {
+      "id": "pressure_12",
+      "name": {
+        "text": "压力记录 12"
+      },
+      "policy": "once",
+      "allowed_states": ["running"],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": ["pixel_tzz:active_participant"],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "压力记录 12"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "第十二条也是最新一条人工压力记录；首次打开历史页时应默认选中这一项。"
+        },
+        "color": "#F6B94A",
+        "category": "stress_test",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "details": {
+          "text": "这是一段专门用于右侧详情滚动压力验收的长正文。请确认正文只在右侧档案区域内部滚动，左侧十二条记录的当前位置不会随右侧滚轮改变；继续向下滚动时，文字必须保持在卡片和终端外框以内，不得盖住返回按钮、底部导航或同步徽标。为了确保内容确实超过常规高度，这里继续补充验收说明：滚动条应当从内容顶部开始，在正文末尾准确停止，不能留下接近一个屏幕的空白，也不能因为鼠标停留或服务端静默刷新而突然跳回顶部。切换到其他记录再返回本条时，标题、摘要、所属任务与游戏时间仍应保持正确。"
+        }
+      }
+    },
+    {
+      "id": "terminal_activated",
+      "name": {
+        "text": "验收终端已触发"
+      },
+      "policy": "repeatable",
+      "max_records": 8,
+      "allowed_states": [
+        "running"
+      ],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "immediate",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:active_participant"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "验收终端已触发"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "场内终端完成了一次有效触发。"
+        },
+        "color": "#64D8E8",
+        "category": "task_event",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": true,
+        "show_targets": false,
+        "statistics": [
+          "activated_terminals"
+        ],
+        "details": {
+          "text": "这条稳定记录只公开发生时间、所属任务、触发者与当前累计次数；后台回调和内部实例标识不会发送给玩家。"
+        }
+      }
+    },
+    {
+      "id": "deadline_reached",
+      "name": {
+        "text": "分支任务到达时限"
+      },
+      "policy": "once",
+      "allowed_states": [
+        "settling"
+      ],
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "task_end",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:active_participant"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "分支任务到达时限"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "任务在规定时间内未提前结算，已进入超时路线。"
+        },
+        "color": "#F6B94A",
+        "category": "task_result",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "show_personal_result": true,
+        "details": {
+          "text": "该记录在任务结束后公开，避免在权威结果提交前泄露尚未确定的分支。"
+        }
+      }
+    }
+  ],
+  "statistics": [
+    {
+      "id": "activated_terminals",
+      "name": {
+        "text": "验收终端触发次数"
+      },
+      "type": "integer",
+      "min": 0,
+      "max": 64,
+      "write": "increment",
+      "recap_visibility": "participants"
+    }
+  ]
+}

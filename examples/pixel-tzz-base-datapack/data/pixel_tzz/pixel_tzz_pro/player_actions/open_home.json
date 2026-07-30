@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "operation": {
+    "type": "open_page",
+    "page": "pixel_tzz:player/home"
+  },
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "audit": "none"
+}

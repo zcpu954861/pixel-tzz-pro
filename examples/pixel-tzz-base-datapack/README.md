@@ -1,10 +1,11 @@
-# Pixel TZZ Pro 2A–2D 示例与验收夹具
+# Pixel TZZ Pro 2A–3A 示例与验收夹具
 
 此数据包只用于模组开发验收，同时保留：
 
 - 2A/2B 的定义、主题、布局和组件预览；
 - 2C 的极短服务端权威初始化流程；
 - 2D 的逐玩家准备、最小任务时间线、独占选择、事件、统计和回调夹具。
+- 3A 的普通玩家终端、身份专属任务页、个人数据裁剪、玩家历史与注册函数夹具。
 
 它不是正式的全员逃走中玩法数据包。所有“北门”“中央站”“南侧场地”“终端”等名称均是无地图坐标、无玩法含义的显式占位，不应复制为正式任务。
 
@@ -105,6 +106,34 @@ acceptance/warmup
 
 普通参与者在游戏进行中仍看不到完整路线；主持人可以查看候选分支，终局参与者可在回顾中查看实际事件、统计和路线。
 
+## 3A 玩家终端
+
+游戏定义使用 `api_version: 3`，默认玩家页为 `pixel_tzz:player/home`，并启用玩家历史总开关。
+
+当前正式示例页：
+
+- `pixel_tzz:player/home`：默认玩家首页；
+- `pixel_tzz:player/task_runner`：逃走者当前任务；
+- `pixel_tzz:player/task_hunter`：猎人当前任务和本人锁定出生点；
+- `pixel_tzz:player/history`：左侧过去任务轨迹与右侧原位回顾档案；示例 Game 使用 `history_source: "tasks"`；
+- `pixel_tzz:player/history_detail`：保留的独立详情兼容示例，当前历史夹具不跳转至此；
+- `pixel_tzz:player/profile`：仅本人获准读取的个人数据；
+- `pixel_tzz:player/help`：四份文档的动画轮播入口；
+- `pixel_tzz:player/help_catalog`：同一批文档的直接目录；
+- `pixel_tzz:player/help_terminal`、`help_visibility`、`help_history`、`help_actions`：终端基础、可见内容、事件回顾与安全操作正文。
+
+路由会让活动任务中的逃走者与猎人进入不同页面，结束阶段进入历史页；其他上下文回退玩家首页。数据授权逐项拆分在 `player_data/`，未授权字段不会进入客户端。任务根页使用 `terminal_footer_navigation` 把“过去事件 / 个人信息 / 终端帮助”交给固定外壳底栏排版，按钮仍执行服务端注册操作。个人信息页的出生点卡片同时读取 `personal/pixel_tzz:hunter_spawn`、`personal_meta/pixel_tzz:hunter_spawn/name` 与 `personal_meta/pixel_tzz:hunter_spawn/value_name`：展示名称和“北门”等选项显示值只会随同已成功投影的本人原始值出现。
+
+`main_branch/terminal_activated` 立即进入允许查看者的历史，并在同一历史页右侧原位展开详情；列表只接收 Boolean `item.detail_available`，客户端点击时只提交不透明记录键，目标页由服务端从冻结事件定义重新解析。事件配置中的 `detail_page` 不会投影给客户端。两个 `deadline_reached` 事件在所属任务结束后才公开。历史显示文案与主持人审计分离。
+
+帮助轮播进入“安全操作”正文后，“运行一次终端自检”调用注册操作 `pixel_tzz:acceptance_ping`，再执行：
+
+```mcfunction
+/data get storage pixel_tzz:acceptance_3a last_player_action
+```
+
+可以查看服务端生成的有限函数宏。该函数没有玩法副作用，不会推进任务或改写模组权威状态。
+
 ## 易用验收函数
 
 任务 `on_start` 宏回调会把当前权威上下文写入：
@@ -177,12 +206,15 @@ storage pixel_tzz:acceptance_2d session.current
 
 ## 内容规模
 
-基础数据包当前共包含 `67` 个文件和 `39` 项 Pixel TZZ 定义，其中有：
+基础数据包当前共包含 `115` 个文件和 `86` 项 Pixel TZZ 定义，其中有：
 
-- `11` 个页面；
+- `24` 个页面；
 - `2` 个字段；
 - `2` 条强制流程；
 - `3` 个任务；
-- `6` 个阶段。
+- `6` 个阶段；
+- `3` 条玩家终端路由；
+- `17` 项玩家数据授权；
+- `12` 项玩家注册操作。
 
-回调和包装函数共 `26` 个：既有 2C 无副作用函数 `6` 个，2D 宏回调与验收入口 `20` 个。
+回调和包装函数共 `27` 个：既有 2C 无副作用函数 `6` 个、2D 宏回调与验收入口 `20` 个，以及 3A 注册函数验收入口 `1` 个。

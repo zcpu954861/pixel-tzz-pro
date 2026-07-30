@@ -65,7 +65,34 @@
       "allowed_states": [
         "settling"
       ],
-      "recap_visibility": "participants"
+      "recap_visibility": "participants",
+      "player_history": {
+        "release": "task_end",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:active_participant"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "title": {
+          "text": "仅超时任务完成"
+        },
+        "detail_page": "pixel_tzz:player/history",
+        "summary": {
+          "text": "倒计时自然结束，唯一合法结果已经提交。"
+        },
+        "color": "#65D68A",
+        "category": "task_result",
+        "show_game_time": true,
+        "show_task": true,
+        "show_actor": false,
+        "show_targets": false,
+        "show_personal_result": true,
+        "details": {
+          "text": "本记录用于验收任务结束后公开、稳定回顾和终局重连恢复。"
+        }
+      }
     }
   ],
   "statistics": []

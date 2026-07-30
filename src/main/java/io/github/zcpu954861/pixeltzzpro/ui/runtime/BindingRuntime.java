@@ -12,6 +12,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ComparisonConditio
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConcatenatedText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConditionExpression;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ConditionOperator;
+import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.DurationTicksText;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ExistsCondition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.JunctionCondition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.JunctionOperator;
@@ -238,6 +239,20 @@ public final class BindingRuntime {
 			}
 			return converted;
 		}
+		if (template instanceof DurationTicksText duration) {
+			JsonElement resolved = value(duration.value(), context, diagnostics, false);
+			String source = duration.value() instanceof BindingValue binding ? binding.path() : "";
+			Long ticks = integer(resolved);
+			if (resolved == null || resolved.isJsonNull()) {
+				diagnostics.add("MISSING_BINDING", source, "duration tick value is not available");
+				return fallback(duration.fallback(), context, diagnostics);
+			}
+			if (ticks == null) {
+				diagnostics.add("TYPE_MISMATCH", source, "duration_ticks text requires a 64-bit integer");
+				return fallback(duration.fallback(), context, diagnostics);
+			}
+			return TickTimeFormatter.format(ticks);
+		}
 		if (template instanceof ConcatenatedText concatenated) {
 			StringBuilder result = new StringBuilder();
 			for (TextTemplate part : concatenated.parts()) {
@@ -381,6 +396,9 @@ public final class BindingRuntime {
 		if (template instanceof BoundText bound) {
 			collectDependencies(bound.binding(), dependencies);
 			bound.fallback().ifPresent(value -> collectDependencies(value, dependencies));
+		} else if (template instanceof DurationTicksText duration) {
+			collectDependencies(duration.value(), dependencies);
+			duration.fallback().ifPresent(value -> collectDependencies(value, dependencies));
 		} else if (template instanceof TranslatedText translated) {
 			translated.arguments().forEach(value -> collectDependencies(value, dependencies));
 			translated.fallback().ifPresent(value -> collectDependencies(value, dependencies));

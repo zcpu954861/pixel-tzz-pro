@@ -40,6 +40,7 @@ public record PageBundleS2CPayload(
 	List<FieldSchema> fields,
 	PagePurpose purpose,
 	Optional<FlowContext> flowContext,
+	Optional<TerminalContext> terminalContext,
 	byte[] bindingJson
 ) implements CustomPacketPayload {
 	public static final int HASH_LENGTH = 32;
@@ -83,9 +84,18 @@ public record PageBundleS2CPayload(
 		}
 		purpose = Objects.requireNonNull(purpose, "purpose");
 		flowContext = Objects.requireNonNull(flowContext, "flowContext");
+		terminalContext = Objects.requireNonNull(terminalContext, "terminalContext");
 		bindingJson = copyBinding(bindingJson);
-		if ((purpose == PagePurpose.FORCED_FLOW) != flowContext.isPresent()) {
-			throw new IllegalArgumentException("forced-flow pages require exactly one flow context");
+		boolean validContext = switch (purpose) {
+			case PREVIEW -> flowContext.isEmpty() && terminalContext.isEmpty();
+			case FORCED_FLOW -> flowContext.isPresent() && terminalContext.isEmpty();
+			case NORMAL -> flowContext.isEmpty() && terminalContext.isPresent();
+		};
+		if (!validContext) {
+			throw new IllegalArgumentException(
+				"PREVIEW forbids contexts, FORCED_FLOW requires only flow context, "
+					+ "and NORMAL requires only terminal context"
+			);
 		}
 		if (
 			purpose == PagePurpose.FORCED_FLOW
@@ -123,7 +133,44 @@ public record PageBundleS2CPayload(
 			fields,
 			PagePurpose.PREVIEW,
 			Optional.empty(),
+			Optional.empty(),
 			new byte[0]
+		);
+	}
+
+	/**
+	 * Compatibility constructor for existing v10 forced-flow and preview callers.
+	 */
+	public PageBundleS2CPayload(
+		final UUID instanceId,
+		final long generation,
+		final long stateRevision,
+		final Identifier pageId,
+		final Identifier themeId,
+		final byte[] pageHash,
+		final byte[] pageJson,
+		final byte[] themeHash,
+		final byte[] themeJson,
+		final List<FieldSchema> fields,
+		final PagePurpose purpose,
+		final Optional<FlowContext> flowContext,
+		final byte[] bindingJson
+	) {
+		this(
+			instanceId,
+			generation,
+			stateRevision,
+			pageId,
+			themeId,
+			pageHash,
+			pageJson,
+			themeHash,
+			themeJson,
+			fields,
+			purpose,
+			flowContext,
+			Optional.empty(),
+			bindingJson
 		);
 	}
 
@@ -141,6 +188,7 @@ public record PageBundleS2CPayload(
 			readList(buffer, MAX_FIELDS, "fields", FieldSchema::read),
 			PagePurpose.read(buffer),
 			readFlowContext(buffer),
+			readTerminalContext(buffer),
 			readByteArray(buffer, MAX_BINDING_BYTES, "bindingJson")
 		);
 	}
@@ -159,6 +207,8 @@ public record PageBundleS2CPayload(
 		buffer.writeUtf(this.purpose.serializedName, 32);
 		buffer.writeBoolean(this.flowContext.isPresent());
 		this.flowContext.ifPresent(context -> context.write(buffer));
+		buffer.writeBoolean(this.terminalContext.isPresent());
+		this.terminalContext.ifPresent(context -> context.write(buffer));
 		writeByteArray(buffer, this.bindingJson);
 	}
 
@@ -224,6 +274,14 @@ public record PageBundleS2CPayload(
 		final RegistryFriendlyByteBuf buffer
 	) {
 		return buffer.readBoolean() ? Optional.of(FlowContext.read(buffer)) : Optional.empty();
+	}
+
+	private static Optional<TerminalContext> readTerminalContext(
+		final RegistryFriendlyByteBuf buffer
+	) {
+		return buffer.readBoolean()
+			? Optional.of(TerminalContext.read(buffer))
+			: Optional.empty();
 	}
 
 	public enum PagePurpose {
@@ -312,6 +370,39 @@ public record PageBundleS2CPayload(
 			buffer.writeVarInt(this.completed);
 			buffer.writeVarInt(this.total);
 			buffer.writeBoolean(this.closable);
+		}
+	}
+
+	public record TerminalContext(
+		UUID sessionId,
+		long routeRevision,
+		int stackDepth,
+		long nextRequestSequence,
+		boolean takeoverAllowed
+	) {
+		public TerminalContext {
+			sessionId = Objects.requireNonNull(sessionId, "sessionId");
+			if (routeRevision < 0L || stackDepth <= 0 || nextRequestSequence < 0L) {
+				throw new IllegalArgumentException("invalid normal-terminal page context");
+			}
+		}
+
+		private static TerminalContext read(final RegistryFriendlyByteBuf buffer) {
+			return new TerminalContext(
+				buffer.readUUID(),
+				buffer.readLong(),
+				buffer.readVarInt(),
+				buffer.readVarLong(),
+				buffer.readBoolean()
+			);
+		}
+
+		private void write(final RegistryFriendlyByteBuf buffer) {
+			buffer.writeUUID(this.sessionId);
+			buffer.writeLong(this.routeRevision);
+			buffer.writeVarInt(this.stackDepth);
+			buffer.writeVarLong(this.nextRequestSequence);
+			buffer.writeBoolean(this.takeoverAllowed);
 		}
 	}
 

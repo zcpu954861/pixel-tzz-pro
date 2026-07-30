@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "ready"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "exclude_host": true,
+    "online_only": true
+  },
+  "name": {
+    "text": "准备状态"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "source": {
+    "type": "exclusive_choice",
+    "id": "pixel_tzz:hunter_spawn"
+  },
+  "surfaces": [
+    "terminal"
+  ],
+  "audience": {
+    "roles": [
+      "pixel_tzz:hunter"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "name": {
+    "text": "猎人出生点"
+  },
+  "masked_fallback": {
+    "text": "尚未选择"
+  }
+}

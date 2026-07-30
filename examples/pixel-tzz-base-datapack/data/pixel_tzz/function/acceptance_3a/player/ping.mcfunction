@@ -1,0 +1,3 @@
+# V3A registered-action fixture. The framework supplies only bounded server-authored macro fields.
+$data modify storage pixel_tzz:acceptance_3a last_player_action set value {game_id:"$(game_id)",game_instance_id:"$(game_instance_id)",action_id:"$(action_id)",request_id:"$(request_id)",request_sequence:$(request_sequence),player_uuid:"$(player_uuid)",player_name:"$(player_name)",phase_id:"$(phase_id)",page_id:"$(page_id)",node_id:"$(node_id)",terminal_session_id:"$(terminal_session_id)",game_elapsed_ticks:$(game_elapsed_ticks),task_elapsed_ticks:$(task_elapsed_ticks),definition_generation:$(definition_generation),state_revision:$(state_revision),world_tick:$(world_tick),execution_context:"$(execution_context)"}
+return 1

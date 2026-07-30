@@ -1,0 +1,1204 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "title": {
+    "text": "过去事件"
+  },
+  "theme": "pixel_tzz:control_console",
+  "root": {
+    "type": "column",
+    "id": "player_history_page",
+    "layout": {
+      "width": {
+        "mode": "fill"
+      },
+      "height": {
+        "mode": "fill"
+      },
+      "gap": 8,
+      "padding": {
+        "vertical": 13,
+        "horizontal": 17
+      }
+    },
+    "events": {
+      "show": {
+        "motion": "panel_enter"
+      },
+      "hide": {
+        "motion": "panel_exit"
+      }
+    },
+    "children": [
+      {
+        "type": "row",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "gap": 10,
+          "cross_align": "center"
+        },
+        "children": [
+          {
+            "type": "column",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1
+              },
+              "gap": 1
+            },
+            "children": [
+              {
+                "type": "text",
+                "style": "progress_value",
+                "text": {
+                  "text": "过去事件"
+                }
+              },
+              {
+                "type": "text",
+                "style": "runner_eyebrow",
+                "text": {
+                  "text": "MATCH ARCHIVE"
+                }
+              }
+            ]
+          },
+          {
+            "type": "column",
+            "layout": {
+              "gap": 1,
+              "cross_align": "end"
+            },
+            "children": [
+              {
+                "type": "text",
+                "style": "ui_count_label",
+                "text": {
+                  "concat": [
+                    {
+                      "bind": "history.count",
+                      "fallback": {
+                        "text": "0"
+                      }
+                    },
+                    {
+                      "text": " 项公开内容"
+                    }
+                  ]
+                }
+              },
+              {
+                "type": "text",
+                "style": "utility_label",
+                "visible_when": {
+                  "eq": [
+                    {
+                      "bind": "history.source"
+                    },
+                    {
+                      "literal": "tasks"
+                    }
+                  ]
+                },
+                "text": {
+                  "text": "按过去任务汇总"
+                }
+              },
+              {
+                "type": "text",
+                "style": "utility_label",
+                "visible_when": {
+                  "eq": [
+                    {
+                      "bind": "history.source"
+                    },
+                    {
+                      "literal": "events"
+                    }
+                  ]
+                },
+                "text": {
+                  "text": "按公开事件排列"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "id": "history_master_detail",
+        "layout": {
+          "width": {
+            "mode": "fill"
+          },
+          "height": {
+            "mode": "weight",
+            "value": 1
+          },
+          "gap": 9,
+          "cross_align": "stretch"
+        },
+        "children": [
+          {
+            "type": "card",
+            "style": "ui_timeline_panel",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 0.88
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 9,
+                  "horizontal": 10
+                }
+              },
+              "children": [
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "status_identity",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "visible_when": {
+                        "eq": [
+                          {
+                            "bind": "history.source"
+                          },
+                          {
+                            "literal": "tasks"
+                          }
+                        ]
+                      },
+                      "text": {
+                        "text": "任务轨迹"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "status_identity",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "visible_when": {
+                        "eq": [
+                          {
+                            "bind": "history.source"
+                          },
+                          {
+                            "literal": "events"
+                          }
+                        ]
+                      },
+                      "text": {
+                        "text": "事件轨迹"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "选择一项查看右侧详情"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "divider",
+                  "style": "runner_divider",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "column",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "history.enabled"
+                      },
+                      {
+                        "literal": false
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 5,
+                    "main_align": "center",
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_empty_title",
+                      "text": {
+                        "text": "回顾尚未开放"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "本局数据包没有向玩家开放过去事件。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "center"
+                    }
+                  ]
+                },
+                {
+                  "type": "column",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "history.enabled"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "history.empty"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 5,
+                    "main_align": "center",
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_empty_title",
+                      "text": {
+                        "text": "暂时没有可回顾内容"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "text": {
+                        "text": "内容会在数据包设定的公开时机自动出现。"
+                      },
+                      "wrap": true,
+                      "max_lines": 2,
+                      "overflow": "ellipsis",
+                      "text_align": "center"
+                    }
+                  ]
+                },
+                {
+                  "type": "scroll",
+                  "id": "player_history_timeline_scroll",
+                  "visible_when": {
+                    "all": [
+                      {
+                        "eq": [
+                          {
+                            "bind": "history.enabled"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      {
+                        "eq": [
+                          {
+                            "bind": "history.empty"
+                          },
+                          {
+                            "literal": false
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "repeat",
+                    "id": "player_history_items",
+                    "items": {
+                      "bind": "history.items"
+                    },
+                    "item_key": {
+                      "bind": "item.id"
+                    },
+                    "max_items": 64,
+                    "estimated_item_height": 88,
+                    "template": {
+                      "type": "row",
+                      "layout": {
+                        "width": {
+                          "mode": "fill"
+                        },
+                        "gap": 5,
+                        "margin": {
+                          "right": 5,
+                          "bottom": 5
+                        },
+                        "cross_align": "stretch"
+                      },
+                      "children": [
+                        {
+                          "type": "column",
+                          "layout": {
+                            "width": {
+                              "mode": "fixed",
+                              "value": 16
+                            },
+                            "height": {
+                              "mode": "fill"
+                            },
+                            "gap": 2,
+                            "cross_align": "center"
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "ui_timeline_marker",
+                              "text": {
+                                "text": "●"
+                              },
+                              "text_align": "center"
+                            },
+                            {
+                              "type": "divider",
+                              "style": "ui_timeline_line",
+                              "direction": "vertical",
+                              "thickness": 1,
+                              "layout": {
+                                "height": {
+                                  "mode": "weight",
+                                  "value": 1
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "card",
+                          "style": "ui_event_card",
+                          "layout": {
+                            "width": {
+                              "mode": "weight",
+                              "value": 1
+                            }
+                          },
+                          "child": {
+                            "type": "column",
+                            "layout": {
+                              "width": {
+                                "mode": "fill"
+                              },
+                              "gap": 3,
+                              "padding": {
+                                "vertical": 7,
+                                "horizontal": 8
+                              }
+                            },
+                            "children": [
+                              {
+                                "type": "row",
+                                "layout": {
+                                  "width": {
+                                    "mode": "fill"
+                                  },
+                                  "gap": 6,
+                                  "cross_align": "center"
+                                },
+                                "children": [
+                                  {
+                                    "type": "text",
+                                    "style": "runner_eyebrow",
+                                    "layout": {
+                                      "width": {
+                                        "mode": "weight",
+                                        "value": 1
+                                      }
+                                    },
+                                    "text": {
+                                      "bind": "item.source_name"
+                                    }
+                                  },
+                                  {
+                                    "type": "text",
+                                    "style": "utility_label",
+                                    "visible_when": {
+                                      "exists": {
+                                        "bind": "item.game_time_text"
+                                      }
+                                    },
+                                    "text": {
+                                      "bind": "item.game_time_text"
+                                    }
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "text",
+                                "style": "progress_value",
+                                "text": {
+                                  "bind": "item.title"
+                                },
+                                "max_lines": 1,
+                                "overflow": "ellipsis"
+                              },
+                              {
+                                "type": "text",
+                                "style": "rule_body",
+                                "visible_when": {
+                                  "exists": {
+                                    "bind": "item.summary"
+                                  }
+                                },
+                                "text": {
+                                  "bind": "item.summary"
+                                },
+                                "wrap": true,
+                                "max_lines": 2,
+                                "overflow": "ellipsis"
+                              },
+                              {
+                                "type": "row",
+                                "layout": {
+                                  "width": {
+                                    "mode": "fill"
+                                  },
+                                  "gap": 6,
+                                  "cross_align": "center"
+                                },
+                                "children": [
+                                  {
+                                    "type": "text",
+                                    "style": "utility_label",
+                                    "layout": {
+                                      "width": {
+                                        "mode": "weight",
+                                        "value": 1
+                                      }
+                                    },
+                                    "visible_when": {
+                                      "exists": {
+                                        "bind": "item.event_count"
+                                      }
+                                    },
+                                    "text": {
+                                      "concat": [
+                                        {
+                                          "text": "包含 "
+                                        },
+                                        {
+                                          "bind": "item.event_count"
+                                        },
+                                        {
+                                          "text": " 条公开记录"
+                                        }
+                                      ]
+                                    },
+                                    "max_lines": 1,
+                                    "overflow": "ellipsis"
+                                  },
+                                  {
+                                    "type": "text",
+                                    "style": "utility_label",
+                                    "layout": {
+                                      "width": {
+                                        "mode": "weight",
+                                        "value": 1
+                                      }
+                                    },
+                                    "visible_when": {
+                                      "all": [
+                                        {
+                                          "not": {
+                                            "exists": {
+                                              "bind": "item.event_count"
+                                            }
+                                          }
+                                        },
+                                        {
+                                          "exists": {
+                                            "bind": "item.task_name"
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "text": {
+                                      "bind": "item.task_name"
+                                    },
+                                    "max_lines": 1,
+                                    "overflow": "ellipsis"
+                                  },
+                                  {
+                                    "type": "text",
+                                    "style": "status_success",
+                                    "visible_when": {
+                                      "eq": [
+                                        {
+                                          "bind": "item.id"
+                                        },
+                                        {
+                                          "bind": "detail.id"
+                                        }
+                                      ]
+                                    },
+                                    "text": {
+                                      "text": "正在查看"
+                                    }
+                                  },
+                                  {
+                                    "type": "button",
+                                    "id": "history_open_detail",
+                                    "style": "secondary_button",
+                                    "visible_when": {
+                                      "all": [
+                                        {
+                                          "eq": [
+                                            {
+                                              "bind": "item.detail_available"
+                                            },
+                                            {
+                                              "literal": true
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "not": {
+                                            "eq": [
+                                              {
+                                                "bind": "item.id"
+                                              },
+                                              {
+                                                "bind": "detail.id"
+                                              }
+                                            ]
+                                          }
+                                        }
+                                      ]
+                                    },
+                                    "layout": {
+                                      "width": {
+                                        "mode": "fixed",
+                                        "value": 66
+                                      },
+                                      "height": {
+                                        "mode": "fixed",
+                                        "value": 20
+                                      }
+                                    },
+                                    "label": {
+                                      "text": "查看"
+                                    },
+                                    "action": {
+                                      "type": "history_detail"
+                                    },
+                                    "events": {
+                                      "press": {
+                                        "motion": "button_press",
+                                        "sound": "button_press"
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "type": "card",
+            "style": "ui_detail_panel",
+            "layout": {
+              "width": {
+                "mode": "weight",
+                "value": 1.42
+              },
+              "height": {
+                "mode": "fill"
+              }
+            },
+            "child": {
+              "type": "column",
+              "layout": {
+                "width": {
+                  "mode": "fill"
+                },
+                "height": {
+                  "mode": "fill"
+                },
+                "gap": 6,
+                "padding": {
+                  "vertical": 9,
+                  "horizontal": 11
+                }
+              },
+              "children": [
+                {
+                  "type": "row",
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "cross_align": "center"
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "status_success",
+                      "layout": {
+                        "width": {
+                          "mode": "weight",
+                          "value": 1
+                        }
+                      },
+                      "text": {
+                        "text": "回顾详情"
+                      }
+                    },
+                    {
+                      "type": "text",
+                      "style": "runner_eyebrow",
+                      "text": {
+                        "text": "ARCHIVE DOSSIER"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "type": "divider",
+                  "style": "ui_divider_cyan",
+                  "direction": "horizontal",
+                  "thickness": 1
+                },
+                {
+                  "type": "column",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "detail.exists"
+                      },
+                      {
+                        "literal": false
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    },
+                    "gap": 6,
+                    "main_align": "center",
+                    "cross_align": "center",
+                    "padding": {
+                      "horizontal": 18
+                    }
+                  },
+                  "children": [
+                    {
+                      "type": "text",
+                      "style": "ui_placeholder_mark",
+                      "visible_when": {
+                        "not": {
+                          "eq": [
+                            {
+                              "bind": "detail.status"
+                            },
+                            {
+                              "literal": "unavailable"
+                            }
+                          ]
+                        }
+                      },
+                      "text": {
+                        "text": "◇"
+                      },
+                      "text_align": "center"
+                    },
+                    {
+                      "type": "text",
+                      "style": "ui_empty_title",
+                      "visible_when": {
+                        "not": {
+                          "eq": [
+                            {
+                              "bind": "detail.status"
+                            },
+                            {
+                              "literal": "unavailable"
+                            }
+                          ]
+                        }
+                      },
+                      "text": {
+                        "text": "从左侧选择一项公开内容"
+                      },
+                      "text_align": "center"
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "visible_when": {
+                        "not": {
+                          "eq": [
+                            {
+                              "bind": "detail.status"
+                            },
+                            {
+                              "literal": "unavailable"
+                            }
+                          ]
+                        }
+                      },
+                      "text": {
+                        "text": "若已有可查看记录，页面会自动定位到最新一项。"
+                      },
+                      "wrap": true,
+                      "max_lines": 3,
+                      "overflow": "ellipsis",
+                      "text_align": "center"
+                    },
+                    {
+                      "type": "text",
+                      "style": "ui_kicker_danger",
+                      "visible_when": {
+                        "eq": [
+                          {
+                            "bind": "detail.status"
+                          },
+                          {
+                            "literal": "unavailable"
+                          }
+                        ]
+                      },
+                      "text": {
+                        "text": "记录已不可查看"
+                      },
+                      "text_align": "center"
+                    },
+                    {
+                      "type": "text",
+                      "style": "utility_label",
+                      "visible_when": {
+                        "eq": [
+                          {
+                            "bind": "detail.status"
+                          },
+                          {
+                            "literal": "unavailable"
+                          }
+                        ]
+                      },
+                      "text": {
+                        "text": "这项内容已被数据包撤回、超出保留范围，或不再对你公开。"
+                      },
+                      "wrap": true,
+                      "max_lines": 3,
+                      "overflow": "ellipsis",
+                      "text_align": "center"
+                    }
+                  ]
+                },
+                {
+                  "type": "scroll",
+                  "id": "player_history_detail_scroll",
+                  "visible_when": {
+                    "eq": [
+                      {
+                        "bind": "detail.exists"
+                      },
+                      {
+                        "literal": true
+                      }
+                    ]
+                  },
+                  "layout": {
+                    "width": {
+                      "mode": "fill"
+                    },
+                    "height": {
+                      "mode": "weight",
+                      "value": 1
+                    }
+                  },
+                  "direction": "vertical",
+                  "show_scrollbar": true,
+                  "child": {
+                    "type": "column",
+                    "layout": {
+                      "width": {
+                        "mode": "fill"
+                      },
+                      "gap": 8,
+                      "margin": {
+                        "right": 5
+                      }
+                    },
+                    "children": [
+                      {
+                        "type": "row",
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "gap": 7,
+                          "cross_align": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "text",
+                            "style": "runner_eyebrow",
+                            "layout": {
+                              "width": {
+                                "mode": "weight",
+                                "value": 1
+                              }
+                            },
+                            "text": {
+                              "bind": "detail.source_name",
+                              "fallback": {
+                                "text": "公开记录"
+                              }
+                            }
+                          },
+                          {
+                            "type": "text",
+                            "style": "status_identity",
+                            "visible_when": {
+                              "exists": {
+                                "bind": "detail.game_time_text"
+                              }
+                            },
+                            "text": {
+                              "bind": "detail.game_time_text"
+                            }
+                          }
+                        ]
+                      },
+                      {
+                        "type": "text",
+                        "style": "progress_value",
+                        "text": {
+                          "concat": [
+                            {
+                              "text": "「"
+                            },
+                            {
+                              "bind": "detail.title"
+                            },
+                            {
+                              "text": "」"
+                            }
+                          ]
+                        },
+                        "wrap": true,
+                        "max_lines": 2,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "text",
+                        "style": "rule_body",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "detail.summary"
+                          }
+                        },
+                        "text": {
+                          "bind": "detail.summary"
+                        },
+                        "wrap": true,
+                        "max_lines": 4,
+                        "overflow": "ellipsis"
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_context_panel",
+                        "visible_when": {
+                          "eq": [
+                            {
+                              "bind": "detail.status"
+                            },
+                            {
+                              "literal": "recovered"
+                            }
+                          ]
+                        },
+                        "child": {
+                          "type": "text",
+                          "style": "utility_label",
+                          "layout": {
+                            "padding": {
+                              "vertical": 6,
+                              "horizontal": 8
+                            }
+                          },
+                          "text": {
+                            "text": "原先查看的记录已变化，已自动定位到最新可查看内容。"
+                          },
+                          "wrap": true,
+                          "max_lines": 2,
+                          "overflow": "ellipsis"
+                        }
+                      },
+                      {
+                        "type": "row",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "detail.actor.uuid"
+                          }
+                        },
+                        "layout": {
+                          "width": {
+                            "mode": "fill"
+                          },
+                          "gap": 8,
+                          "cross_align": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "player_head",
+                            "uuid": {
+                              "bind": "detail.actor.uuid"
+                            },
+                            "name": {
+                              "bind": "detail.actor.name"
+                            },
+                            "online": {
+                              "literal": true
+                            },
+                            "show_status": false,
+                            "layout": {
+                              "width": {
+                                "mode": "fixed",
+                                "value": 26
+                              },
+                              "height": {
+                                "mode": "fixed",
+                                "value": 26
+                              }
+                            }
+                          },
+                          {
+                            "type": "column",
+                            "layout": {
+                              "gap": 1
+                            },
+                            "children": [
+                              {
+                                "type": "text",
+                                "style": "utility_label",
+                                "text": {
+                                  "text": "触发者"
+                                }
+                              },
+                              {
+                                "type": "text",
+                                "style": "status_identity",
+                                "text": {
+                                  "bind": "detail.actor.name"
+                                },
+                                "max_lines": 1,
+                                "overflow": "ellipsis"
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "divider",
+                        "style": "runner_divider",
+                        "direction": "horizontal",
+                        "thickness": 1
+                      },
+                      {
+                        "type": "repeat",
+                        "id": "player_history_metadata",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "detail.metadata"
+                          }
+                        },
+                        "items": {
+                          "bind": "detail.metadata"
+                        },
+                        "item_key": {
+                          "bind": "item.id"
+                        },
+                        "max_items": 72,
+                        "estimated_item_height": 24,
+                        "template": {
+                          "type": "row",
+                          "layout": {
+                            "width": {
+                              "mode": "fill"
+                            },
+                            "gap": 8,
+                            "padding": {
+                              "vertical": 4,
+                              "horizontal": 2
+                            },
+                            "cross_align": "start"
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "utility_label",
+                              "layout": {
+                                "width": {
+                                  "mode": "fixed",
+                                  "value": 76
+                                }
+                              },
+                              "text": {
+                                "bind": "item.label"
+                              },
+                              "wrap": true,
+                              "max_lines": 2,
+                              "overflow": "ellipsis"
+                            },
+                            {
+                              "type": "divider",
+                              "style": "ui_divider_cyan",
+                              "direction": "vertical",
+                              "thickness": 1,
+                              "layout": {
+                                "height": {
+                                  "mode": "fixed",
+                                  "value": 15
+                                }
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "layout": {
+                                "width": {
+                                  "mode": "weight",
+                                  "value": 1
+                                }
+                              },
+                              "text": {
+                                "bind": "item.value"
+                              },
+                              "wrap": true,
+                              "overflow": "ellipsis"
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "card",
+                        "style": "ui_detail_body",
+                        "visible_when": {
+                          "exists": {
+                            "bind": "detail.details"
+                          }
+                        },
+                        "child": {
+                          "type": "column",
+                          "layout": {
+                            "gap": 5,
+                            "padding": {
+                              "vertical": 9,
+                              "horizontal": 10
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "text",
+                              "style": "ui_kicker_success",
+                              "text": {
+                                "text": "回顾内容"
+                              }
+                            },
+                            {
+                              "type": "text",
+                              "style": "rule_body",
+                              "text": {
+                                "bind": "detail.details"
+                              },
+                              "wrap": true
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

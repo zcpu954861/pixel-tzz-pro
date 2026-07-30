@@ -1,0 +1,41 @@
+{
+  "format_version": 1,
+  "api_version": 3,
+  "content_version": 3,
+  "name": {
+    "text": "全员逃走中 · 3A 压力夹具"
+  },
+  "initial_phase": "pixel_tzz:setup",
+  "default_role": "pixel_tzz:runner",
+  "default_life_state": "pixel_tzz:alive",
+  "readiness": {
+    "phase": "pixel_tzz:ready",
+    "action": "pixel_tzz:open_player_readiness",
+    "disconnect_invalidates": true,
+    "host_can_force": false
+  },
+  "task_timeline": {
+    "initial_task": "pixel_tzz:acceptance/warmup",
+    "pause_when_host_offline": false,
+    "approval_phase": "pixel_tzz:ready",
+    "start_phase": "pixel_tzz:warmup",
+    "pre_start_requirements": [
+      {
+        "type": "required_field",
+        "audience": {
+          "role_tags": [
+            "pixel_tzz:hunter"
+          ],
+          "exclude_host": true,
+          "online_only": false
+        },
+        "field": "pixel_tzz:hunter_spawn"
+      }
+    ]
+  },
+  "player_terminal": {
+    "default_page": "pixel_tzz:player/home",
+    "history_enabled": true,
+    "history_source": "events"
+  }
+}

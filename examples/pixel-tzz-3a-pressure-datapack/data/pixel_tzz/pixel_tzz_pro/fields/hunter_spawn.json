@@ -1,0 +1,60 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "version": 1,
+  "name": {
+    "text": "猎人出生点"
+  },
+  "description": {
+    "text": "每名猎人在本局中独占一个由数据包注册的部署位置。"
+  },
+  "scope": "player",
+  "type": "exclusive_choice",
+  "required": true,
+  "editable_by": "player",
+  "invalidates_ready": true,
+  "roles": [
+    "pixel_tzz:hunter"
+  ],
+  "phases": [
+    "pixel_tzz:setup",
+    "pixel_tzz:initializing",
+    "pixel_tzz:ready"
+  ],
+  "migration": "preserve",
+  "reservation_scope": "game_instance",
+  "release_when_role_mismatch": true,
+  "show_occupant": true,
+  "options": [
+    {
+      "value": "north_gate",
+      "name": {
+        "text": "北门外侧高架桥与旧仓库之间的临时猎人部署集合点"
+      },
+      "description": {
+        "text": "从地图北侧入口开始部署；该长名称仅用于检验中文换行、卡片高度与选中状态的边界表现。"
+      },
+      "icon": "minecraft:iron_door"
+    },
+    {
+      "value": "central_station",
+      "name": {
+        "text": "中央车站二层换乘大厅东侧安全通道猎人部署集合点"
+      },
+      "description": {
+        "text": "从地图中央交通节点开始部署；该长名称仅用于检验三列布局不会挤压按钮或遮挡正文。"
+      },
+      "icon": "minecraft:minecart"
+    },
+    {
+      "value": "south_yard",
+      "name": {
+        "text": "南部物流场装卸区与围墙缺口之间的猎人部署集合点"
+      },
+      "description": {
+        "text": "从地图南侧开阔区域开始部署；该长名称仅用于检验提交、占用头像与返回按钮仍完整可用。"
+      },
+      "icon": "minecraft:compass"
+    }
+  ]
+}

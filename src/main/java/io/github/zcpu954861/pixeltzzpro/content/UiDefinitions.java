@@ -29,6 +29,7 @@ public final class UiDefinitions {
 		GRID,
 		FLOW,
 		OVERLAY,
+		CAROUSEL,
 		SCROLL,
 		CARD,
 		TEXT,
@@ -143,7 +144,8 @@ public final class UiDefinitions {
 	public enum ActionType {
 		LOCAL,
 		FLOW,
-		REGISTERED
+		REGISTERED,
+		HISTORY_DETAIL
 	}
 
 	public enum ConditionOperator {
@@ -306,7 +308,11 @@ public final class UiDefinitions {
 	public record LiteralValue(String canonicalJson) implements ValueExpression {
 	}
 
-	public sealed interface TextTemplate permits StaticText, BoundText, TranslatedText, ConcatenatedText {
+	public sealed interface TextTemplate permits StaticText,
+		BoundText,
+		DurationTicksText,
+		TranslatedText,
+		ConcatenatedText {
 	}
 
 	public record StaticText(RichText text) implements TextTemplate {
@@ -314,6 +320,15 @@ public final class UiDefinitions {
 
 	public record BoundText(BindingValue binding, Optional<TextTemplate> fallback) implements TextTemplate {
 		public BoundText {
+			fallback = optional(fallback);
+		}
+	}
+
+	public record DurationTicksText(
+		ValueExpression value,
+		Optional<TextTemplate> fallback
+	) implements TextTemplate {
+		public DurationTicksText {
 			fallback = optional(fallback);
 		}
 	}

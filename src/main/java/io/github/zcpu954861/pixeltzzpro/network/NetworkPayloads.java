@@ -25,6 +25,10 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotRequestC2S
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalIntentC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalOpenC2SPayload;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 
 /**
@@ -64,6 +68,10 @@ public final class NetworkPayloads {
 			.register(HostUiStateC2SPayload.TYPE, HostUiStateC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 			.register(TimelineViewRequestC2SPayload.TYPE, TimelineViewRequestC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(TerminalOpenC2SPayload.TYPE, TerminalOpenC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(TerminalIntentC2SPayload.TYPE, TerminalIntentC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
@@ -83,5 +91,15 @@ public final class NetworkPayloads {
 			.register(TimelineViewS2CPayload.TYPE, TimelineViewS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
 			.register(HostSubtitleS2CPayload.TYPE, HostSubtitleS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				TerminalBindingDeltaS2CPayload.TYPE,
+				TerminalBindingDeltaS2CPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				TerminalInvalidationS2CPayload.TYPE,
+				TerminalInvalidationS2CPayload.STREAM_CODEC
+			);
 	}
 }

@@ -23,6 +23,8 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PreviewCatalogS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.SessionSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -100,6 +102,14 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(
 			PageBundleS2CPayload.TYPE,
 			(payload, context) -> ClientPageState.acceptPageBundle(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			TerminalBindingDeltaS2CPayload.TYPE,
+			(payload, context) -> ClientPageState.acceptTerminalBindingDelta(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			TerminalInvalidationS2CPayload.TYPE,
+			(payload, context) -> ClientPageState.acceptTerminalInvalidation(payload)
 		);
 		ClientPlayNetworking.registerGlobalReceiver(
 			OperationResultS2CPayload.TYPE,

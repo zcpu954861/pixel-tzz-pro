@@ -524,6 +524,10 @@ public final class ExecutionSnapshotCompiler {
 		// Readiness lifecycle metadata is also world-level. The readiness instance separately
 		// retains its disconnect/force policy while this snapshot owns only the executable page.
 		root.remove("readiness");
+		// The ordinary player terminal is resolved from the live game definition. A forced-flow
+		// snapshot does not freeze that terminal or its page graph, so retaining this entry would
+		// leave default_page pointing at a page that intentionally is not part of the snapshot.
+		root.remove("player_terminal");
 		return FrozenDocument.of(root.toString());
 	}
 
@@ -665,7 +669,14 @@ public final class ExecutionSnapshotCompiler {
 			case LIFE_STATE -> FrozenDefinitionType.LIFE_STATE;
 			case PHASE -> FrozenDefinitionType.PHASE;
 			case PANEL_ACTION -> FrozenDefinitionType.PANEL_ACTION;
-			case FIELD, FLOW, TASK, PAGE, THEME -> throw new IllegalArgumentException(
+			case FIELD,
+				FLOW,
+				TASK,
+				PLAYER_ROUTE,
+				PLAYER_DATA,
+				PLAYER_ACTION,
+				PAGE,
+				THEME -> throw new IllegalArgumentException(
 				"type is not a supporting definition: " + type
 			);
 		};
