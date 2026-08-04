@@ -643,12 +643,9 @@ public final class PlayerActionAuthority {
 				worldTick
 			)
 		);
-		WorldStateV4 candidate = new WorldStateV4(
-			WorldStateV4.SCHEMA_VERSION,
-			state.core(),
-			usages,
-			invocations
-		);
+		WorldStateV4 candidate = state
+			.withUsages(usages)
+			.withInvocations(invocations);
 		if (candidate.validated().error().isPresent()) {
 			return Preparation.denied(
 				Code.INTERNAL_ERROR,

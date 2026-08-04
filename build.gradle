@@ -208,6 +208,16 @@ tasks.register("protocolV11SelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("protocolV12SelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3B message codec, least-privilege wire, and ordered-inbox checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV12SelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
 tasks.register("flowCallbackRunnerSelfCheck", JavaExec) {
 	group = "verification"
 	description = "Runs the isolated data-pack callback macro checks."
@@ -466,8 +476,367 @@ tasks.register("pressureFixtureSelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("messageDefinitionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs strict V3B message schema, capture-mode, isolation, and boundary checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageDefinitionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHookDefinitionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs owner-local V3B message-hook schema, limit, and reference checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageHookDefinitionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHookFreezeClosureSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B execution/timeline hook freeze-closure and v1 compatibility checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageHookFreezeClosureSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHookDispatchContractSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B trusted post-commit hook ordering, argument, silence, and failure-isolation checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContractSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messagePolicySchemaSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the complete V3B policy AST and strict cross-field guardrail checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessagePolicySchemaSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageExternalContentPolicySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3B HUD external-content behavior decision matrix."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageExternalContentPolicySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageFixtureSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Compiles the V3B base example and disposable priority/complexity overlay."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageFixtureSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageTextTimelineSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B Unicode, rich-style typewriter, and effect-resolution checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageTextTimelineSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageFrameTimelineSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B content-driven, fixed-total, Unicode, cursor, hold, and segment-pause frame checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageFrameTimelineSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageDynamicCaptureSchedulerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Checks exact-value V3B field capture boundaries and one-tick lookahead scheduling."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageDynamicCaptureSchedulerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messagePrelayoutDurationSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B dynamic-field pre-layout and language-duration-basis checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessagePrelayoutDurationSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageVisualEffectsSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs deterministic V3B scramble, gradient, fade, motion, pulse, and reduced-motion checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageVisualEffectsSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageInstanceAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B authoritative play, scheduling, control, refresh, queue, and callback-ledger checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageInstanceAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageFinalProjectionPlannerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B final occurrence fact, audience, repeat, callback, and deduplication checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageFinalProjectionPlannerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageFinalProjectionTransportContractSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B final-projection transport ordering, retry, and duplicate-create checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageFinalProjectionTransportContractSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageReconnectProjectionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B fresh-connection authorization filtering and strict wire-sequence checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageReconnectProjectionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageFinalOnlyHandshakePolicySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the bounded final-only capability and asset handshake checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageFinalOnlyHandshakePolicySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageDeliveryLifecycleAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B bounded offline delivery, reconnect, TTL, checkpoint, and restore checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageDeliveryLifecycleAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageSynchronizationAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3B multiplayer synchronization authority self-check."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageSynchronizationAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageLifecyclePolicyRouterSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B server-authoritative reload, respawn, dimension, and split-client lifecycle checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageLifecyclePolicyRouterSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageLiveContextAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B live-strict game, phase, task, bypass, and projection-order checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageLiveContextAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageAssetAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B asset manifest, per-connection report, and participant start-gate checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageAssetAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageAssetPlaybackResolverSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B effective asset substitution, silent fallback, and resolved-node checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageAssetPlaybackResolverSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageServerAssetGateSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B server start-gate aggregation and required-asset diagnostics."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.MessageServerAssetGateSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageAssetProtocolSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B asset manifest/report codec, preload flag, and stale-sequence checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.MessageAssetProtocolSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHistoryAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B per-viewer history persistence, idempotency, retention, and game-scope checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageHistoryAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHistoryMaterializerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B static history materialization, redaction, and frozen-value checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageHistoryMaterializerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageHistoryReplaySanitizerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B one-viewer, side-effect-free history replay sanitization checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageHistoryReplaySanitizerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageRuntimePersistenceAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B runtime snapshot codec, bounds, restart recovery, and callback replay-safety checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageRuntimePersistenceAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageRuntimePersistenceMapperSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B live-runtime checkpoint mapping, origin compatibility, and fail-closed recovery checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageRuntimePersistenceMapperSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageColdStartRecoveryContractSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B cold-start TTL, seek, locked-slot, reconnect-control, history, and terminal-retirement checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.MessageColdStartRecoveryContractSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageCommandsSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B message catalog, inspection, isolated host-preview, and production command-tree checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.MessageCommandsSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hostMessagePreviewSanitizerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3B one-host, side-effect-free preview sanitization checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.message.HostMessagePreviewSanitizerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("dynamicChatSpeakerSourceSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Checks that V3B Chat keeps unsigned vanilla system entries while preserving verified speaker decoration."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.DynamicChatSpeakerSourceSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("messageRegisteredEntitySpeakerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Checks that V3B registered-entity speakers resolve only authoritative entity types and never forge player profiles."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.MessageRegisteredEntitySpeakerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("settingsUiContractSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Checks the vanilla settings entry, three-level navigation, local preferences, and 640x360 layout contract."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.SettingsUiContractSelfCheck"
+	workingDir project.projectDir
+}
+
 tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
-check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV11SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, playerActionAuthoritySelfCheck, playerTerminalRuntimeBridgeSelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck, playerTerminalProjectorSelfCheck, playerTerminalRouterSelfCheck, playerTerminalSessionsSelfCheck, pressureFixtureSelfCheck
+check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV11SelfCheck, protocolV12SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, playerActionAuthoritySelfCheck, playerTerminalRuntimeBridgeSelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck, playerTerminalProjectorSelfCheck, playerTerminalRouterSelfCheck, playerTerminalSessionsSelfCheck, pressureFixtureSelfCheck, messageDefinitionSelfCheck, messageHookDefinitionSelfCheck, messageHookFreezeClosureSelfCheck, messageHookDispatchContractSelfCheck, messagePolicySchemaSelfCheck, messageExternalContentPolicySelfCheck, messageFixtureSelfCheck, messageTextTimelineSelfCheck, messageFrameTimelineSelfCheck, messageDynamicCaptureSchedulerSelfCheck, messagePrelayoutDurationSelfCheck, messageVisualEffectsSelfCheck, messageInstanceAuthoritySelfCheck, messageFinalProjectionPlannerSelfCheck, messageFinalProjectionTransportContractSelfCheck, messageReconnectProjectionSelfCheck, messageFinalOnlyHandshakePolicySelfCheck, messageDeliveryLifecycleAuthoritySelfCheck, messageSynchronizationAuthoritySelfCheck, messageLifecyclePolicyRouterSelfCheck, messageLiveContextAuthoritySelfCheck, messageAssetAuthoritySelfCheck, messageAssetPlaybackResolverSelfCheck, messageServerAssetGateSelfCheck, messageAssetProtocolSelfCheck, messageHistoryAuthoritySelfCheck, messageHistoryMaterializerSelfCheck, messageHistoryReplaySanitizerSelfCheck, messageRuntimePersistenceAuthoritySelfCheck, messageRuntimePersistenceMapperSelfCheck, messageColdStartRecoveryContractSelfCheck, messageCommandsSelfCheck, hostMessagePreviewSanitizerSelfCheck, dynamicChatSpeakerSourceSelfCheck, messageRegisteredEntitySpeakerSelfCheck, settingsUiContractSelfCheck

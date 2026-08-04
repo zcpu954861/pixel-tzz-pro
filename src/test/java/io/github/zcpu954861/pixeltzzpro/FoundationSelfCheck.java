@@ -1505,7 +1505,17 @@ public final class FoundationSelfCheck {
 		);
 		DefinitionSnapshot exclusiveFlowSnapshot = exclusiveFlowCompilation.snapshot()
 			.orElseThrow()
-			.withGeneration(42L);
+			.withGeneration(42L)
+			.withPredicateDocuments(
+				Map.of(
+					Identifier.parse("test:field/visible"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}",
+					Identifier.parse("test:panel/visible"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}",
+					Identifier.parse("test:panel/enabled"),
+					"{\"condition\":\"minecraft:random_chance\",\"chance\":1.0}"
+				)
+			);
 		var exclusiveFlowFreeze = ExecutionSnapshotCompiler.freeze(
 			exclusiveFlowSnapshot,
 			exclusiveFlowSnapshot.flows().get(Identifier.parse("test:tutorial")),
@@ -2415,16 +2425,16 @@ public final class FoundationSelfCheck {
 
 	private static void checkExampleDatapack() {
 		Path packRoot = Path.of("examples", "pixel-tzz-base-datapack");
-		check(Files.isDirectory(packRoot), "2D example data pack is missing");
+		check(Files.isDirectory(packRoot), "base example data pack is missing");
 		long fileCount;
 		try (var paths = Files.walk(packRoot)) {
 			fileCount = paths.filter(Files::isRegularFile).count();
-			check(fileCount == 115, "3A example data pack file count changed unexpectedly");
+			check(fileCount == 181, "3B example data pack file count changed unexpectedly");
 		} catch (IOException error) {
-			throw new AssertionError("failed to count the 2D example data pack", error);
+			throw new AssertionError("failed to count the base example data pack", error);
 		}
 		Path root = packRoot.resolve("data");
-		check(Files.isDirectory(root), "2D example data pack data root is missing");
+		check(Files.isDirectory(root), "base example data pack data root is missing");
 		List<Source> sources = new ArrayList<>();
 		Set<Identifier> functions = new HashSet<>();
 		Set<Identifier> predicates = new HashSet<>();
@@ -2552,8 +2562,20 @@ public final class FoundationSelfCheck {
 		check(snapshot.playerRoutes().size() == 3, "example must register three player routes");
 		check(snapshot.playerData().size() == 17, "example must register seventeen player-data grants");
 		check(snapshot.playerActions().size() == 12, "example must register twelve player actions");
-		check(snapshot.definitionCount() == 86, "example definition count changed unexpectedly");
-		check(functions.size() == 27, "example callback and wrapper function count changed unexpectedly");
+		check(
+			snapshot.messageCatalog().textEffects().size() == 2,
+			"example must register two V3B text-effect presets"
+		);
+		check(
+			snapshot.messageCatalog().messageCues().size() == 9,
+			"example must register nine V3B message cues"
+		);
+		check(
+			snapshot.messageCatalog().disabled().isEmpty(),
+			"release-facing V3B example resources must not be disabled"
+		);
+		check(snapshot.definitionCount() == 97, "example definition count changed unexpectedly");
+		check(functions.size() == 81, "example callback and wrapper function count changed unexpectedly");
 		Identifier gameId = Identifier.fromNamespaceAndPath("pixel_tzz", "main");
 		Identifier warmupTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/warmup");
 		Identifier timeoutTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/timeout_only");

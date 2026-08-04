@@ -24,6 +24,26 @@
     "candidate_visibility": "none"
   },
   "recap_visibility": "participants",
+  "message_hooks": {
+    "start": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 赛前确认」开始"
+      }
+    },
+    "complete": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 赛前确认」完成"
+      }
+    },
+    "interrupt": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 赛前确认」已中断"
+      }
+    }
+  },
   "callbacks": {
     "on_start": "pixel_tzz:acceptance_2d/timeline/capture_context",
     "on_settled": "pixel_tzz:acceptance_2d/timeline/capture_result"

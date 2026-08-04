@@ -1,0 +1,205 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "live_strict",
+      "sensitive": true,
+      "on_loss": "finalize"
+    },
+    "context": {
+      "games": [
+        "pixel_tzz:main"
+      ],
+      "phases": [
+        "pixel_tzz:running"
+      ],
+      "tasks": [
+        "pixel_tzz:acceptance/main_branch"
+      ],
+      "recheck": "before_start"
+    },
+    "delivery": {
+      "empty_audience": "fail",
+      "offline_targets": "skip"
+    },
+    "lifecycle": {
+      "screen_start": {
+        "chat": "immediate",
+        "title": "wait_gameplay",
+        "subtitle": "wait_gameplay",
+        "action_bar": "wait_gameplay"
+      },
+      "restart": "transient"
+    },
+    "capture": "on_display"
+  },
+  "parameters": {
+    "target": {
+      "type": "player",
+      "required": true,
+      "sources": [
+        "target"
+      ],
+      "on_error": "fail"
+    }
+  },
+  "fields": {
+    "target_name": {
+      "capture": "on_display",
+      "source": {
+        "argument": "target"
+      },
+      "fallback": {
+        "text": "玩家"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "replayable_notice",
+      "type": "text",
+      "schedule": {
+        "type": "cue_start"
+      },
+      "channel": "chat",
+      "content": {
+        "text": {
+          "fallback": {
+            "parts": [
+              {
+                "component": {
+                  "text": "『安全重播验收』 ",
+                  "color": "aqua",
+                  "bold": true
+                }
+              },
+              {
+                "field": {
+                  "scope": "cue",
+                  "id": "target_name"
+                }
+              },
+              {
+                "component": {
+                  "text": " 已收到本次公开提示。",
+                  "color": "white"
+                }
+              }
+            ]
+          }
+        },
+        "effect": {
+          "preset": "pixel_tzz:acceptance"
+        },
+        "layout": {
+          "alignment": "left",
+          "max_width": 360,
+          "max_lines": 3,
+          "overflow": "wrap"
+        },
+        "duration": {
+          "mode": "content_driven",
+          "language_basis": "longest_declared"
+        },
+        "speaker": {
+          "kind": "system"
+        },
+        "character_sound_role": "primary",
+        "hold": "30t"
+      }
+    },
+    {
+      "id": "replayable_finish",
+      "type": "sound",
+      "schedule": {
+        "type": "after_node",
+        "node": "replayable_notice",
+        "offset": "2t"
+      },
+      "sound": "minecraft:block.note_block.pling",
+      "category": "ui",
+      "volume": 0.65,
+      "pitch": 1.25,
+      "attachment": "player",
+      "missing": "silent"
+    },
+    {
+      "id": "replayable_callback",
+      "type": "callback",
+      "schedule": {
+        "type": "cue_event",
+        "event": "all_complete",
+        "offset": "1t"
+      },
+      "function": "pixel_tzz:acceptance_3b/message_complete",
+      "execution": "as_server",
+      "location": "origin"
+    }
+  ],
+  "history": {
+    "title": {
+      "fallback": {
+        "parts": [
+          {
+            "component": {
+              "text": "『安全重播验收』"
+            }
+          }
+        ]
+      }
+    },
+    "body": {
+      "fallback": {
+        "parts": [
+          {
+            "field": {
+              "scope": "cue",
+              "id": "target_name"
+            }
+          },
+          {
+            "component": {
+              "text": " 已收到公开提示。"
+            }
+          }
+        ]
+      }
+    },
+    "task_source": "current_task",
+    "timestamp_source": "completion",
+    "audience": {
+      "source": "call_targets",
+      "online_only": true
+    },
+    "saved_fields": [
+      "target_name"
+    ],
+    "replay_allowed": true
+  },
+  "static_fallback": {
+    "channel": "chat",
+    "component": {
+      "text": "安全重播验收提示已完成"
+    },
+    "fallback_satisfies_required": false
+  },
+  "assets": [
+    {
+      "type": "sound",
+      "id": "minecraft:block.note_block.pling",
+      "missing": "silent",
+      "preload": true,
+      "required_for_start": false
+    }
+  ]
+}

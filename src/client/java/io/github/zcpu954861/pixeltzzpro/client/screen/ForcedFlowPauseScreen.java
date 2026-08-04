@@ -24,6 +24,8 @@ import net.minecraft.network.chat.Component;
  * The forced flow stays active while Esc still exposes settings and a safe disconnect path.
  */
 public final class ForcedFlowPauseScreen extends Screen {
+	private static final int PANEL_HEIGHT = 242;
+
 	private final DataDrivenPageScreen flowScreen;
 
 	ForcedFlowPauseScreen(final DataDrivenPageScreen flowScreen) {
@@ -38,7 +40,7 @@ public final class ForcedFlowPauseScreen extends Screen {
 			Math.max(280, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
 		);
 		int x = (ConsoleScreenViewport.REFERENCE_WIDTH - width) / 2;
-		int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - 210) / 2;
+		int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - PANEL_HEIGHT) / 2;
 		int buttonWidth = width - 36;
 		ConsoleButton resume = new ConsoleButton(
 			x + 18,
@@ -67,6 +69,19 @@ public final class ForcedFlowPauseScreen extends Screen {
 			new ConsoleButton(
 				x + 18,
 				y + 151,
+				buttonWidth,
+				24,
+				Component.literal("动态文字设置"),
+				button -> this.minecraft.gui.setScreen(
+					new MessageAccessibilityScreen(this)
+				),
+				Variant.NORMAL
+			)
+		);
+		this.addRenderableWidget(
+			new ConsoleButton(
+				x + 18,
+				y + 183,
 				buttonWidth,
 				24,
 				Component.literal("断开连接"),
@@ -112,10 +127,10 @@ public final class ForcedFlowPauseScreen extends Screen {
 				Math.max(280, ConsoleScreenViewport.REFERENCE_WIDTH - 24)
 			);
 			int x = (ConsoleScreenViewport.REFERENCE_WIDTH - width) / 2;
-			int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - 210) / 2;
-			graphics.fill(x, y, x + width, y + 210, PANEL);
-			graphics.outline(x, y, width, 210, PANEL_BORDER);
-			graphics.fill(x, y, x + 4, y + 210, BRAND_GOLD);
+			int y = (ConsoleScreenViewport.REFERENCE_HEIGHT - PANEL_HEIGHT) / 2;
+			graphics.fill(x, y, x + width, y + PANEL_HEIGHT, PANEL);
+			graphics.outline(x, y, width, PANEL_HEIGHT, PANEL_BORDER);
+			graphics.fill(x, y, x + 4, y + PANEL_HEIGHT, BRAND_GOLD);
 			graphics.fill(x + 4, y, x + width, y + 2, INFO_CYAN);
 			graphics.text(
 				this.font,

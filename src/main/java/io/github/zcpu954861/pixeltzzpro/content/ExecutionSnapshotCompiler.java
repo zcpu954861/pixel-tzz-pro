@@ -9,6 +9,8 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DocumentKey;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.SourceDocument;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookFreezeClosure.Closure;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BranchNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChangeStateNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ChoiceNode;
@@ -172,6 +174,30 @@ public final class ExecutionSnapshotCompiler {
 		sourceAction.visibleWhen().ifPresent(predicates::add);
 		sourceAction.enabledWhen().ifPresent(predicates::add);
 
+		Closure messageClosure;
+		try {
+			messageClosure = MessageHookFreezeClosure.collect(
+				definitions,
+				executionMessageHooks(definitions, flow, sourceAction)
+			);
+		} catch (IllegalArgumentException error) {
+			return FreezeResult.rejected("snapshot_invalid", message(error), "");
+		}
+		predicates.addAll(messageClosure.predicates());
+		for (DocumentKey key : messageClosure.sourceKeys()) {
+			if (key.type() == DefinitionType.FIELD) {
+				FieldDefinition field = definitions.fields().get(key.id());
+				if (field != null) {
+					fields.putIfAbsent(key.id(), field);
+				}
+			} else if (key.type() == DefinitionType.PAGE) {
+				PageDefinition page = definitions.pages().get(key.id());
+				if (page != null) {
+					pages.putIfAbsent(key.id(), page);
+				}
+			}
+		}
+
 		Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
 		for (PageDefinition page : pages.values()) {
 			ThemeDefinition theme = page.theme().equals(BuiltInUiResources.defaultTheme().id())
@@ -223,7 +249,8 @@ public final class ExecutionSnapshotCompiler {
 			definitions,
 			flow.game(),
 			flow.id(),
-			sourceAction
+			sourceAction,
+			messageClosure
 		);
 		if (support == null) {
 			return FreezeResult.rejected(
@@ -299,10 +326,25 @@ public final class ExecutionSnapshotCompiler {
 		if (sourceAction.operation() instanceof RunFunctionOperation runFunction) {
 			functions.add(runFunction.function());
 		}
+		functions.addAll(messageClosure.functions());
 		Map<Identifier, FrozenDocument> frozenPredicates = new LinkedHashMap<>();
 		for (Identifier id : predicates) {
 			String json = definitions.predicateDocuments().get(id);
 			if (json == null) {
+				/*
+				 * Pre-V3B execution snapshots accepted legacy predicate identifiers without a
+				 * retained document and delegated their evaluation to the active server resource
+				 * manager. Keep that compatibility path for the flow/action graph. A declarative
+				 * message hook, however, must freeze its complete dependency closure because the
+				 * cue may outlive the data-pack generation that started this flow.
+				 */
+				if (messageClosure.predicates().contains(id)) {
+					return FreezeResult.rejected(
+						"snapshot_invalid",
+						"predicate " + id + " has no retained document",
+						""
+					);
+				}
 				continue;
 			}
 			try {
@@ -437,19 +479,55 @@ public final class ExecutionSnapshotCompiler {
 		DefinitionSnapshot restored = compilation.snapshot()
 			.orElseThrow()
 			.withGeneration(frozen.definitionGeneration());
+		if (!frozen.predicateDocuments().isEmpty()) {
+			Map<Identifier, String> predicateDocuments = new LinkedHashMap<>();
+			frozen.predicateDocuments().forEach(
+				(id, document) -> predicateDocuments.put(id, document.normalizedJson())
+			);
+			restored = restored.withPredicateDocuments(predicateDocuments);
+		}
 		if (!restored.flows().containsKey(flowId)) {
 			return RestoreResult.rejected("snapshot_invalid", "restored snapshot lost its flow");
 		}
 		return RestoreResult.success(restored);
 	}
 
+	private static List<MessageHookSet> executionMessageHooks(
+		final DefinitionSnapshot definitions,
+		final FlowDefinition flow,
+		final PanelActionDefinition sourceAction
+	) {
+		var game = definitions.games().get(flow.game());
+		if (game == null) {
+			throw new IllegalArgumentException("flow references missing game " + flow.game());
+		}
+		List<MessageHookSet> hooks = new ArrayList<>();
+		hooks.add(game.messageHooks());
+		game.readiness()
+			.filter(readiness -> readiness.action().equals(sourceAction.id()))
+			.ifPresent(readiness -> hooks.add(readiness.messageHooks()));
+		definitions.roles().values().stream()
+			.filter(role -> role.game().equals(flow.game()))
+			.sorted(Comparator.comparing(GameDefinitions.RoleDefinition::id))
+			.map(GameDefinitions.RoleDefinition::messageHooks)
+			.forEach(hooks::add);
+		definitions.phases().values().stream()
+			.filter(phase -> phase.game().equals(flow.game()))
+			.sorted(Comparator.comparing(GameDefinitions.PhaseDefinition::id))
+			.map(GameDefinitions.PhaseDefinition::messageHooks)
+			.forEach(hooks::add);
+		hooks.add(flow.messageHooks());
+		return List.copyOf(hooks);
+	}
+
 	private static List<FrozenSourceDocument> freezeSupportingDefinitions(
 		final DefinitionSnapshot definitions,
 		final Identifier gameId,
 		final Identifier flowId,
-		final PanelActionDefinition sourceAction
+		final PanelActionDefinition sourceAction,
+		final Closure messageClosure
 	) {
-		List<DocumentKey> keys = new ArrayList<>();
+		Set<DocumentKey> keys = new LinkedHashSet<>();
 		keys.add(new DocumentKey(DefinitionType.GAME, gameId));
 		definitions.roles().values().stream()
 			.filter(value -> value.game().equals(gameId))
@@ -463,20 +541,50 @@ public final class ExecutionSnapshotCompiler {
 		definitions.phases().values().stream()
 			.filter(value -> value.game().equals(gameId))
 			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PHASE, value.id())));
-		keys.sort(
+		messageClosure.sourceKeys().stream()
+			.filter(key -> switch (key.type()) {
+				case GAME,
+					ROLE,
+					TEAM,
+					LIFE_STATE,
+					PHASE,
+					FLOW,
+					TASK,
+					PLAYER_DATA,
+					PLAYER_ACTION,
+					TEXT_EFFECT,
+					MESSAGE_CUE -> true;
+				case FIELD,
+					PANEL_ACTION,
+					PLAYER_ROUTE,
+					PAGE,
+					THEME -> false;
+			})
+			.filter(key -> key.type() != DefinitionType.FLOW || !key.id().equals(flowId))
+			.forEach(keys::add);
+		List<DocumentKey> orderedKeys = keys.stream().sorted(
 			Comparator.comparing((DocumentKey key) -> key.type().ordinal())
 				.thenComparing(DocumentKey::id)
-		);
+		).toList();
 
 		List<FrozenSourceDocument> result = new ArrayList<>();
-		for (DocumentKey key : keys) {
+		for (DocumentKey key : orderedKeys) {
 			SourceDocument document = definitions.sourceDocuments().get(key);
 			if (document == null) {
 				return null;
 			}
 			FrozenDocument frozenDocument = switch (key.type()) {
-				case GAME -> frozenFlowGame(document);
-				case ROLE -> frozenFlowRole(document, flowId);
+				case GAME -> frozenFlowGame(
+					document,
+					sourceAction.id(),
+					messageClosure.playerTerminalGames().contains(key.id())
+				);
+				case ROLE -> frozenFlowRole(
+					document,
+					flowId,
+					messageClosure.sourceKeys()
+				);
+				case FLOW -> frozenInitializationFlow(document);
 				default -> frozen(document);
 			};
 			result.add(
@@ -516,24 +624,44 @@ public final class ExecutionSnapshotCompiler {
 		return FrozenDocument.of(root.toString());
 	}
 
-	private static FrozenDocument frozenFlowGame(final SourceDocument document) {
+	private static FrozenDocument frozenFlowGame(
+		final SourceDocument document,
+		final Identifier sourceActionId,
+		final boolean retainPlayerTerminal
+	) {
 		JsonObject root = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
 		// ponytail: a forced-flow snapshot owns one flow, not the task plan. Keep API v2 for
 		// exclusive_choice, but leave the unrelated task DAG to TimelineSnapshotCompiler.
 		root.remove("task_timeline");
-		// Readiness lifecycle metadata is also world-level. The readiness instance separately
-		// retains its disconnect/force policy while this snapshot owns only the executable page.
-		root.remove("readiness");
+		JsonElement readinessElement = root.get("readiness");
+		if (readinessElement != null && readinessElement.isJsonObject()) {
+			JsonObject readiness = readinessElement.getAsJsonObject();
+			JsonElement action = readiness.get("action");
+			// Only the readiness flow owns this nested hook definition. Its source action is
+			// already frozen and validated against the owned flow; every other flow must drop
+			// readiness entirely instead of importing unrelated lifecycle/control semantics.
+			boolean ownsReadiness = action != null
+				&& action.isJsonPrimitive()
+				&& action.getAsJsonPrimitive().isString()
+				&& sourceActionId.toString().equals(action.getAsString());
+			if (!ownsReadiness) {
+				// Ordinary forced flows must not acquire readiness lifecycle semantics.
+				root.remove("readiness");
+			}
+		}
 		// The ordinary player terminal is resolved from the live game definition. A forced-flow
 		// snapshot does not freeze that terminal or its page graph, so retaining this entry would
 		// leave default_page pointing at a page that intentionally is not part of the snapshot.
-		root.remove("player_terminal");
+		if (!retainPlayerTerminal) {
+			root.remove("player_terminal");
+		}
 		return FrozenDocument.of(root.toString());
 	}
 
 	private static FrozenDocument frozenFlowRole(
 		final SourceDocument document,
-		final Identifier flowId
+		final Identifier flowId,
+		final Set<DocumentKey> messageDependencies
 	) {
 		JsonObject root = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
 		JsonElement initializationFlow = root.get("initialization_flow");
@@ -542,12 +670,47 @@ public final class ExecutionSnapshotCompiler {
 				&& (
 					!initializationFlow.isJsonPrimitive()
 						|| !initializationFlow.getAsJsonPrimitive().isString()
-						|| !initializationFlow.getAsString().equals(flowId.toString())
+					|| (
+						!initializationFlow.getAsString().equals(flowId.toString())
+							&& !messageDependencies.contains(
+								new DocumentKey(
+									DefinitionType.FLOW,
+									Identifier.parse(initializationFlow.getAsString())
+								)
+							)
+					)
 				)
 		) {
 			// ponytail: one execution snapshot owns one flow; unrelated role bootstrap flows stay live.
 			root.remove("initialization_flow");
 		}
+		return FrozenDocument.of(root.toString());
+	}
+
+	/**
+	 * Retains only the identity credential read by dynamic player data: flow id plus version.
+	 * Initialization checks never execute this supporting graph; keeping its pages, functions and
+	 * hooks would import an unrelated second forced-flow runtime into the owning snapshot.
+	 */
+	private static FrozenDocument frozenInitializationFlow(final SourceDocument document) {
+		JsonObject source = JsonParser.parseString(document.canonicalJson()).getAsJsonObject();
+		JsonObject root = new JsonObject();
+		root.addProperty("format_version", source.get("format_version").getAsInt());
+		root.addProperty("game", source.get("game").getAsString());
+		root.addProperty("version", source.get("version").getAsInt());
+		root.add("name", source.get("name").deepCopy());
+		root.addProperty("entry", "dependency_complete");
+		JsonObject audience = new JsonObject();
+		audience.addProperty("exclude_host", false);
+		audience.addProperty("online_only", false);
+		root.add("audience", audience);
+		root.addProperty("required", false);
+		com.google.gson.JsonArray nodes = new com.google.gson.JsonArray();
+		JsonObject complete = new JsonObject();
+		complete.addProperty("id", "dependency_complete");
+		complete.addProperty("type", "complete");
+		nodes.add(complete);
+		root.add("nodes", nodes);
 		return FrozenDocument.of(root.toString());
 	}
 
@@ -668,13 +831,15 @@ public final class ExecutionSnapshotCompiler {
 			case TEAM -> FrozenDefinitionType.TEAM;
 			case LIFE_STATE -> FrozenDefinitionType.LIFE_STATE;
 			case PHASE -> FrozenDefinitionType.PHASE;
+			case TASK -> FrozenDefinitionType.TASK;
+			case FLOW -> FrozenDefinitionType.FLOW;
 			case PANEL_ACTION -> FrozenDefinitionType.PANEL_ACTION;
+			case PLAYER_DATA -> FrozenDefinitionType.PLAYER_DATA;
+			case PLAYER_ACTION -> FrozenDefinitionType.PLAYER_ACTION;
+			case TEXT_EFFECT -> FrozenDefinitionType.TEXT_EFFECT;
+			case MESSAGE_CUE -> FrozenDefinitionType.MESSAGE_CUE;
 			case FIELD,
-				FLOW,
-				TASK,
 				PLAYER_ROUTE,
-				PLAYER_DATA,
-				PLAYER_ACTION,
 				PAGE,
 				THEME -> throw new IllegalArgumentException(
 				"type is not a supporting definition: " + type
@@ -689,7 +854,13 @@ public final class ExecutionSnapshotCompiler {
 			case TEAM -> DefinitionType.TEAM;
 			case LIFE_STATE -> DefinitionType.LIFE_STATE;
 			case PHASE -> DefinitionType.PHASE;
+			case TASK -> DefinitionType.TASK;
+			case FLOW -> DefinitionType.FLOW;
 			case PANEL_ACTION -> DefinitionType.PANEL_ACTION;
+			case PLAYER_DATA -> DefinitionType.PLAYER_DATA;
+			case PLAYER_ACTION -> DefinitionType.PLAYER_ACTION;
+			case TEXT_EFFECT -> DefinitionType.TEXT_EFFECT;
+			case MESSAGE_CUE -> DefinitionType.MESSAGE_CUE;
 		};
 	}
 

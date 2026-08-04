@@ -430,7 +430,13 @@ public final class ForcedFlowAuthoritySelfCheck {
 			151L,
 			allowed
 		);
-		check(authorized.successful(), "current predicate authorization must start the flow");
+		check(
+			authorized.successful(),
+			"current predicate authorization must start the flow: "
+				+ authorized.code()
+				+ " / "
+				+ authorized.message()
+		);
 		check(
 			authorized.nextState().orElseThrow().activeForcedFlow().orElseThrow().identity()
 				.sourceActionId().equals(GATED_ACTION_ID),

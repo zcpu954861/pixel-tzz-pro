@@ -1,0 +1,352 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "defaults": {
+    "capture": "per_field"
+  },
+  "fields": {
+    "value_01": {
+      "source": {
+        "binding": "pressure/value_01"
+      }
+    },
+    "value_02": {
+      "source": {
+        "binding": "pressure/value_02"
+      }
+    },
+    "value_03": {
+      "source": {
+        "binding": "pressure/value_03"
+      }
+    },
+    "value_04": {
+      "source": {
+        "binding": "pressure/value_04"
+      }
+    },
+    "value_05": {
+      "source": {
+        "binding": "pressure/value_05"
+      }
+    },
+    "value_06": {
+      "source": {
+        "binding": "pressure/value_06"
+      }
+    },
+    "value_07": {
+      "source": {
+        "binding": "pressure/value_07"
+      }
+    },
+    "value_08": {
+      "source": {
+        "binding": "pressure/value_08"
+      }
+    },
+    "value_09": {
+      "source": {
+        "binding": "pressure/value_09"
+      }
+    },
+    "value_10": {
+      "source": {
+        "binding": "pressure/value_10"
+      }
+    },
+    "value_11": {
+      "source": {
+        "binding": "pressure/value_11"
+      }
+    },
+    "value_12": {
+      "source": {
+        "binding": "pressure/value_12"
+      }
+    },
+    "value_13": {
+      "source": {
+        "binding": "pressure/value_13"
+      }
+    },
+    "value_14": {
+      "source": {
+        "binding": "pressure/value_14"
+      }
+    },
+    "value_15": {
+      "source": {
+        "binding": "pressure/value_15"
+      }
+    },
+    "value_16": {
+      "source": {
+        "binding": "pressure/value_16"
+      }
+    },
+    "value_17": {
+      "source": {
+        "binding": "pressure/value_17"
+      }
+    },
+    "value_18": {
+      "source": {
+        "binding": "pressure/value_18"
+      }
+    },
+    "value_19": {
+      "source": {
+        "binding": "pressure/value_19"
+      }
+    },
+    "value_20": {
+      "source": {
+        "binding": "pressure/value_20"
+      }
+    },
+    "value_21": {
+      "source": {
+        "binding": "pressure/value_21"
+      }
+    },
+    "value_22": {
+      "source": {
+        "binding": "pressure/value_22"
+      }
+    },
+    "value_23": {
+      "source": {
+        "binding": "pressure/value_23"
+      }
+    },
+    "value_24": {
+      "source": {
+        "binding": "pressure/value_24"
+      }
+    },
+    "value_25": {
+      "source": {
+        "binding": "pressure/value_25"
+      }
+    },
+    "value_26": {
+      "source": {
+        "binding": "pressure/value_26"
+      }
+    },
+    "value_27": {
+      "source": {
+        "binding": "pressure/value_27"
+      }
+    },
+    "value_28": {
+      "source": {
+        "binding": "pressure/value_28"
+      }
+    },
+    "value_29": {
+      "source": {
+        "binding": "pressure/value_29"
+      }
+    },
+    "value_30": {
+      "source": {
+        "binding": "pressure/value_30"
+      }
+    },
+    "value_31": {
+      "source": {
+        "binding": "pressure/value_31"
+      }
+    },
+    "value_32": {
+      "source": {
+        "binding": "pressure/value_32"
+      }
+    },
+    "value_33": {
+      "source": {
+        "binding": "pressure/value_33"
+      }
+    },
+    "value_34": {
+      "source": {
+        "binding": "pressure/value_34"
+      }
+    },
+    "value_35": {
+      "source": {
+        "binding": "pressure/value_35"
+      }
+    },
+    "value_36": {
+      "source": {
+        "binding": "pressure/value_36"
+      }
+    },
+    "value_37": {
+      "source": {
+        "binding": "pressure/value_37"
+      }
+    },
+    "value_38": {
+      "source": {
+        "binding": "pressure/value_38"
+      }
+    },
+    "value_39": {
+      "source": {
+        "binding": "pressure/value_39"
+      }
+    },
+    "value_40": {
+      "source": {
+        "binding": "pressure/value_40"
+      }
+    },
+    "value_41": {
+      "source": {
+        "binding": "pressure/value_41"
+      }
+    },
+    "value_42": {
+      "source": {
+        "binding": "pressure/value_42"
+      }
+    },
+    "value_43": {
+      "source": {
+        "binding": "pressure/value_43"
+      }
+    },
+    "value_44": {
+      "source": {
+        "binding": "pressure/value_44"
+      }
+    },
+    "value_45": {
+      "source": {
+        "binding": "pressure/value_45"
+      }
+    },
+    "value_46": {
+      "source": {
+        "binding": "pressure/value_46"
+      }
+    },
+    "value_47": {
+      "source": {
+        "binding": "pressure/value_47"
+      }
+    },
+    "value_48": {
+      "source": {
+        "binding": "pressure/value_48"
+      }
+    },
+    "value_49": {
+      "source": {
+        "binding": "pressure/value_49"
+      }
+    },
+    "value_50": {
+      "source": {
+        "binding": "pressure/value_50"
+      }
+    },
+    "value_51": {
+      "source": {
+        "binding": "pressure/value_51"
+      }
+    },
+    "value_52": {
+      "source": {
+        "binding": "pressure/value_52"
+      }
+    },
+    "value_53": {
+      "source": {
+        "binding": "pressure/value_53"
+      }
+    },
+    "value_54": {
+      "source": {
+        "binding": "pressure/value_54"
+      }
+    },
+    "value_55": {
+      "source": {
+        "binding": "pressure/value_55"
+      }
+    },
+    "value_56": {
+      "source": {
+        "binding": "pressure/value_56"
+      }
+    },
+    "value_57": {
+      "source": {
+        "binding": "pressure/value_57"
+      }
+    },
+    "value_58": {
+      "source": {
+        "binding": "pressure/value_58"
+      }
+    },
+    "value_59": {
+      "source": {
+        "binding": "pressure/value_59"
+      }
+    },
+    "value_60": {
+      "source": {
+        "binding": "pressure/value_60"
+      }
+    },
+    "value_61": {
+      "source": {
+        "binding": "pressure/value_61"
+      }
+    },
+    "value_62": {
+      "source": {
+        "binding": "pressure/value_62"
+      }
+    },
+    "value_63": {
+      "source": {
+        "binding": "pressure/value_63"
+      }
+    },
+    "value_64": {
+      "source": {
+        "binding": "pressure/value_64"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "max_field_notice",
+      "type": "text",
+      "channel": "chat",
+      "text": {
+        "parts": [
+          {
+            "component": {
+              "text": "64 字段边界：",
+              "color": "aqua"
+            }
+          },
+          {
+            "field": {
+              "scope": "cue",
+              "id": "value_64"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

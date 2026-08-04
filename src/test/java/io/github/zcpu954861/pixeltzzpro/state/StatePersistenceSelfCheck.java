@@ -61,6 +61,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskKind;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.MessageHistoryRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.PlayerActionInvocation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.PlayerActionInvocationStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.PlayerActionUsage;
@@ -123,6 +124,7 @@ public final class StatePersistenceSelfCheck {
 		checkCompleteV2RoundTrip();
 		checkCompleteV3RoundTrip();
 		checkPlayerActionLedgerRoundTripAndScopeRotation();
+		checkMessageHistoryCompatibilityAndRoundTrip();
 		checkOversizedFrozenDocumentBinaryNbtRoundTrip();
 		checkMissingTimelineSnapshotRepair();
 		checkDevelopmentV3ScopeRepair();
@@ -571,6 +573,79 @@ public final class StatePersistenceSelfCheck {
 				)
 			).error().isPresent(),
 			"PREPARED invocation must not claim a terminal result"
+		);
+	}
+
+	private static void checkMessageHistoryCompatibilityAndRoundTrip() {
+		WorldStateV3 core = WorldStateV3.initial()
+			.beginGameInstance(GAME_ID, PHASE_ID, GAME_INSTANCE_ID);
+		MessageHistoryRecord record = new MessageHistoryRecord(
+			GAME_INSTANCE_ID,
+			PLAYER_ID,
+			id("test:message_notice"),
+			UUID.nameUUIDFromBytes("message-history".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+			Optional.of(id("test:opening_task")),
+			240L,
+			"『任务提示回顾』",
+			"玩家只会看到服务器已经为自己解析并冻结的正文。",
+			Map.of("target_name", "Player"),
+			false
+		);
+		WorldStateV4 value = new WorldStateV4(
+			WorldStateV4.SCHEMA_VERSION,
+			core,
+			List.of(),
+			List.of(),
+			List.of(record)
+		);
+		JsonElement encoded = WorldStateV4.CODEC.encodeStart(JsonOps.INSTANCE, value).getOrThrow();
+		WorldStateV4 decoded = WorldStateV4.CODEC.parse(JsonOps.INSTANCE, encoded).getOrThrow();
+		check(decoded.equals(value), "resolved per-viewer message history must round-trip exactly");
+		PixelTzzWorldState persisted = decode(encoded);
+		Tag encodedNbt = PixelTzzWorldState.CODEC
+			.encodeStart(NbtOps.INSTANCE, persisted)
+			.getOrThrow();
+		PixelTzzWorldState reloaded = PixelTzzWorldState.CODEC
+			.parse(NbtOps.INSTANCE, encodedNbt)
+			.getOrThrow();
+		check(
+			reloaded.currentV4().orElseThrow().equals(value),
+			"resolved message history must survive the real SavedData NBT path"
+		);
+		check(
+			decoded.messageHistoryFor(PLAYER_ID).equals(List.of(record))
+				&& decoded.messageHistoryFor(HOST_ID).isEmpty(),
+			"message history lookup must preserve its exact authorized viewer boundary"
+		);
+
+		com.google.gson.JsonObject oldV4 = encoded.deepCopy().getAsJsonObject();
+		oldV4.remove("message_history");
+		WorldStateV4 decodedOldV4 = WorldStateV4.CODEC
+			.parse(JsonOps.INSTANCE, oldV4)
+			.getOrThrow();
+		check(
+			decodedOldV4.messageHistory().isEmpty()
+				&& decodedOldV4.core().equals(core),
+			"schema-v4 worlds written before V3B must decode with an empty optional history ledger"
+		);
+		check(
+			new WorldStateV4(
+				WorldStateV4.SCHEMA_VERSION,
+				core,
+				List.of(),
+				List.of()
+			).messageHistory().isEmpty(),
+			"the retained four-argument constructor must default message history to empty"
+		);
+		check(
+			value.withCore(
+				WorldStateV3.initial().beginGameInstance(
+					GAME_ID,
+					PHASE_ID,
+					NEXT_GAME_INSTANCE_ID
+				)
+			).messageHistory().isEmpty(),
+			"rotating the active game instance must not inherit old message history"
 		);
 	}
 

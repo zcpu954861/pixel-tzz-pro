@@ -1538,6 +1538,7 @@ public final class DataDrivenPageScreen extends Screen {
 				&& (
 					content.action().type() == ActionType.REGISTERED
 						|| content.action().type() == ActionType.HISTORY_DETAIL
+						|| content.action().type() == ActionType.HISTORY_REPLAY
 				)
 		) {
 			String nodeId = node.definition().id().orElse("");
@@ -2052,6 +2053,13 @@ public final class DataDrivenPageScreen extends Screen {
 				submitHistoryDetail(node);
 				return;
 			}
+			if (
+				action.type() == ActionType.HISTORY_REPLAY
+					&& this.active.purpose() == PagePurpose.NORMAL
+			) {
+				submitHistoryReplay(node);
+				return;
+			}
 			this.lastRequestEnvelope = "当前页面用途不允许该动作类型。";
 			triggerActionOutcome(node, false);
 			return;
@@ -2174,6 +2182,33 @@ public final class DataDrivenPageScreen extends Screen {
 		this.pendingActionNodeKey = node.key();
 		this.pendingActionIsTerminal = true;
 		this.lastRequestEnvelope = "正在核验这条历史记录…";
+	}
+
+	private void submitHistoryReplay(final RenderNode node) {
+		String nodeId = node.definition().id().orElse("");
+		String recordKey = node.context()
+			.resolve("item.id")
+			.or(() -> node.context().resolve("detail.id"))
+			.flatMap(DataDrivenPageScreen::primitiveString)
+			.orElse("");
+		if (nodeId.isBlank() || recordKey.isBlank()) {
+			showTerminalFeedback("历史重播入口当前不可用。", false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		TerminalSubmission submission = ClientPageState.submitTerminalHistoryReplay(
+			nodeId,
+			recordKey
+		);
+		if (!submission.sent()) {
+			showTerminalFeedback("重播未开始: " + submission.message(), false);
+			triggerActionOutcome(node, false);
+			return;
+		}
+		this.pendingActionSequence = submission.requestSequence();
+		this.pendingActionNodeKey = node.key();
+		this.pendingActionIsTerminal = true;
+		this.lastRequestEnvelope = "正在核验这条历史记录的重播权限…";
 	}
 
 	private List<FieldValue> currentFieldValues() {

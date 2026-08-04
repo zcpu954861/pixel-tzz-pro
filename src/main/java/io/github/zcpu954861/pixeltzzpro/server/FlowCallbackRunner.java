@@ -16,8 +16,10 @@ import net.minecraft.commands.functions.InstantiatedFunction;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.server.permissions.LevelBasedPermissionSet;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * Executes one frozen data-pack callback with isolated macro arguments.
@@ -59,12 +61,43 @@ public final class FlowCallbackRunner {
 		final Optional<UUID> expectedPlayerId,
 		final Optional<ServerPlayer> player
 	) {
+		return invokePrepared(
+			server,
+			functionId,
+			macroArguments,
+			diagnosticContext,
+			expectedPlayerId,
+			player,
+			Optional.empty()
+		);
+	}
+
+	/**
+	 * Executes the same prepared callback while applying one server-owned command location.
+	 *
+	 * <p>This overload keeps macro instantiation and execution in the single shared callback
+	 * runner; message callbacks therefore do not grow a second function executor merely to honor
+	 * their registered origin/target location.
+	 */
+	static Invocation invokePrepared(
+		final MinecraftServer server,
+		final Identifier functionId,
+		final CompoundTag macroArguments,
+		final String diagnosticContext,
+		final Optional<UUID> expectedPlayerId,
+		final Optional<ServerPlayer> player,
+		final Optional<ExecutionPosition> position
+	) {
 		Objects.requireNonNull(server, "server");
 		Objects.requireNonNull(functionId, "functionId");
 		Objects.requireNonNull(macroArguments, "macroArguments");
 		Objects.requireNonNull(diagnosticContext, "diagnosticContext");
 		Optional<UUID> expectedPlayer = Objects.requireNonNull(expectedPlayerId, "expectedPlayerId");
 		Optional<ServerPlayer> sourcePlayer = Objects.requireNonNull(player, "player");
+		Optional<ExecutionPosition> callbackPosition = Objects.requireNonNull(
+			position,
+			"position"
+		);
 		if (!server.isSameThread()) {
 			return Invocation.failed("callback must execute on the server thread");
 		}
@@ -105,19 +138,37 @@ public final class FlowCallbackRunner {
 			commandSucceeded.compareAndSet(true, success);
 			resultValue.set(value);
 		};
-		CommandSourceStack source = sourcePlayer
-			.map(ServerPlayer::createCommandSourceStack)
-			.orElseGet(() -> server.createCommandSourceStack())
+		/*
+		 * Always start from the trusted server source. Applying a player as @s must not downgrade
+		 * a registered data-pack callback to PLAYER provenance: otherwise a callback running
+		 * AS_INVOKER/AS_TARGET could no longer call the host-gated message command whenever that
+		 * player was not the host. Fabric's permission context is preserved by the with* copies.
+		 */
+		CommandSourceStack source = server.createCommandSourceStack();
+		if (sourcePlayer.isPresent()) {
+			ServerPlayer resolvedPlayer = sourcePlayer.orElseThrow();
+			source = source
+				.withEntity(resolvedPlayer)
+				.withLevel(resolvedPlayer.level())
+				.withPosition(resolvedPlayer.position())
+				.withRotation(resolvedPlayer.getRotationVector());
+		}
+		source = source
 			.withMaximumPermission(LevelBasedPermissionSet.GAMEMASTER)
 			.withSuppressedOutput()
 			.withCallback(resultCallback);
+		if (callbackPosition.isPresent()) {
+			ExecutionPosition resolved = callbackPosition.orElseThrow();
+			source = source.withLevel(resolved.level()).withPosition(resolved.position());
+		}
+		final CommandSourceStack resolvedSource = source;
 		try {
 			Commands.executeCommandInContext(
-				source,
+				resolvedSource,
 				execution -> ExecutionContext.queueInitialFunctionCall(
 					execution,
 					instantiated,
-					source,
+					resolvedSource,
 					resultCallback
 				)
 			);
@@ -138,6 +189,13 @@ public final class FlowCallbackRunner {
 			);
 		}
 		return Invocation.succeeded(callbackReceived.get(), resultValue.get());
+	}
+
+	record ExecutionPosition(ServerLevel level, Vec3 position) {
+		ExecutionPosition {
+			level = Objects.requireNonNull(level, "level");
+			position = Objects.requireNonNull(position, "position");
+		}
 	}
 
 	public record Context(

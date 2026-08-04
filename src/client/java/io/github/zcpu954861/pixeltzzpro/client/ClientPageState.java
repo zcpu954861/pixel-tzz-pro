@@ -734,6 +734,18 @@ public final class ClientPageState {
 		);
 	}
 
+	public static synchronized TerminalSubmission submitTerminalHistoryReplay(
+		final String nodeId,
+		final String historyRecordKey
+	) {
+		return submitTerminalIntent(
+			Intent.HISTORY_REPLAY,
+			Optional.of(Objects.requireNonNull(nodeId, "nodeId")),
+			Optional.empty(),
+			Optional.of(Objects.requireNonNull(historyRecordKey, "historyRecordKey"))
+		);
+	}
+
 	public static synchronized TerminalSubmission submitTerminalBack() {
 		return submitTerminalIntent(
 			Intent.BACK,

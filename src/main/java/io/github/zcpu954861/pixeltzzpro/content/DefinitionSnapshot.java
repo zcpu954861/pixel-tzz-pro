@@ -8,14 +8,25 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefin
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Problem;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.MessageCueDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.StaticFallbackSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.TextEffectDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerActionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerDataDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRouteDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.PageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import net.minecraft.resources.Identifier;
 
@@ -40,6 +51,7 @@ public record DefinitionSnapshot(
 	Map<Identifier, PlayerActionDefinition> playerActions,
 	Map<Identifier, PageDefinition> pages,
 	Map<Identifier, ThemeDefinition> themes,
+	MessageCatalog messageCatalog,
 	Map<DocumentKey, SourceDocument> sourceDocuments,
 	Set<Identifier> functions,
 	Set<Identifier> predicates,
@@ -60,10 +72,59 @@ public record DefinitionSnapshot(
 		playerActions = Map.copyOf(playerActions);
 		pages = Map.copyOf(pages);
 		themes = Map.copyOf(themes);
+		messageCatalog = Objects.requireNonNull(messageCatalog, "messageCatalog");
 		sourceDocuments = Map.copyOf(sourceDocuments);
 		functions = Set.copyOf(functions);
 		predicates = Set.copyOf(predicates);
 		predicateDocuments = Map.copyOf(predicateDocuments);
+	}
+
+	/**
+	 * Compatibility constructor for callers compiled against the V3A snapshot shape.
+	 */
+	public DefinitionSnapshot(
+		final long generation,
+		final Map<Identifier, GameDefinition> games,
+		final Map<Identifier, RoleDefinition> roles,
+		final Map<Identifier, TeamDefinition> teams,
+		final Map<Identifier, LifeStateDefinition> lifeStates,
+		final Map<Identifier, PhaseDefinition> phases,
+		final Map<Identifier, FieldDefinition> fields,
+		final Map<Identifier, FlowDefinition> flows,
+		final Map<Identifier, TaskDefinition> tasks,
+		final Map<Identifier, PanelActionDefinition> panelActions,
+		final Map<Identifier, PlayerRouteDefinition> playerRoutes,
+		final Map<Identifier, PlayerDataDefinition> playerData,
+		final Map<Identifier, PlayerActionDefinition> playerActions,
+		final Map<Identifier, PageDefinition> pages,
+		final Map<Identifier, ThemeDefinition> themes,
+		final Map<DocumentKey, SourceDocument> sourceDocuments,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates,
+		final Map<Identifier, String> predicateDocuments
+	) {
+		this(
+			generation,
+			games,
+			roles,
+			teams,
+			lifeStates,
+			phases,
+			fields,
+			flows,
+			tasks,
+			panelActions,
+			playerRoutes,
+			playerData,
+			playerActions,
+			pages,
+			themes,
+			MessageCatalog.empty(),
+			sourceDocuments,
+			functions,
+			predicates,
+			predicateDocuments
+		);
 	}
 
 	public DefinitionSnapshot(
@@ -164,6 +225,7 @@ public record DefinitionSnapshot(
 			Map.of(),
 			Map.of(),
 			Map.of(),
+			MessageCatalog.empty(),
 			Map.of(),
 			Set.of(),
 			Set.of(),
@@ -189,7 +251,67 @@ public record DefinitionSnapshot(
 			+ this.playerData.size()
 			+ this.playerActions.size()
 			+ this.pages.size()
-			+ this.themes.size();
+			+ this.themes.size()
+			+ this.messageCatalog.definitionCount();
+	}
+
+	/**
+	 * Returns a generation-independent digest of every effective definition input that message
+	 * playback may consult after an invocation has started.
+	 *
+	 * <p>Registry generation numbers restart with the JVM and therefore cannot prove that a
+	 * persisted {@code restart=continue} instance is being rebuilt against the same data-pack
+	 * contents. This digest deliberately excludes the generation counter and includes the stable
+	 * source-document digests, function/predicate identities, and predicate documents in a
+	 * deterministic order. A content-identical server restart produces the same value; any
+	 * definition change fails closed instead of letting an old instance read a new generation.
+	 */
+	public String stableContentFingerprint() {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			this.sourceDocuments.entrySet().stream()
+				.sorted(
+					Map.Entry.<DocumentKey, SourceDocument>comparingByKey(
+						java.util.Comparator
+							.comparing((DocumentKey key) -> key.type().name())
+							.thenComparing(key -> key.id().toString())
+					)
+				)
+				.forEach(entry -> {
+					updateDigest(digest, "document");
+					updateDigest(digest, entry.getKey().type().name());
+					updateDigest(digest, entry.getKey().id().toString());
+					updateDigest(digest, entry.getValue().sha256());
+				});
+			this.functions.stream().map(Identifier::toString).sorted().forEach(value -> {
+				updateDigest(digest, "function");
+				updateDigest(digest, value);
+			});
+			this.predicates.stream().map(Identifier::toString).sorted().forEach(value -> {
+				updateDigest(digest, "predicate");
+				updateDigest(digest, value);
+			});
+			this.predicateDocuments.entrySet().stream()
+				.sorted(Map.Entry.comparingByKey(java.util.Comparator.comparing(Identifier::toString)))
+				.forEach(entry -> {
+					updateDigest(digest, "predicate_document");
+					updateDigest(digest, entry.getKey().toString());
+					updateDigest(digest, entry.getValue());
+				});
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is unavailable", error);
+		}
+	}
+
+	private static void updateDigest(final MessageDigest digest, final String value) {
+		byte[] bytes = Objects.requireNonNull(value, "digest value")
+			.getBytes(StandardCharsets.UTF_8);
+		digest.update((byte)(bytes.length >>> 24));
+		digest.update((byte)(bytes.length >>> 16));
+		digest.update((byte)(bytes.length >>> 8));
+		digest.update((byte)bytes.length);
+		digest.update(bytes);
 	}
 
 	public DefinitionSnapshot withGeneration(final long newGeneration) {
@@ -209,6 +331,7 @@ public record DefinitionSnapshot(
 			this.playerActions,
 			this.pages,
 			this.themes,
+			this.messageCatalog,
 			this.sourceDocuments,
 			this.functions,
 			this.predicates,
@@ -235,6 +358,7 @@ public record DefinitionSnapshot(
 			this.playerActions,
 			this.pages,
 			this.themes,
+			this.messageCatalog,
 			this.sourceDocuments,
 			this.functions,
 			this.predicates,
@@ -252,5 +376,84 @@ public record DefinitionSnapshot(
 		String canonicalJson,
 		String sha256
 	) {
+	}
+
+	/**
+	 * V3B message resources share the parent snapshot generation but isolate their own failures.
+	 *
+	 * <p>Only valid definitions contribute to {@link #definitionCount()}. A disabled entry keeps
+	 * bounded diagnostics and source identity so one bad optional cue never rejects unrelated
+	 * game definitions. A cue that parsed successfully before an external-reference failure may
+	 * also retain its validated static fallback; the fallback is never reconstructed from malformed
+	 * or truncated source text.
+	 */
+	public record MessageCatalog(
+		Map<Identifier, TextEffectDefinition> textEffects,
+		Map<Identifier, MessageCueDefinition> messageCues,
+		Map<DocumentKey, DisabledMessageDefinition> disabled,
+		Set<Identifier> startBlockedGames
+	) {
+		public MessageCatalog {
+			textEffects = Map.copyOf(textEffects);
+			messageCues = Map.copyOf(messageCues);
+			disabled = Map.copyOf(disabled);
+			startBlockedGames = Set.copyOf(startBlockedGames);
+		}
+
+		public static MessageCatalog empty() {
+			return new MessageCatalog(Map.of(), Map.of(), Map.of(), Set.of());
+		}
+
+		public int definitionCount() {
+			return this.textEffects.size() + this.messageCues.size();
+		}
+	}
+
+	public record DisabledMessageDefinition(
+		SourceDocument sourceDocument,
+		boolean required,
+		Optional<Identifier> game,
+		Optional<StaticFallbackSpec> staticFallback,
+		List<Problem> diagnostics,
+		int totalDiagnosticCount
+	) {
+		public DisabledMessageDefinition {
+			sourceDocument = Objects.requireNonNull(sourceDocument, "sourceDocument");
+			game = game == null ? Optional.empty() : game;
+			staticFallback = staticFallback == null ? Optional.empty() : staticFallback;
+			diagnostics = List.copyOf(diagnostics);
+			if (totalDiagnosticCount < diagnostics.size()) {
+				throw new IllegalArgumentException(
+					"total diagnostic count cannot be smaller than retained diagnostics"
+				);
+			}
+		}
+
+		public DisabledMessageDefinition(
+			final SourceDocument sourceDocument,
+			final boolean required,
+			final Optional<Identifier> game,
+			final List<Problem> diagnostics,
+			final int totalDiagnosticCount
+		) {
+			this(
+				sourceDocument,
+				required,
+				game,
+				Optional.empty(),
+				diagnostics,
+				totalDiagnosticCount
+			);
+		}
+
+		public boolean requiredFallbackSatisfiesStart() {
+			return this.staticFallback
+				.filter(StaticFallbackSpec::fallbackSatisfiesRequired)
+				.isPresent();
+		}
+
+		public boolean diagnosticsTruncated() {
+			return this.totalDiagnosticCount > this.diagnostics.size();
+		}
 	}
 }

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTerminalConfig;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskTimeline;
 import net.minecraft.resources.Identifier;
@@ -70,12 +71,32 @@ public final class GameDefinitions {
 		Identifier defaultLifeState,
 		Optional<TaskTimeline> taskTimeline,
 		Optional<ReadinessDefinition> readiness,
-		Optional<PlayerTerminalConfig> playerTerminal
+		Optional<PlayerTerminalConfig> playerTerminal,
+		MessageHookSet messageHooks
 	) {
 		public GameDefinition {
 			taskTimeline = taskTimeline == null ? Optional.empty() : taskTimeline;
 			readiness = readiness == null ? Optional.empty() : readiness;
 			playerTerminal = playerTerminal == null ? Optional.empty() : playerTerminal;
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public GameDefinition(
+			final Identifier id,
+			final int apiVersion,
+			final int contentVersion,
+			final RichText name,
+			final Identifier initialPhase,
+			final Identifier defaultRole,
+			final Identifier defaultLifeState,
+			final Optional<TaskTimeline> taskTimeline,
+			final Optional<ReadinessDefinition> readiness,
+			final Optional<PlayerTerminalConfig> playerTerminal
+		) {
+			this(
+				id, apiVersion, contentVersion, name, initialPhase, defaultRole, defaultLifeState,
+				taskTimeline, readiness, playerTerminal, MessageHookSet.empty()
+			);
 		}
 
 		public GameDefinition(
@@ -99,7 +120,8 @@ public final class GameDefinitions {
 				defaultLifeState,
 				taskTimeline,
 				readiness,
-				Optional.empty()
+				Optional.empty(),
+				MessageHookSet.empty()
 			);
 		}
 
@@ -123,7 +145,8 @@ public final class GameDefinitions {
 				defaultLifeState,
 				taskTimeline,
 				Optional.empty(),
-				Optional.empty()
+				Optional.empty(),
+				MessageHookSet.empty()
 			);
 		}
 
@@ -145,7 +168,8 @@ public final class GameDefinitions {
 				defaultLifeState,
 				Optional.empty(),
 				Optional.empty(),
-				Optional.empty()
+				Optional.empty(),
+				MessageHookSet.empty()
 			);
 		}
 	}
@@ -161,8 +185,21 @@ public final class GameDefinitions {
 		Identifier phase,
 		Identifier action,
 		boolean disconnectInvalidates,
-		boolean hostCanForce
+		boolean hostCanForce,
+		MessageHookSet messageHooks
 	) {
+		public ReadinessDefinition {
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public ReadinessDefinition(
+			final Identifier phase,
+			final Identifier action,
+			final boolean disconnectInvalidates,
+			final boolean hostCanForce
+		) {
+			this(phase, action, disconnectInvalidates, hostCanForce, MessageHookSet.empty());
+		}
 	}
 
 	public record RoleDefinition(
@@ -172,12 +209,26 @@ public final class GameDefinitions {
 		Optional<RichText> description,
 		Optional<Identifier> initializationFlow,
 		Set<Identifier> tags,
-		TabStyle tab
+		TabStyle tab,
+		MessageHookSet messageHooks
 	) {
 		public RoleDefinition {
 			description = description == null ? Optional.empty() : description;
 			initializationFlow = initializationFlow == null ? Optional.empty() : initializationFlow;
 			tags = Set.copyOf(tags);
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public RoleDefinition(
+			final Identifier id,
+			final Identifier game,
+			final RichText name,
+			final Optional<RichText> description,
+			final Optional<Identifier> initializationFlow,
+			final Set<Identifier> tags,
+			final TabStyle tab
+		) {
+			this(id, game, name, description, initializationFlow, tags, tab, MessageHookSet.empty());
 		}
 
 		public RoleDefinition(
@@ -188,7 +239,7 @@ public final class GameDefinitions {
 			final Set<Identifier> tags,
 			final TabStyle tab
 		) {
-			this(id, game, name, description, Optional.empty(), tags, tab);
+			this(id, game, name, description, Optional.empty(), tags, tab, MessageHookSet.empty());
 		}
 	}
 
@@ -238,12 +289,25 @@ public final class GameDefinitions {
 		RichText name,
 		Set<Identifier> transitions,
 		Optional<Identifier> onEnter,
-		Optional<Identifier> onExit
+		Optional<Identifier> onExit,
+		MessageHookSet messageHooks
 	) {
 		public PhaseDefinition {
 			transitions = Set.copyOf(transitions);
 			onEnter = onEnter == null ? Optional.empty() : onEnter;
 			onExit = onExit == null ? Optional.empty() : onExit;
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public PhaseDefinition(
+			final Identifier id,
+			final Identifier game,
+			final RichText name,
+			final Set<Identifier> transitions,
+			final Optional<Identifier> onEnter,
+			final Optional<Identifier> onExit
+		) {
+			this(id, game, name, transitions, onEnter, onExit, MessageHookSet.empty());
 		}
 	}
 
@@ -626,7 +690,8 @@ public final class GameDefinitions {
 		Optional<Identifier> onStart,
 		Optional<Identifier> onPlayerComplete,
 		Optional<Identifier> onAllComplete,
-		Map<String, FlowNode> nodes
+		Map<String, FlowNode> nodes,
+		MessageHookSet messageHooks
 	) {
 		public FlowDefinition {
 			hostBossBar = hostBossBar == null ? Optional.empty() : hostBossBar;
@@ -634,6 +699,27 @@ public final class GameDefinitions {
 			onPlayerComplete = onPlayerComplete == null ? Optional.empty() : onPlayerComplete;
 			onAllComplete = onAllComplete == null ? Optional.empty() : onAllComplete;
 			nodes = Map.copyOf(nodes);
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public FlowDefinition(
+			final Identifier id,
+			final Identifier game,
+			final int version,
+			final RichText name,
+			final String entry,
+			final Audience audience,
+			final boolean required,
+			final Optional<HostBossBar> hostBossBar,
+			final Optional<Identifier> onStart,
+			final Optional<Identifier> onPlayerComplete,
+			final Optional<Identifier> onAllComplete,
+			final Map<String, FlowNode> nodes
+		) {
+			this(
+				id, game, version, name, entry, audience, required, hostBossBar, onStart,
+				onPlayerComplete, onAllComplete, nodes, MessageHookSet.empty()
+			);
 		}
 	}
 

@@ -1,0 +1,130 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "timing": {
+      "clock": "game_time",
+      "synchronization": "synchronized"
+    },
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "snapshot",
+      "on_loss": "cancel"
+    },
+    "context": {
+      "games": [
+        "pixel_tzz:main"
+      ],
+      "recheck": "live_strict"
+    },
+    "concurrency": {
+      "duplicate": "allow",
+      "dedupe_targets": true,
+      "priority": 12,
+      "groups": [
+        "acceptance_restart_finalize"
+      ]
+    },
+    "delivery": {
+      "empty_audience": "fail",
+      "offline_targets": "queue",
+      "offline_ttl": "30s"
+    },
+    "lifecycle": {
+      "restart": "finalize",
+      "reconnect": "final_only",
+      "late_join": "drop",
+      "attachment": "player"
+    },
+    "capture": "on_display",
+    "default_conflict": "queue"
+  },
+  "nodes": [
+    {
+      "id": "delayed_notice",
+      "type": "text",
+      "schedule": {
+        "type": "cue_start",
+        "offset": "10s"
+      },
+      "channel": "chat",
+      "content": {
+        "text": {
+          "fallback": {
+            "parts": [
+              {
+                "component": {
+                  "text": "『重启收尾验收』等待服务器恢复。",
+                  "color": "aqua"
+                }
+              }
+            ]
+          }
+        },
+        "layout": {
+          "alignment": "left",
+          "max_width": 360,
+          "max_lines": 2,
+          "overflow": "wrap"
+        },
+        "duration": {
+          "mode": "fixed_total",
+          "total": "1s"
+        },
+        "speaker": {
+          "kind": "system"
+        },
+        "character_sound_role": "muted",
+        "hold": "20t"
+      }
+    }
+  ],
+  "history": {
+    "title": {
+      "fallback": {
+        "parts": [
+          {
+            "component": {
+              "text": "『重启收尾验收』"
+            }
+          }
+        ]
+      }
+    },
+    "body": {
+      "fallback": {
+        "parts": [
+          {
+            "component": {
+              "text": "服务器重启后已补全冻结最终内容。"
+            }
+          }
+        ]
+      }
+    },
+    "task_source": "current_task",
+    "timestamp_source": "completion",
+    "audience": {
+      "source": "call_targets",
+      "online_only": true
+    },
+    "saved_fields": [],
+    "replay_allowed": false
+  },
+  "static_fallback": {
+    "channel": "chat",
+    "component": {
+      "text": "策略演出已完成"
+    },
+    "fallback_satisfies_required": true
+  },
+  "soft_limits": {
+    "max_nodes": 1,
+    "max_total_duration": "15s",
+    "max_persisted_instances": 4,
+    "max_pending_offline": 8
+  }
+}

@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -211,13 +212,31 @@ public final class TaskDefinitions {
 		Set<TaskEventState> allowedStates,
 		Optional<Audience> audience,
 		RecapVisibility recapVisibility,
-		Optional<PlayerHistoryPresentation> playerHistory
+		Optional<PlayerHistoryPresentation> playerHistory,
+		MessageHookSet messageHooks
 	) {
 		public TaskEventDefinition {
 			maximumRecords = optional(maximumRecords);
 			allowedStates = Set.copyOf(allowedStates);
 			audience = optional(audience);
 			playerHistory = optional(playerHistory);
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public TaskEventDefinition(
+			final String id,
+			final RichText name,
+			final TaskEventPolicy policy,
+			final Optional<Integer> maximumRecords,
+			final Set<TaskEventState> allowedStates,
+			final Optional<Audience> audience,
+			final RecapVisibility recapVisibility,
+			final Optional<PlayerHistoryPresentation> playerHistory
+		) {
+			this(
+				id, name, policy, maximumRecords, allowedStates, audience, recapVisibility,
+				playerHistory, MessageHookSet.empty()
+			);
 		}
 
 		public TaskEventDefinition(
@@ -237,7 +256,8 @@ public final class TaskDefinitions {
 				allowedStates,
 				audience,
 				recapVisibility,
-				Optional.empty()
+				Optional.empty(),
+				MessageHookSet.empty()
 			);
 		}
 	}
@@ -290,7 +310,8 @@ public final class TaskDefinitions {
 		Optional<PlayerCallback> onStartPlayers,
 		Map<String, TaskResult> results,
 		List<TaskEventDefinition> events,
-		List<TaskStatisticDefinition> statistics
+		List<TaskStatisticDefinition> statistics,
+		MessageHookSet messageHooks
 	) {
 		public TaskDefinition {
 			description = optional(description);
@@ -300,6 +321,34 @@ public final class TaskDefinitions {
 			results = Map.copyOf(results);
 			events = List.copyOf(events);
 			statistics = List.copyOf(statistics);
+			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+		}
+
+		public TaskDefinition(
+			final Identifier id,
+			final Identifier game,
+			final int version,
+			final TaskKind kind,
+			final RichText name,
+			final Optional<RichText> description,
+			final Optional<Identifier> page,
+			final Audience audience,
+			final TaskCompletionPolicy completionPolicy,
+			final OptionalLong durationTicks,
+			final boolean countsTowardGameTime,
+			final LiveVisibility liveVisibility,
+			final RecapVisibility recapVisibility,
+			final TaskCallbacks callbacks,
+			final Optional<PlayerCallback> onStartPlayers,
+			final Map<String, TaskResult> results,
+			final List<TaskEventDefinition> events,
+			final List<TaskStatisticDefinition> statistics
+		) {
+			this(
+				id, game, version, kind, name, description, page, audience, completionPolicy,
+				durationTicks, countsTowardGameTime, liveVisibility, recapVisibility, callbacks,
+				onStartPlayers, results, events, statistics, MessageHookSet.empty()
+			);
 		}
 	}
 

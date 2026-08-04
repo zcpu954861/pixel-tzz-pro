@@ -50,6 +50,26 @@
   "on_start": "pixel_tzz:tutorial/start",
   "on_player_complete": "pixel_tzz:tutorial/player_complete",
   "on_all_complete": "pixel_tzz:tutorial/all_complete",
+  "message_hooks": {
+    "start": {
+      "cue": "pixel_tzz:lifecycle/progress_notice",
+      "arguments": {
+        "message": "『通用初始化』已发起"
+      }
+    },
+    "player_complete": {
+      "cue": "pixel_tzz:lifecycle/player_notice",
+      "arguments": {
+        "message": "完成流程「通用初始化」"
+      }
+    },
+    "all_complete": {
+      "cue": "pixel_tzz:lifecycle/progress_notice",
+      "arguments": {
+        "message": "『通用初始化』全部完成"
+      }
+    }
+  },
   "nodes": [
     {
       "id": "briefing",

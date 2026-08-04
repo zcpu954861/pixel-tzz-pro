@@ -708,6 +708,7 @@
                     "width": {
                       "mode": "fill"
                     },
+                    "gap": 6,
                     "cross_align": "center"
                   },
                   "children": [
@@ -729,6 +730,43 @@
                       "style": "runner_eyebrow",
                       "text": {
                         "text": "ARCHIVE DOSSIER"
+                      }
+                    },
+                    {
+                      "type": "button",
+                      "id": "history_replay",
+                      "style": "secondary_button",
+                      "visible_when": {
+                        "eq": [
+                          {
+                            "bind": "detail.replay_allowed"
+                          },
+                          {
+                            "literal": true
+                          }
+                        ]
+                      },
+                      "layout": {
+                        "width": {
+                          "mode": "fixed",
+                          "value": 78
+                        },
+                        "height": {
+                          "mode": "fixed",
+                          "value": 20
+                        }
+                      },
+                      "label": {
+                        "text": "重新播放"
+                      },
+                      "action": {
+                        "type": "history_replay"
+                      },
+                      "events": {
+                        "press": {
+                          "motion": "button_press",
+                          "sound": "button_press"
+                        }
                       }
                     }
                   ]

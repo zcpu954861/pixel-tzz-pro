@@ -1,0 +1,12 @@
+{
+  "message_hooks": {
+    "start": "pixel_tzz:task/start",
+    "complete": {
+      "cue": "pixel_tzz:task/complete",
+      "arguments": {
+        "tone": "success",
+        "accent": "gold"
+      }
+    }
+  }
+}

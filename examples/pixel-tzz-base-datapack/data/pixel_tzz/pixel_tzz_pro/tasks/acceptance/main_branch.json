@@ -25,6 +25,26 @@
     "candidate_visibility": "names_only"
   },
   "recap_visibility": "participants",
+  "message_hooks": {
+    "start": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 分支任务」开始"
+      }
+    },
+    "complete": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 分支任务」完成"
+      }
+    },
+    "interrupt": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 分支任务」已中断"
+      }
+    }
+  },
   "callbacks": {
     "on_start": "pixel_tzz:acceptance_2d/timeline/start_branch_task",
     "on_timeout": "pixel_tzz:acceptance_2d/timeline/timeout_branch_task",
@@ -124,6 +144,14 @@
       "name": {
         "text": "验收终端已触发"
       },
+      "message_hooks": {
+        "trigger": {
+          "cue": "pixel_tzz:lifecycle/notice",
+          "arguments": {
+            "message": "事件「验收终端已触发」已记录"
+          }
+        }
+      },
       "policy": "repeatable",
       "max_records": 8,
       "allowed_states": [
@@ -164,6 +192,14 @@
       "id": "deadline_reached",
       "name": {
         "text": "分支任务到达时限"
+      },
+      "message_hooks": {
+        "trigger": {
+          "cue": "pixel_tzz:lifecycle/notice",
+          "arguments": {
+            "message": "事件「分支任务到达时限」已记录"
+          }
+        }
       },
       "policy": "once",
       "allowed_states": [

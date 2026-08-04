@@ -1,0 +1,29 @@
+{
+  "format_version": 1,
+  "policies": {
+    "concurrency": {
+      "duplicate": "allow",
+      "priority": 88
+    }
+  },
+  "nodes": [
+    {
+      "id": "pressure_notice",
+      "type": "text",
+      "channel": "action_bar",
+      "content": {
+        "text": {
+          "fallback": {
+            "parts": [
+              {
+                "component": {
+                  "text": "压力包完整覆盖策略矩阵"
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

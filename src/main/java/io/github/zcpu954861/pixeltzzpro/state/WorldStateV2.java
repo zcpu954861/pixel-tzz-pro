@@ -1432,7 +1432,13 @@ public record WorldStateV2(
 		TEAM("team"),
 		LIFE_STATE("life_state"),
 		PHASE("phase"),
-		PANEL_ACTION("panel_action");
+		TASK("task"),
+		FLOW("flow"),
+		PANEL_ACTION("panel_action"),
+		PLAYER_DATA("player_data"),
+		PLAYER_ACTION("player_action"),
+		TEXT_EFFECT("text_effect"),
+		MESSAGE_CUE("message_cue");
 
 		public static final Codec<FrozenDefinitionType> CODEC = stableEnumCodec(values());
 		private final String serializedName;

@@ -5,7 +5,8 @@
     "type": "task_name"
   },
   "surfaces": [
-    "terminal"
+    "terminal",
+    "dynamic_message"
   ],
   "audience": {
     "role_tags": [

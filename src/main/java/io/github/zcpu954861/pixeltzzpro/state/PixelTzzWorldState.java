@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.OptionalLong;
 import java.util.UUID;
 import java.util.function.UnaryOperator;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDocument;
@@ -462,6 +463,86 @@ public final class PixelTzzWorldState extends SavedData {
 		this.currentV4 = candidate;
 		this.setDirty();
 		return CommitV4Result.committed(candidate);
+	}
+
+	/**
+	 * Persists only the optional V3B message-runtime snapshot without changing global or game
+	 * lifecycle revisions.
+	 *
+	 * <p>Routine message progress can checkpoint frequently, so routing it through {@link
+	 * #commitV4(long, UnaryOperator)} would invalidate confirmation tokens and terminal sessions.
+	 * This transaction is intentionally narrow: the caller must still name the active game scope
+	 * and the exact previously persisted runtime revision, and no core or sibling v4 ledger can be
+	 * replaced here.
+	 */
+	public synchronized MessageRuntimeCheckpointResult messageRuntimeCheckpoint(
+		final UUID expectedGameInstanceId,
+		final OptionalLong expectedRuntimeRevision,
+		final Optional<PersistedMessageRuntime.Snapshot> replacement
+	) {
+		Objects.requireNonNull(expectedGameInstanceId, "expectedGameInstanceId");
+		Objects.requireNonNull(expectedRuntimeRevision, "expectedRuntimeRevision");
+		Objects.requireNonNull(replacement, "replacement");
+		if (!isSchemaCompatible()) {
+			return MessageRuntimeCheckpointResult.rejected(
+				"world state is not writable: " + this.incompatibilityReason
+			);
+		}
+		Optional<UUID> activeScope = this.currentV4.core().activeGameInstanceId();
+		if (activeScope.isEmpty()) {
+			return MessageRuntimeCheckpointResult.rejected("message runtime has no active game scope");
+		}
+		if (!activeScope.orElseThrow().equals(expectedGameInstanceId)) {
+			return MessageRuntimeCheckpointResult.rejected(
+				"active game changed before message runtime checkpoint"
+			);
+		}
+
+		Optional<PersistedMessageRuntime.Snapshot> current = this.currentV4.messageRuntime();
+		OptionalLong currentRevision = current.isPresent()
+			? OptionalLong.of(current.orElseThrow().runtimeRevision())
+			: OptionalLong.empty();
+		if (!sameOptionalLong(currentRevision, expectedRuntimeRevision)) {
+			return MessageRuntimeCheckpointResult.rejected(
+				"message runtime revision changed before checkpoint"
+			);
+		}
+
+		if (replacement.isPresent()) {
+			PersistedMessageRuntime.Snapshot next = replacement.orElseThrow();
+			if (!next.gameInstanceId().equals(expectedGameInstanceId)) {
+				return MessageRuntimeCheckpointResult.rejected(
+					"message runtime checkpoint belongs to another game instance"
+				);
+			}
+			if (
+				current.filter(value -> next.runtimeRevision() < value.runtimeRevision()).isPresent()
+			) {
+				return MessageRuntimeCheckpointResult.rejected(
+					"message runtime checkpoint revision moved backwards"
+				);
+			}
+			if (
+				current.filter(value -> next.snapshotGameTick() < value.snapshotGameTick()).isPresent()
+			) {
+				return MessageRuntimeCheckpointResult.rejected(
+					"message runtime checkpoint tick moved backwards"
+				);
+			}
+		}
+
+		WorldStateV4 candidate = this.currentV4.withMessageRuntime(replacement);
+		DataResult<WorldStateV4> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return MessageRuntimeCheckpointResult.rejected(
+				validated.error().orElseThrow().message()
+			);
+		}
+		if (!candidate.equals(this.currentV4)) {
+			this.currentV4 = candidate;
+			this.setDirty();
+		}
+		return MessageRuntimeCheckpointResult.committed(replacement);
 	}
 
 	/**
@@ -974,6 +1055,27 @@ public final class PixelTzzWorldState extends SavedData {
 		}
 	}
 
+	public record MessageRuntimeCheckpointResult(
+		boolean committed,
+		String reason,
+		Optional<PersistedMessageRuntime.Snapshot> snapshot
+	) {
+		public MessageRuntimeCheckpointResult {
+			Objects.requireNonNull(reason, "reason");
+			snapshot = Objects.requireNonNull(snapshot, "snapshot");
+		}
+
+		private static MessageRuntimeCheckpointResult committed(
+			final Optional<PersistedMessageRuntime.Snapshot> snapshot
+		) {
+			return new MessageRuntimeCheckpointResult(true, "", snapshot);
+		}
+
+		private static MessageRuntimeCheckpointResult rejected(final String reason) {
+			return new MessageRuntimeCheckpointResult(false, reason, Optional.empty());
+		}
+	}
+
 	public record TimelineSnapshotRepairResult(
 		boolean committed,
 		String reason,
@@ -1001,5 +1103,13 @@ public final class PixelTzzWorldState extends SavedData {
 		private static MigrationCommitResult rejected(final String reason) {
 			return new MigrationCommitResult(false, reason, Optional.empty());
 		}
+	}
+
+	private static boolean sameOptionalLong(
+		final OptionalLong left,
+		final OptionalLong right
+	) {
+		return left.isPresent() == right.isPresent()
+			&& (left.isEmpty() || left.orElseThrow() == right.orElseThrow());
 	}
 }

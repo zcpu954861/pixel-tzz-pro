@@ -4,6 +4,14 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageCapabilitiesC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageAssetManifestS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageAssetReportC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageControlS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageFieldDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageNodeAppendS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessagePlanS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageScreenStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
@@ -72,6 +80,21 @@ public final class NetworkPayloads {
 			.register(TerminalOpenC2SPayload.TYPE, TerminalOpenC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.serverboundPlay()
 			.register(TerminalIntentC2SPayload.TYPE, TerminalIntentC2SPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(
+				MessageCapabilitiesC2SPayload.TYPE,
+				MessageCapabilitiesC2SPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(
+				MessageAssetReportC2SPayload.TYPE,
+				MessageAssetReportC2SPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(
+				MessageScreenStateC2SPayload.TYPE,
+				MessageScreenStateC2SPayload.STREAM_CODEC
+			);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
@@ -100,6 +123,28 @@ public final class NetworkPayloads {
 			.register(
 				TerminalInvalidationS2CPayload.TYPE,
 				TerminalInvalidationS2CPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(MessagePlanS2CPayload.TYPE, MessagePlanS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				MessageAssetManifestS2CPayload.TYPE,
+				MessageAssetManifestS2CPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				MessageFieldDeltaS2CPayload.TYPE,
+				MessageFieldDeltaS2CPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				MessageNodeAppendS2CPayload.TYPE,
+				MessageNodeAppendS2CPayload.STREAM_CODEC
+			);
+		PayloadTypeRegistry.clientboundPlay()
+			.register(
+				MessageControlS2CPayload.TYPE,
+				MessageControlS2CPayload.STREAM_CODEC
 			);
 	}
 }

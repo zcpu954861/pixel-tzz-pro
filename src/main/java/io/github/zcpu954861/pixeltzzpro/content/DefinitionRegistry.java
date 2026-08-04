@@ -1,21 +1,29 @@
 package io.github.zcpu954861.pixeltzzpro.content;
 
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonParser;
+import com.google.gson.Strictness;
+import com.google.gson.stream.JsonReader;
+import com.google.gson.stream.JsonToken;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Compilation;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.MessageEnvelopeHint;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Problem;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BranchNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.TextNode;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
@@ -215,7 +223,8 @@ public final class DefinitionRegistry {
 
 			Identifier definitionId = Identifier.fromNamespaceAndPath(resourceId.getNamespace(), logicalPath);
 			try (Reader reader = resource.openAsReader()) {
-				String json = readBounded(reader);
+				ReadDefinition definition = readDefinition(reader, type);
+				String json = definition.json();
 				totalCharacters += json.length();
 				if (totalCharacters > DefinitionCompiler.MAX_TOTAL_DEFINITION_CHARACTERS) {
 					readProblems.add(
@@ -239,7 +248,8 @@ public final class DefinitionRegistry {
 						definitionId,
 						resourceId,
 						resource.sourcePackId(),
-						json
+						json,
+						definition.envelopeHint()
 					)
 				);
 			} catch (DefinitionLimitException error) {
@@ -400,7 +410,170 @@ public final class DefinitionRegistry {
 						branch.cases().forEach(branchCase -> result.add(branchCase.predicate()))
 					)
 			);
+		/*
+		 * Message predicates are validated as external resource identities during compilation,
+		 * but playback and persistence deliberately evaluate their retained JSON instead of the
+		 * live resource manager. A cue can be reached directly or indirectly through a message
+		 * hook, so every executable cue in the selected game scope must contribute its node and
+		 * text-variant predicate documents to the immutable registry generation.
+		 */
+		snapshot.messageCatalog().messageCues().values().stream()
+			.filter(cue -> cue.game().map(includesGame::test).orElse(true))
+			.forEach(cue -> cue.nodes().forEach(node -> {
+				node.header().when().ifPresent(
+					condition -> condition.predicate().ifPresent(result::add)
+				);
+				if (node instanceof TextNode text) {
+					text.variants().forEach(variant ->
+						variant.when().predicate().ifPresent(result::add)
+					);
+				}
+			}));
 		return Set.copyOf(result);
+	}
+
+	private static ReadDefinition readDefinition(
+		final Reader reader,
+		final DefinitionType type
+	) throws IOException {
+		if (!isMessageDefinition(type)) {
+			return new ReadDefinition(readBounded(reader), Optional.empty());
+		}
+		CapturingReader capturing = new CapturingReader(
+			reader,
+			DefinitionCompiler.MAX_DEFINITION_CHARACTERS + 1
+		);
+		Optional<MessageEnvelopeHint> envelopeHint = Optional.empty();
+		try {
+			envelopeHint = readMessageEnvelope(capturing);
+		} catch (IOException error) {
+			if (capturing.failure() != null) {
+				throw capturing.failure();
+			}
+		} catch (JsonParseException | IllegalStateException | NumberFormatException error) {
+			// Malformed content is isolated by the message compiler. Its envelope is not trusted.
+		}
+		capturing.drain();
+		return new ReadDefinition(capturing.retained(), envelopeHint);
+	}
+
+	private static Optional<MessageEnvelopeHint> readMessageEnvelope(
+		final CapturingReader source
+	) throws IOException {
+		JsonReader reader = new JsonReader(source);
+		reader.setStrictness(Strictness.STRICT);
+		if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+			readStrictValue(reader, 0);
+			requireEndDocument(reader);
+			return Optional.empty();
+		}
+
+		reader.beginObject();
+		Set<String> names = new HashSet<>();
+		boolean trusted = true;
+		boolean required = false;
+		Optional<Identifier> game = Optional.empty();
+		while (reader.hasNext()) {
+			String name = reader.nextName();
+			if (!names.add(name)) {
+				throw new JsonParseException("duplicate object key " + name);
+			}
+			switch (name) {
+				case "required" -> {
+					JsonToken token = reader.peek();
+					if (token == JsonToken.NULL) {
+						reader.nextNull();
+					} else if (token == JsonToken.BOOLEAN) {
+						required = reader.nextBoolean();
+					} else {
+						trusted = false;
+						readStrictValue(reader, 1);
+					}
+				}
+				case "game" -> {
+					JsonToken token = reader.peek();
+					if (token == JsonToken.NULL) {
+						reader.nextNull();
+					} else if (token == JsonToken.STRING) {
+						String value = reader.nextString();
+						Identifier parsed = value.length() <= 1_024
+							? parseExplicitIdentifier(value)
+							: null;
+						if (parsed == null) {
+							trusted = false;
+						} else {
+							game = Optional.of(parsed);
+						}
+					} else {
+						trusted = false;
+						readStrictValue(reader, 1);
+					}
+				}
+				default -> readStrictValue(reader, 1);
+			}
+		}
+		reader.endObject();
+		requireEndDocument(reader);
+		return trusted
+			? Optional.of(new MessageEnvelopeHint(required, game))
+			: Optional.empty();
+	}
+
+	private static void requireEndDocument(final JsonReader reader) throws IOException {
+		if (reader.peek() != JsonToken.END_DOCUMENT) {
+			throw new JsonParseException("trailing content after JSON value");
+		}
+	}
+
+	private static void readStrictValue(
+		final JsonReader reader,
+		final int depth
+	) throws IOException {
+		if (depth > DefinitionCompiler.MAX_JSON_DEPTH) {
+			throw new JsonParseException(
+				"JSON nesting exceeds " + DefinitionCompiler.MAX_JSON_DEPTH
+			);
+		}
+		switch (reader.peek()) {
+			case BEGIN_OBJECT -> {
+				reader.beginObject();
+				Set<String> names = new HashSet<>();
+				while (reader.hasNext()) {
+					String name = reader.nextName();
+					if (!names.add(name)) {
+						throw new JsonParseException("duplicate object key " + name);
+					}
+					readStrictValue(reader, depth + 1);
+				}
+				reader.endObject();
+			}
+			case BEGIN_ARRAY -> {
+				reader.beginArray();
+				while (reader.hasNext()) {
+					readStrictValue(reader, depth + 1);
+				}
+				reader.endArray();
+			}
+			case STRING, NUMBER -> reader.skipValue();
+			case BOOLEAN -> reader.nextBoolean();
+			case NULL -> reader.nextNull();
+			default -> throw new JsonParseException("unexpected JSON token " + reader.peek());
+		}
+	}
+
+	private static Identifier parseExplicitIdentifier(final String value) {
+		if (value == null || !value.contains(":")) {
+			return null;
+		}
+		try {
+			return Identifier.parse(value);
+		} catch (RuntimeException error) {
+			return null;
+		}
+	}
+
+	private static boolean isMessageDefinition(final DefinitionType type) {
+		return type == DefinitionType.TEXT_EFFECT || type == DefinitionType.MESSAGE_CUE;
 	}
 
 	private static String readBounded(final Reader reader) throws IOException {
@@ -439,6 +612,67 @@ public final class DefinitionRegistry {
 	private static final class DefinitionLimitException extends IOException {
 		private DefinitionLimitException(final String message) {
 			super(message);
+		}
+	}
+
+	private record ReadDefinition(
+		String json,
+		Optional<MessageEnvelopeHint> envelopeHint
+	) {
+		private ReadDefinition {
+			Objects.requireNonNull(json, "json");
+			envelopeHint = envelopeHint == null ? Optional.empty() : envelopeHint;
+		}
+	}
+
+	private static final class CapturingReader extends Reader {
+		private final Reader delegate;
+		private final int retainedLimit;
+		private final StringBuilder retained;
+		private IOException failure;
+
+		private CapturingReader(final Reader delegate, final int retainedLimit) {
+			this.delegate = Objects.requireNonNull(delegate, "delegate");
+			this.retainedLimit = retainedLimit;
+			this.retained = new StringBuilder(Math.min(retainedLimit, 8_192));
+		}
+
+		@Override
+		public int read(final char[] buffer, final int offset, final int length) throws IOException {
+			try {
+				int read = this.delegate.read(buffer, offset, length);
+				if (read > 0 && this.retained.length() < this.retainedLimit) {
+					int retainedCount = Math.min(
+						read,
+						this.retainedLimit - this.retained.length()
+					);
+					this.retained.append(buffer, offset, retainedCount);
+				}
+				return read;
+			} catch (IOException error) {
+				this.failure = error;
+				throw error;
+			}
+		}
+
+		@Override
+		public void close() throws IOException {
+			this.delegate.close();
+		}
+
+		private IOException failure() {
+			return this.failure;
+		}
+
+		private String retained() {
+			return this.retained.toString();
+		}
+
+		private void drain() throws IOException {
+			char[] buffer = new char[8_192];
+			while (this.read(buffer, 0, buffer.length) >= 0) {
+				// Continue to EOF so oversized files are detected without retaining their tail.
+			}
 		}
 	}
 

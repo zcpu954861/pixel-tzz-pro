@@ -130,6 +130,7 @@ public final class UiDefinitionParser {
 	private static final Pattern COLOR_TOKEN_REFERENCE = Pattern.compile("@colors\\.[a-z0-9_.-]+");
 	private static final Pattern FONT_TOKEN_REFERENCE = Pattern.compile("@fonts\\.[a-z0-9_.-]+");
 	private static final Pattern SPACING_TOKEN_REFERENCE = Pattern.compile("@spacing\\.[a-z0-9_.-]+");
+	private static final Pattern EXTERNAL_BINDING_PATH = Pattern.compile("[a-z0-9_./:-]+");
 	private static final Set<String> FRAME_STYLES = Set.of(
 		"plain",
 		"rail",
@@ -260,6 +261,7 @@ public final class UiDefinitionParser {
 		"detail.details",
 		"detail.metadata",
 		"detail.detail_available",
+		"detail.replay_allowed",
 		"item.id",
 		"item.title",
 		"item.summary",
@@ -284,6 +286,7 @@ public final class UiDefinitionParser {
 		"item.result",
 		"item.details",
 		"item.detail_available",
+		"item.replay_allowed",
 		"item.label",
 		"item.value",
 		"item.uuid",
@@ -347,6 +350,28 @@ public final class UiDefinitionParser {
 			: ParseResult.failed(issues);
 	}
 
+	/**
+	 * Parses one bounded condition fragment for other trusted data-pack definition types.
+	 *
+	 * <p>This is intentionally the same AST and grammar used by page visibility. Callers retain
+	 * ownership of reference validation and must not create a parallel condition evaluator.
+	 */
+	public static ParseResult<ConditionExpression> parseConditionFragment(
+		final JsonElement value
+	) {
+		List<Issue> issues = new ArrayList<>();
+		if (value == null || value.isJsonNull()) {
+			issues.add(new Issue("TYPE_MISMATCH", "", "condition fragment is required"));
+			return ParseResult.failed(issues);
+		}
+		ParserBase parser = new ParserBase(null, new JsonObject(), issues, true) {
+		};
+		ConditionExpression condition = parser.parseCondition(value, "", false);
+		return issues.isEmpty() && condition != null
+			? ParseResult.success(condition)
+			: ParseResult.failed(issues);
+	}
+
 	public record Issue(String code, String pointer, String message) {
 	}
 
@@ -374,11 +399,22 @@ public final class UiDefinitionParser {
 		final JsonObject root;
 		final List<Issue> issues;
 		final List<AssetReference> assets = new ArrayList<>();
+		final boolean externalConditionBindings;
 
 		ParserBase(final Identifier id, final JsonObject root, final List<Issue> issues) {
+			this(id, root, issues, false);
+		}
+
+		ParserBase(
+			final Identifier id,
+			final JsonObject root,
+			final List<Issue> issues,
+			final boolean externalConditionBindings
+		) {
 			this.id = id;
 			this.root = root;
 			this.issues = issues;
+			this.externalConditionBindings = externalConditionBindings;
 		}
 
 		final void requireFormat(final Reader reader) {
@@ -595,6 +631,25 @@ public final class UiDefinitionParser {
 				) {
 					return new BindingValue(path);
 				}
+			}
+			if (this.externalConditionBindings) {
+				if (
+					EXTERNAL_BINDING_PATH.matcher(path).matches()
+						&& !path.startsWith(".")
+						&& !path.startsWith("/")
+						&& !path.endsWith(".")
+						&& !path.endsWith("/")
+						&& !path.contains("..")
+						&& !path.contains("//")
+				) {
+					return new BindingValue(path);
+				}
+				add(
+					"INVALID_BINDING_PATH",
+					pointer,
+					"external condition binding path contains unsupported characters or segments"
+				);
+				return null;
 			}
 			add("UNKNOWN_BINDING", pointer, "binding path is not exposed by the UI context");
 			return null;

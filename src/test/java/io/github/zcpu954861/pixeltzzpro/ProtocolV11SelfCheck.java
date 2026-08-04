@@ -66,7 +66,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.util.Util;
 
 /**
- * Small protocol-v11 codec and trust-boundary check without a test framework.
+ * Historical protocol-v11 payload and trust-boundary regression check.
  */
 public final class ProtocolV11SelfCheck {
 	private static final UUID FLOW_INSTANCE = UUID.fromString("00000000-0000-0000-0000-000000000101");
@@ -80,7 +80,10 @@ public final class ProtocolV11SelfCheck {
 	}
 
 	public static void main(final String[] args) {
-		check(NetworkProtocol.CURRENT_VERSION == 11, "player terminals require protocol v11");
+		check(
+			NetworkProtocol.CURRENT_VERSION >= 11,
+			"the current protocol must retain the v11 player-terminal contract"
+		);
 		checkSessionSnapshot();
 		checkStatefulRequests();
 		checkConfirmationPayloads();
@@ -1622,6 +1625,26 @@ public final class ProtocolV11SelfCheck {
 			).equals(historyDetail),
 			"terminal history-detail codec round-trip failed"
 		);
+		TerminalIntentC2SPayload historyReplay = new TerminalIntentC2SPayload(
+			NetworkProtocol.CURRENT_VERSION,
+			terminalSession,
+			PAGE_INSTANCE,
+			3L,
+			5L,
+			2L,
+			11L,
+			Intent.HISTORY_REPLAY,
+			Optional.of("replay_history"),
+			Optional.empty(),
+			Optional.of("h1_" + "a".repeat(64))
+		);
+		check(
+			roundTrip(
+				TerminalIntentC2SPayload.STREAM_CODEC,
+				historyReplay
+			).equals(historyReplay),
+			"terminal history-replay codec round-trip failed"
+		);
 		expectRejected(
 			() -> new TerminalIntentC2SPayload(
 				NetworkProtocol.CURRENT_VERSION,
@@ -1683,6 +1706,38 @@ public final class ProtocolV11SelfCheck {
 				Optional.of("task-instance/checkpoint/0")
 			),
 			"terminal HISTORY_DETAIL must forbid client-selected page/action IDs"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				11L,
+				Intent.HISTORY_REPLAY,
+				Optional.of("replay_history"),
+				Optional.empty(),
+				Optional.empty()
+			),
+			"terminal HISTORY_REPLAY must require an opaque record key"
+		);
+		expectRejected(
+			() -> new TerminalIntentC2SPayload(
+				NetworkProtocol.CURRENT_VERSION,
+				terminalSession,
+				PAGE_INSTANCE,
+				3L,
+				5L,
+				2L,
+				11L,
+				Intent.HISTORY_REPLAY,
+				Optional.of("replay_history"),
+				Optional.of(actionId),
+				Optional.of("h1_" + "a".repeat(64))
+			),
+			"terminal HISTORY_REPLAY must forbid client-selected action IDs"
 		);
 		byte[] binding = """
 			{"viewer":{},"session":{},"flow":{},"fields":{},"flow_fields":{}}

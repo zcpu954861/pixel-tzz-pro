@@ -4,5 +4,19 @@
   "name": {
     "text": "验收结束"
   },
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「验收结束」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「验收结束」"
+      }
+    }
+  },
   "transitions": []
 }

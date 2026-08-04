@@ -5,6 +5,12 @@
   "mixins": [
     "ServerPlayerTabListMixin"
   ],
+  "client": [
+    "ChatComponentAccessor",
+    "ChatComponentProjectionMixin",
+    "ClientPacketListenerLifecycleMixin",
+    "HudAccessor"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

@@ -4,7 +4,7 @@ package io.github.zcpu954861.pixeltzzpro.network;
  * Explicit wire contract. Patch releases may differ as long as this protocol version matches.
  */
 public final class NetworkProtocol {
-	public static final int CURRENT_VERSION = 11;
+	public static final int CURRENT_VERSION = 12;
 
 	private NetworkProtocol() {
 	}

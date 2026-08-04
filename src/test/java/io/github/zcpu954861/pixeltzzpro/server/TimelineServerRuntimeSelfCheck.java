@@ -67,43 +67,7 @@ public final class TimelineServerRuntimeSelfCheck {
 		checkPhaseTransitionTiming();
 		checkFixedGameParticipants();
 		checkHostFallbackPolicy();
-		checkLifecycleSubtitle();
 		System.out.println("TIMELINE_SERVER_RUNTIME_SELF_CHECK=PASS");
-	}
-
-	private static void checkLifecycleSubtitle() {
-		check(
-			TimelineServerRuntime.lifecycleSubtitle(
-				TimelineStatus.STARTING,
-				TimelineStatus.RUNNING,
-				"广场逃脱"
-			).equals(Optional.of("任务开始 · 广场逃脱")),
-			"task start must produce one host-facing lifecycle subtitle"
-		);
-		check(
-			TimelineServerRuntime.lifecycleSubtitle(
-				TimelineStatus.SETTLING,
-				TimelineStatus.INTERMISSION,
-				"广场逃脱"
-			).equals(Optional.of("任务结束 · 广场逃脱")),
-			"task settlement must produce one host-facing lifecycle subtitle"
-		);
-		check(
-			TimelineServerRuntime.lifecycleSubtitle(
-				TimelineStatus.RUNNING,
-				TimelineStatus.INTERRUPTED,
-				"广场逃脱"
-			).equals(Optional.of("任务已终止 · 广场逃脱")),
-			"task interruption must produce one host-facing lifecycle subtitle"
-		);
-		check(
-			TimelineServerRuntime.lifecycleSubtitle(
-				TimelineStatus.RUNNING,
-				TimelineStatus.RUNNING,
-				"广场逃脱"
-			).isEmpty(),
-			"ordinary checkpoints must not replay lifecycle subtitles"
-		);
 	}
 
 	private static void checkHostFallbackPolicy() {

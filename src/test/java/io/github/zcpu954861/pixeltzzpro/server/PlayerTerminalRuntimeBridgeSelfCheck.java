@@ -318,6 +318,42 @@ public final class PlayerTerminalRuntimeBridgeSelfCheck {
 				),
 			"server must reject history_detail outside the authoritative history Repeat scope"
 		);
+		NodeDefinition replayButton = new NodeDefinition(
+			NodeType.BUTTON,
+			Optional.of("replay_history"),
+			LayoutDefinition.empty(),
+			Optional.empty(),
+			Map.of(),
+			Optional.empty(),
+			Map.of(),
+			Map.of(),
+			new ButtonContent(
+				new StaticText(text("重新播放")),
+				Optional.empty(),
+				Optional.empty(),
+				new UiAction(
+					ActionType.HISTORY_REPLAY,
+					Optional.empty(),
+					Optional.empty()
+				)
+			),
+			"/detail/header"
+		);
+		check(
+			PixelTzzServerRuntime.historyReplayButtonMatches(
+				replayButton,
+				"replay_history"
+			)
+				&& !PixelTzzServerRuntime.historyReplayButtonMatches(
+					replayButton,
+					"wrong_replay_node"
+				)
+				&& !PixelTzzServerRuntime.historyReplayButtonMatches(
+					button,
+					"open_history_detail"
+				),
+			"server must rebind history_replay to an exact server-authored replay button"
+		);
 	}
 
 	private static void checkExecutableSessionActionChain() {

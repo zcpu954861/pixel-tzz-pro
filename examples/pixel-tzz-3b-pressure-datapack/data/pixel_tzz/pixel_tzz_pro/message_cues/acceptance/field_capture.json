@@ -1,0 +1,70 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "required": true,
+  "defaults": {
+    "audience": {
+      "source": "call_targets",
+      "online_only": true
+    },
+    "clock": "game_time",
+    "synchronization": "immediate",
+    "duplicate": "restart",
+    "capture": "on_first_field",
+    "priority": 99
+  },
+  "fields": {
+    "pressure_marker": {
+      "capture": "on_first_field",
+      "source": {
+        "component": {
+          "text": "覆盖来源：3B 压力包"
+        }
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "pressure_title",
+      "type": "text",
+      "channel": "title",
+      "effect": "pixel_tzz:acceptance",
+      "text": {
+        "parts": [
+          {
+            "component": {
+              "text": "『3B 压力覆盖』",
+              "color": "gold",
+              "bold": true
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pressure_subtitle",
+      "type": "text",
+      "at": "5t",
+      "channel": "subtitle",
+      "effect": "pixel_tzz:acceptance",
+      "text": {
+        "parts": [
+          {
+            "field": {
+              "scope": "cue",
+              "id": "pressure_marker"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "pressure_callback",
+      "type": "callback",
+      "at": "2s",
+      "function": "pixel_tzz:acceptance_3b/message_complete",
+      "execution": "as_server",
+      "location": "origin"
+    }
+  ]
+}

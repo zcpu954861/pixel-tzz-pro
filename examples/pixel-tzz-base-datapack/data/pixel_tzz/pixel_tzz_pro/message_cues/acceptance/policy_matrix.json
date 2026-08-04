@@ -1,0 +1,634 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "required": true,
+  "policies": {
+    "timing": {
+      "clock": "game_time",
+      "synchronization": "synchronized",
+      "synchronized_wait": "5t",
+      "late_arrival": "seek",
+      "synchronization_timeout": "start_available"
+    },
+    "audience": {
+      "target": {
+        "any_of": [
+          {
+            "source": "current_host",
+            "online_only": true
+          },
+          {
+            "source": "call_targets",
+            "roles": [
+              "pixel_tzz:hunter"
+            ],
+            "exclude_host": true,
+            "online_only": true
+          }
+        ]
+      },
+      "evolution": "live_strict",
+      "sensitive": true,
+      "on_loss": "cancel"
+    },
+    "context": {
+      "games": [
+        "pixel_tzz:main"
+      ],
+      "phases": [
+        "pixel_tzz:running"
+      ],
+      "tasks": [
+        "pixel_tzz:acceptance/main_branch"
+      ],
+      "recheck": "live_strict"
+    },
+    "concurrency": {
+      "duplicate": "refresh",
+      "cooldown": "1s",
+      "dedupe_targets": true,
+      "dedupe_parameters": [
+        "target",
+        "task_id"
+      ],
+      "refresh_key": "target",
+      "chat_interrupt": "remove",
+      "priority": 12,
+      "groups": [
+        "acceptance",
+        "task_notice"
+      ]
+    },
+    "delivery": {
+      "empty_audience": "callbacks_only",
+      "offline_targets": "queue",
+      "offline_ttl": "30s"
+    },
+    "lifecycle": {
+      "screen_start": {
+        "chat": "immediate",
+        "title": "close_safe_screen",
+        "subtitle": "wait_gameplay",
+        "action_bar": "final_chat_only"
+      },
+      "obscured": {
+        "chat": "continue",
+        "title": "pause",
+        "subtitle": "finalize",
+        "action_bar": "cancel"
+      },
+      "screen_wait_timeout": "5s",
+      "screen_timeout_action": "final_chat_only",
+      "max_pause": "4s",
+      "reload": "finalize",
+      "restart": "continue",
+      "external_conflict": "overlay",
+      "reconnect": "restart",
+      "late_join": "from_start",
+      "resource_reload": "finalize",
+      "respawn": "finalize",
+      "attachment": "world",
+      "dimension_exit": "cancel"
+    },
+    "accessibility": {
+      "allow_manual_complete": true,
+      "reduced_motion": "static_final"
+    },
+    "control_groups": [
+      "acceptance",
+      "host_notice"
+    ],
+    "capture": "per_field",
+    "default_conflict": "queue"
+  },
+  "parameters": {
+    "target": {
+      "type": "player",
+      "required": true,
+      "sources": [
+        "call_argument",
+        "invoker",
+        "origin",
+        "target"
+      ],
+      "on_error": "fail",
+      "dedupe": true,
+      "allowed_nodes": [
+        "intro",
+        "follow_sound"
+      ],
+      "audience": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "sensitive": true
+    },
+    "task_id": {
+      "type": "identifier",
+      "default": "pixel_tzz:acceptance/main_branch",
+      "sources": [
+        {
+          "type": "game_context",
+          "value": "task"
+        },
+        {
+          "type": "storage",
+          "storage": "pixel_tzz:acceptance_3b",
+          "path": "task.id"
+        }
+      ],
+      "on_error": "use_default",
+      "dedupe": true,
+      "allowed_nodes": [
+        "intro"
+      ],
+      "identifier_kind": "task"
+    },
+    "history_target": {
+      "type": "player",
+      "required": true,
+      "sources": [
+        "call_argument",
+        "target",
+        "invoker",
+        "origin"
+      ],
+      "on_error": "fail",
+      "audience": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "sensitive": true
+    },
+    "history_task_id": {
+      "type": "identifier",
+      "default": "pixel_tzz:acceptance/main_branch",
+      "sources": [
+        {
+          "type": "game_context",
+          "value": "task"
+        },
+        {
+          "type": "storage",
+          "storage": "pixel_tzz:acceptance_3b",
+          "path": "task.id"
+        }
+      ],
+      "on_error": "use_default",
+      "identifier_kind": "task"
+    },
+    "score_value": {
+      "type": "integer",
+      "default": 0,
+      "sources": [
+        {
+          "type": "score",
+          "objective": "pixel_tzz_demo",
+          "holder": "@s"
+        }
+      ],
+      "on_error": "use_default",
+      "allowed_nodes": [
+        "intro"
+      ]
+    },
+    "profile_value": {
+      "type": "string",
+      "sources": [
+        {
+          "type": "player_data",
+          "field": "pixel_tzz:current_task_name"
+        }
+      ],
+      "on_error": {
+        "mode": "use_fallback",
+        "fallback": "未知任务"
+      },
+      "allowed_nodes": [
+        "intro"
+      ]
+    }
+  },
+  "fields": {
+    "target_name": {
+      "capture": "on_first_field",
+      "source": {
+        "argument": "target"
+      },
+      "fallback": {
+        "text": "未知玩家"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    },
+    "task_ref": {
+      "source": {
+        "argument": "task_id"
+      },
+      "reservation": {
+        "max_graphemes": 64
+      }
+    },
+    "history_target_name": {
+      "source": {
+        "argument": "history_target"
+      },
+      "fallback": {
+        "text": "未知玩家"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    },
+    "history_task_ref": {
+      "source": {
+        "argument": "history_task_id"
+      },
+      "reservation": {
+        "max_graphemes": 64
+      }
+    },
+    "score_now": {
+      "source": {
+        "argument": "score_value"
+      }
+    },
+    "profile_now": {
+      "source": {
+        "argument": "profile_value"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "intro",
+      "type": "text",
+      "schedule": {
+        "type": "cue_start",
+        "offset": "2t"
+      },
+      "audience": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "priority": 16,
+      "conflict": "replace",
+      "when": {
+        "evaluate_at": "node_start",
+        "predicate": "pixel_tzz:acceptance_3b/is_hunter"
+      },
+      "repeat": {
+        "count": 2,
+        "interval": "10t",
+        "capture": "per_repeat"
+      },
+      "channel": "chat",
+      "content": {
+        "text": {
+          "fallback": {
+            "parts": [
+              {
+                "component": {
+                  "text": "『策略矩阵』",
+                  "color": "aqua",
+                  "bold": true
+                },
+                "pause_before": "1t",
+                "pause_after": "2t",
+                "emphasis": true
+              },
+              {
+                "component": {
+                  "text": " "
+                }
+              },
+              {
+                "field": {
+                  "scope": "cue",
+                  "id": "target_name"
+                }
+              },
+              {
+                "component": {
+                  "text": " · "
+                }
+              },
+              {
+                "field": {
+                  "scope": "content",
+                  "id": "detail"
+                }
+              }
+            ]
+          },
+          "locales": {
+            "zh_cn": {
+              "parts": [
+                {
+                  "component": {
+                    "text": "『策略验收』 "
+                  }
+                },
+                {
+                  "field": {
+                    "scope": "cue",
+                    "id": "target_name"
+                  }
+                },
+                {
+                  "component": {
+                    "text": " · "
+                  }
+                },
+                {
+                  "field": {
+                    "scope": "content",
+                    "id": "detail"
+                  }
+                }
+              ]
+            },
+            "en_us": {
+              "parts": [
+                {
+                  "component": {
+                    "text": "Policy acceptance · "
+                  }
+                },
+                {
+                  "field": {
+                    "scope": "cue",
+                    "id": "target_name"
+                  }
+                },
+                {
+                  "component": {
+                    "text": " · "
+                  }
+                },
+                {
+                  "field": {
+                    "scope": "content",
+                    "id": "detail"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "fields": {
+          "detail": {
+            "capture": "per_field",
+            "source": {
+              "binding": "task/current/name"
+            },
+            "fallback": {
+              "text": "等待任务"
+            },
+            "reservation": {
+              "max_graphemes": 48,
+              "estimated_width": 256,
+              "max_lines": 2
+            }
+          }
+        },
+        "effect": {
+          "preset": "pixel_tzz:acceptance",
+          "overrides": {
+            "typewriter": {
+              "character_interval": "50ms",
+              "cursor": {
+                "enabled": true,
+                "glyph": "▌",
+                "color": "#77E6FF",
+                "blink": true,
+                "blink_period": "400ms"
+              },
+              "fresh_color": "#FFF3A6",
+              "restore_after_characters": 3,
+              "restore_mode": "gradient"
+            },
+            "fade": {
+              "enter": "2t",
+              "hold": "1s",
+              "exit": "250ms"
+            },
+            "scramble": {
+              "character_interval": "1t",
+              "characters": "█▓▒░ABC123"
+            },
+            "gradient": {
+              "from_color": "dark_aqua",
+              "to_color": "#FFF3A6",
+              "duration": "1s"
+            },
+            "motion": {
+              "slide_x": -8,
+              "slide_y": 4,
+              "start_scale": 0.9,
+              "duration": "250ms"
+            },
+            "pulse": {
+              "scale": 1.12,
+              "duration": "300ms"
+            },
+            "character_sound": {
+              "sound": "minecraft:block.note_block.hat",
+              "category": "ui",
+              "every_characters": 2,
+              "skip_whitespace": true,
+              "skip_punctuation": true,
+              "skip_newline": true,
+              "volume": 0.5,
+              "pitch": 1.1,
+              "pitch_variation": 0.1,
+              "attachment": "player",
+              "missing": "fallback",
+              "fallback": "minecraft:ui.button.click"
+            },
+            "max_character_sound_events": 48
+          }
+        },
+        "layout": {
+          "alignment": "left",
+          "offset_x": 12,
+          "offset_y": -8,
+          "max_width": 320,
+          "max_lines": 4,
+          "line_spacing": 1.15,
+          "overflow": "ellipsis"
+        },
+        "duration": {
+          "mode": "fixed_total",
+          "total": "3s",
+          "language_basis": "fixed",
+          "minimum_speed": 4.0,
+          "maximum_speed": 40.0
+        },
+        "speaker": {
+          "kind": "player_parameter",
+          "parameter": "target"
+        },
+        "character_sound_role": "primary",
+        "hold": "20t"
+      },
+      "variants": [
+        {
+          "when": {
+            "evaluate_at": "node_start",
+            "expression": {
+              "eq": [
+                {
+                  "bind": "player.role.id"
+                },
+                {
+                  "literal": "pixel_tzz:hunter"
+                }
+              ]
+            }
+          },
+          "content": {
+            "text": {
+              "fallback": {
+                "parts": [
+                  {
+                    "component": {
+                      "text": "「猎人策略变体」",
+                      "color": "gold"
+                    }
+                  }
+                ]
+              }
+            },
+            "duration": {
+              "mode": "content_driven",
+              "language_basis": "longest_declared"
+            },
+            "speaker": {
+              "kind": "narrator"
+            },
+            "character_sound_role": "muted"
+          }
+        }
+      ]
+    },
+    {
+      "id": "follow_sound",
+      "type": "sound",
+      "schedule": {
+        "type": "after_node",
+        "node": "intro",
+        "offset": "5t"
+      },
+      "sound": "minecraft:block.note_block.pling",
+      "category": "ui",
+      "volume": 0.75,
+      "pitch": 1.2,
+      "attachment": "world_origin",
+      "missing": "fallback",
+      "fallback": "minecraft:ui.button.click"
+    },
+    {
+      "id": "completion_callback",
+      "type": "callback",
+      "schedule": {
+        "type": "cue_event",
+        "event": "all_complete",
+        "offset": "1t"
+      },
+      "function": "pixel_tzz:acceptance_3b/message_complete",
+      "execution": "as_server",
+      "location": "origin"
+    }
+  ],
+  "history": {
+    "title": {
+      "fallback": {
+        "parts": [
+          {
+            "component": {
+              "text": "『策略演出回顾』"
+            }
+          }
+        ]
+      }
+    },
+    "body": {
+      "fallback": {
+        "parts": [
+          {
+            "field": {
+              "scope": "cue",
+              "id": "history_target_name"
+            }
+          },
+          {
+            "component": {
+              "text": " · "
+            }
+          },
+          {
+            "field": {
+              "scope": "cue",
+              "id": "history_task_ref"
+            }
+          }
+        ]
+      }
+    },
+    "task_source": "parameter",
+    "task_parameter": "history_task_id",
+    "timestamp_source": "game_time",
+    "audience": {
+      "source": "call_targets",
+      "online_only": true
+    },
+    "saved_fields": [
+      "history_target_name",
+      "history_task_ref"
+    ],
+    "replay_allowed": false
+  },
+  "static_fallback": {
+    "channel": "chat",
+    "component": {
+      "text": "策略演出已完成"
+    },
+    "fallback_satisfies_required": true
+  },
+  "assets": [
+    {
+      "type": "font",
+      "id": "minecraft:default",
+      "missing": "fallback",
+      "fallback": "minecraft:uniform",
+      "preload": true,
+      "required_for_start": false
+    },
+    {
+      "type": "sound",
+      "id": "minecraft:block.note_block.hat",
+      "missing": "block_start",
+      "preload": true,
+      "required_for_start": true
+    }
+  ],
+  "soft_limits": {
+    "max_visible_graphemes": 512,
+    "max_lines": 8,
+    "max_nodes": 3,
+    "max_sound_nodes": 1,
+    "max_callback_nodes": 1,
+    "max_variants": 1,
+    "max_active_instances": 8,
+    "max_queue_depth": 16,
+    "max_total_duration": "30s",
+    "max_persisted_instances": 4,
+    "max_pending_offline": 8
+  }
+}

@@ -25,6 +25,26 @@
     "candidate_visibility": "none"
   },
   "recap_visibility": "participants",
+  "message_hooks": {
+    "start": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 仅超时任务」开始"
+      }
+    },
+    "complete": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 仅超时任务」完成"
+      }
+    },
+    "interrupt": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "任务「2D 验收 · 仅超时任务」已中断"
+      }
+    }
+  },
   "callbacks": {
     "on_start": "pixel_tzz:acceptance_2d/timeline/capture_context",
     "on_timeout": "pixel_tzz:acceptance_2d/timeline/timeout_final_task",
@@ -60,6 +80,14 @@
       "id": "deadline_reached",
       "name": {
         "text": "仅超时任务到达时限"
+      },
+      "message_hooks": {
+        "trigger": {
+          "cue": "pixel_tzz:lifecycle/notice",
+          "arguments": {
+            "message": "事件「仅超时任务到达时限」已记录"
+          }
+        }
       },
       "policy": "once",
       "allowed_states": [

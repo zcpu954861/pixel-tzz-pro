@@ -28,6 +28,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -135,14 +136,59 @@ public final class TimelineApprovalAuthoritySelfCheck {
 			"approved timeline snapshot must restore independently"
 		);
 
+		DefinitionSnapshot messageBlockedDefinitions = definitions(
+			source(
+				DefinitionType.MESSAGE_CUE,
+				"required_start_cue",
+				"""
+				{
+				  "format_version": 1,
+				  "game": "test:main",
+				  "required": true,
+				  "nodes": [
+				    {
+				      "id": "required_start_cue",
+				      "type": "callback",
+				      "function": "test:missing_required_callback"
+				    }
+				  ]
+				}
+				"""
+			)
+		);
+		check(
+			messageBlockedDefinitions.messageCatalog().startBlockedGames().contains(GAME),
+			"missing required cue resource must enter the active game's start-block set"
+		);
+		ApprovalResult messageBlocked = TimelineApprovalAuthority.approve(
+			ready,
+			messageBlockedDefinitions,
+			context(HOST, STATE_REVISION, DEFINITION_GENERATION)
+		);
+		checkCode(
+			messageBlocked,
+			OperationCode.RESOURCE_BLOCKED,
+			"required message resource start gate"
+		);
+		check(
+			messageBlocked.message().equals(
+				"本游戏存在不可用的必需消息资源，修复数据包并重新加载后才能批准开局。"
+			),
+			"required message start gate must expose the stable bounded Chinese diagnostic"
+		);
+		check(
+			ready.timeline().isEmpty() && ready.stateRevision() == STATE_REVISION,
+			"required message rejection must not mutate the pending game"
+		);
+
 		checkCode(
 			TimelineApprovalAuthority.approve(
 				started,
-				definitions,
+				messageBlockedDefinitions,
 				context(HOST, STATE_REVISION + 1L, DEFINITION_GENERATION)
 			),
 			OperationCode.TIMELINE_ALREADY_ACTIVE,
-			"retained timeline cannot be overwritten"
+			"required message start gate must not replace retained-timeline authority"
 		);
 		checkCode(
 			TimelineApprovalAuthority.approve(
@@ -416,8 +462,8 @@ public final class TimelineApprovalAuthoritySelfCheck {
 		);
 	}
 
-	private static DefinitionSnapshot definitions() {
-		List<Source> sources = List.of(
+	private static DefinitionSnapshot definitions(final Source... additionalSources) {
+		List<Source> sources = new ArrayList<>(List.of(
 			source(
 				DefinitionType.GAME,
 				"main",
@@ -605,7 +651,8 @@ public final class TimelineApprovalAuthoritySelfCheck {
 				}
 				"""
 			)
-		);
+		));
+		sources.addAll(List.of(additionalSources));
 		Compilation compilation = DefinitionCompiler.compile(sources, Set.of(), Set.of());
 		check(compilation.valid(), "approval fixture must compile: " + compilation.problems());
 		return compilation.snapshot().orElseThrow().withGeneration(DEFINITION_GENERATION);
