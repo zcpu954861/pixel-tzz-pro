@@ -27,11 +27,14 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.ReadinessDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RichText;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RoleDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.SelectionMode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.StartFlowOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerTaskState;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
@@ -118,6 +121,7 @@ import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.PushPage;
 import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.RunFunction;
 import io.github.zcpu954861.pixeltzzpro.server.PlayerActionAuthority.SessionAuthorization;
 import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.ApprovalContext;
+import io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContract;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
@@ -139,6 +143,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReadinessInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.MessageHistoryRecord;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -359,7 +364,12 @@ public final class PixelTzzServerRuntime {
 		CONFIRMATIONS.clear();
 		HOST_FLOW_BOSS_BAR.reset();
 		loadSequence = 0L;
+		MessageServerRuntime.initializeForServer(server);
 		ReloadOutcome definitionLoad = DefinitionRegistry.INSTANCE.reload(server.getResourceManager());
+		MessageServerRuntime.rebuildAssetAuthority(
+			server,
+			DefinitionRegistry.INSTANCE.view().active()
+		);
 		if (!definitionLoad.healthy()) {
 			PixelTzzPro.LOGGER.warn(
 				"Pixel TZZ game definitions are not ready at server start: {}",
@@ -372,6 +382,10 @@ public final class PixelTzzServerRuntime {
 			DefinitionRegistry.INSTANCE.view()
 		);
 		initializeNewWorldActivity(server);
+		MessageServerRuntime.recoverPersistedRuntime(
+			server,
+			DefinitionRegistry.INSTANCE.view().active()
+		);
 		PixelTzzWorldState state = PixelTzzWorldState.get(server);
 		if (state.isSchemaCompatible()) {
 			PixelTzzPro.LOGGER.info(
@@ -495,6 +509,7 @@ public final class PixelTzzServerRuntime {
 		updateReadinessConnection(context.server(), context.player(), true);
 		restoreMemberOnline(context.server(), context.player());
 		resumePendingCallbacks(context.server());
+		MessageServerRuntime.playerAuthorityReady(context.player());
 		WorldStateV2 currentState = PixelTzzWorldState.get(context.server())
 			.currentV2()
 			.orElse(null);
@@ -555,7 +570,43 @@ public final class PixelTzzServerRuntime {
 				"Could not initialize the unconfigured Pixel TZZ world activity: {}",
 				result.reason()
 			);
+			return;
 		}
+		dispatchInitialPhaseEnterMessageHook(
+			server,
+			result.state().orElseThrow(),
+			definitions.active()
+		);
+	}
+
+	/**
+	 * Emits the initial phase ENTER edge exactly once, after the new game scope is committed.
+	 * Existing worlds, reload recovery, and cold-start restoration never pass the initialization
+	 * guard above and therefore cannot replay this hook.
+	 */
+	private static void dispatchInitialPhaseEnterMessageHook(
+		final MinecraftServer server,
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions
+	) {
+		Identifier phaseId = state.core().activePhaseId().orElse(null);
+		PhaseDefinition phase = phaseId == null ? null : definitions.phases().get(phaseId);
+		if (phase == null) {
+			return;
+		}
+		LinkedHashMap<String, String> arguments = new LinkedHashMap<>(
+			gameHookArguments(server, state, Optional.empty())
+		);
+		arguments.put("phase_id", phaseId.toString());
+		MessageHookDispatcher.dispatch(
+			server,
+			definitions,
+			phase.messageHooks(),
+			MessageHookEvent.ENTER,
+			Set.copyOf(state.core().players().keySet()),
+			Optional.empty(),
+			arguments
+		);
 	}
 
 	static boolean canInitializeWorldActivity(final WorldStateV2 state) {
@@ -1382,7 +1433,8 @@ public final class PixelTzzServerRuntime {
 			sendCurrentForcedPage(context.server(), player);
 			return;
 		}
-		WorldStateV2 next = committed.state().orElseThrow().core();
+		WorldStateV3 flowCommittedRoot = committed.state().orElseThrow();
+		WorldStateV2 next = flowCommittedRoot.core();
 		if (advanced.flowCompleted()) {
 			FlowDefinition completedFlow = restored.snapshot()
 				.orElseThrow()
@@ -1420,6 +1472,23 @@ public final class PixelTzzServerRuntime {
 			finalState.stateRevision(),
 			instance.identity().definitionGeneration(),
 			false
+		);
+		dispatchFlowAdvanceMessageHooks(
+			context.server(),
+			root,
+			flowCommittedRoot,
+			restored.snapshot().orElseThrow(),
+			instance,
+			flowCommittedRoot.core().activeForcedFlow().orElse(null),
+			player.getUUID(),
+			advanced.memberCompleted(),
+			advanced.flowCompleted()
+		);
+		dispatchReadinessCompletionMessageHook(
+			context.server(),
+			root,
+			flowCommittedRoot,
+			Optional.of(player.getUUID())
 		);
 		if (advanced.memberCompleted()) {
 			if (ServerPlayNetworking.canSend(player, ForcedPageReleaseS2CPayload.TYPE)) {
@@ -1757,6 +1826,23 @@ public final class PixelTzzServerRuntime {
 			instance.identity().definitionGeneration(),
 			false
 		);
+		dispatchFlowAdvanceMessageHooks(
+			context.server(),
+			root,
+			finalRoot,
+			restored.snapshot().orElseThrow(),
+			instance,
+			finalRoot.readiness().map(ReadinessInstance::flow).orElse(null),
+			player.getUUID(),
+			advanced.memberCompleted(),
+			false
+		);
+		dispatchReadinessCompletionMessageHook(
+			context.server(),
+			root,
+			finalRoot,
+			Optional.of(player.getUUID())
+		);
 		if (
 			advanced.memberCompleted()
 				&& ServerPlayNetworking.canSend(player, ForcedPageReleaseS2CPayload.TYPE)
@@ -1776,6 +1862,437 @@ public final class PixelTzzServerRuntime {
 		}
 		refreshFlowProjection(context.server(), advanced.allCompleted());
 		sendSnapshots(context.server(), false);
+	}
+
+	private static void dispatchFlowAdvanceMessageHooks(
+		final MinecraftServer server,
+		final WorldStateV3 before,
+		final WorldStateV3 after,
+		final DefinitionSnapshot definitions,
+		final ForcedFlowInstance flowBefore,
+		final ForcedFlowInstance flowAfter,
+		final UUID submittingPlayer,
+		final boolean memberCompleted,
+		final boolean flowCompleted
+	) {
+		FlowDefinition flow = definitions.flows().get(flowBefore.identity().flowId());
+		if (flow == null || flowAfter == null) {
+			return;
+		}
+		Optional<UUID> invoker = Optional.of(submittingPlayer);
+		Map<String, String> common = gameHookArguments(
+			server,
+			after,
+			invoker
+		);
+		PlayerRecord beforePlayer = before.core().players().get(submittingPlayer);
+		PlayerRecord afterPlayer = after.core().players().get(submittingPlayer);
+		if (
+			beforePlayer != null
+				&& afterPlayer != null
+				&& !beforePlayer.roleId().equals(afterPlayer.roleId())
+		) {
+			dispatchRoleMessageHook(
+				server,
+				definitions,
+				common,
+				beforePlayer,
+				afterPlayer,
+				MessageHookEvent.ROLE_CHANGED,
+				false,
+				invoker
+			);
+		}
+		if (
+			memberCompleted
+				&& afterPlayer != null
+				&& Optional.ofNullable(definitions.roles().get(afterPlayer.roleId()))
+					.flatMap(RoleDefinition::initializationFlow)
+					.filter(flow.id()::equals)
+					.isPresent()
+		) {
+			dispatchRoleMessageHook(
+				server,
+				definitions,
+				common,
+				beforePlayer,
+				afterPlayer,
+				MessageHookEvent.INITIALIZATION,
+				true,
+				invoker
+			);
+		}
+		if (memberCompleted) {
+			LinkedHashMap<String, String> arguments = new LinkedHashMap<>(
+				flowHookArguments(common, flowAfter)
+			);
+			arguments.put("player", submittingPlayer.toString());
+			arguments.put("target", submittingPlayer.toString());
+			if (afterPlayer != null) {
+				arguments.put("player_name", afterPlayer.lastKnownName());
+			}
+			MessageHookDispatcher.dispatch(
+				server,
+				definitions,
+				flow.messageHooks(),
+				MessageHookEvent.PLAYER_COMPLETE,
+				Set.of(submittingPlayer),
+				invoker,
+				arguments
+			);
+		}
+		if (flowCompleted) {
+			MessageHookDispatcher.dispatch(
+				server,
+				definitions,
+				flow.messageHooks(),
+				MessageHookEvent.ALL_COMPLETE,
+				flowTargets(flowAfter),
+				invoker,
+				flowHookArguments(common, flowAfter)
+			);
+		}
+	}
+
+	private static boolean readinessAllCompleted(final WorldStateV3 state) {
+		return state.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::status)
+			.filter(FlowInstanceStatus.COMPLETED::equals)
+			.isPresent();
+	}
+
+	private static void dispatchReadinessCompleteMessageHook(
+		final MinecraftServer server,
+		final WorldStateV3 state,
+		final DefinitionSnapshot definitions,
+		final Optional<UUID> invoker
+	) {
+		ReadinessInstance readiness = state.readiness().orElse(null);
+		if (readiness == null) {
+			return;
+		}
+		ForcedFlowInstance flow = readiness.flow();
+		GameDefinition game = definitions.games().get(flow.identity().gameId());
+		ReadinessDefinition declared = game == null
+			? null
+			: game.readiness().orElse(null);
+		if (declared == null) {
+			return;
+		}
+		LinkedHashMap<String, String> arguments = new LinkedHashMap<>(
+			flowHookArguments(gameHookArguments(server, state, invoker), flow)
+		);
+		arguments.put("readiness_instance_id", flow.identity().instanceId().toString());
+		MessageHookDispatcher.dispatch(
+			server,
+			definitions,
+			declared.messageHooks(),
+			MessageHookEvent.COMPLETE,
+			flowTargets(flow),
+			invoker,
+			arguments
+		);
+	}
+
+	/**
+	 * Emits the dedicated readiness COMPLETE hook only on the committed incomplete-to-complete
+	 * edge. The hook and cue are always restored from readiness's own execution snapshot: an
+	 * ordinary forced flow or a later data-pack reload must never replace this generation.
+	 */
+	private static void dispatchReadinessCompletionMessageHook(
+		final MinecraftServer server,
+		final WorldStateV3 before,
+		final WorldStateV3 after,
+		final Optional<UUID> invoker
+	) {
+		if (
+			MessageHookDispatchContract.readinessCompletionEvent(
+				readinessAllCompleted(before),
+				readinessAllCompleted(after)
+			).isEmpty()
+		) {
+			return;
+		}
+		ReadinessInstance readiness = after.readiness().orElse(null);
+		if (readiness == null) {
+			return;
+		}
+		ForcedFlowInstance flow = readiness.flow();
+		var restored = ExecutionSnapshotCompiler.restore(
+			flow.identity().flowId(),
+			flow.runtime().executionSnapshot()
+		);
+		if (!restored.success()) {
+			PixelTzzPro.LOGGER.warn(
+				"V3B readiness COMPLETE hook was skipped because frozen snapshot {} "
+					+ "could not be restored: {}",
+				flow.identity().instanceId(),
+				restored.message()
+			);
+			return;
+		}
+		DefinitionSnapshot definitions = restored.snapshot().orElseThrow();
+		FlowDefinition flowDefinition = definitions.flows().get(flow.identity().flowId());
+		if (flowDefinition != null) {
+			MessageHookDispatcher.dispatch(
+				server,
+				definitions,
+				flowDefinition.messageHooks(),
+				MessageHookEvent.ALL_COMPLETE,
+				flowTargets(flow),
+				invoker,
+				flowHookArguments(gameHookArguments(server, after, invoker), flow)
+			);
+		}
+		dispatchReadinessCompleteMessageHook(
+			server,
+			after,
+			definitions,
+			invoker
+		);
+	}
+
+	/** Dispatches the Flow START hook for a readiness session created by this committed action. */
+	private static void dispatchReadinessFlowStartMessageHook(
+		final MinecraftServer server,
+		final WorldStateV3 state,
+		final Optional<UUID> invoker
+	) {
+		ReadinessInstance readiness = state.readiness().orElse(null);
+		if (readiness == null) {
+			return;
+		}
+		ForcedFlowInstance flow = readiness.flow();
+		var restored = ExecutionSnapshotCompiler.restore(
+			flow.identity().flowId(),
+			flow.runtime().executionSnapshot()
+		);
+		if (!restored.success()) {
+			PixelTzzPro.LOGGER.warn(
+				"V3B readiness Flow START hook was skipped because frozen snapshot {} "
+					+ "could not be restored: {}",
+				flow.identity().instanceId(),
+				restored.message()
+			);
+			return;
+		}
+		DefinitionSnapshot definitions = restored.snapshot().orElseThrow();
+		FlowDefinition definition = definitions.flows().get(flow.identity().flowId());
+		if (definition == null) {
+			return;
+		}
+		MessageHookDispatcher.dispatch(
+			server,
+			definitions,
+			definition.messageHooks(),
+			MessageHookEvent.START,
+			flowTargets(flow),
+			invoker,
+			flowHookArguments(gameHookArguments(server, state, invoker), flow)
+		);
+	}
+
+	private static void dispatchConfirmedOperationMessageHooks(
+		final MinecraftServer server,
+		final WorldStateV3 before,
+		final WorldStateV3 after,
+		final DefinitionSnapshot definitions,
+		final UUID actor,
+		final Set<UUID> explicitTargets,
+		final boolean startedFlow,
+		final boolean readinessOpened,
+		final boolean immediateRoleChanged,
+		final boolean rosterCompletedFlow,
+		final ActiveFlowDefinitions flowBefore
+	) {
+		Optional<UUID> invoker = Optional.of(actor);
+		Map<String, String> common = gameHookArguments(server, after, invoker);
+		Identifier previousPhase = before.core().activePhaseId().orElse(null);
+		Identifier currentPhase = after.core().activePhaseId().orElse(null);
+		if (!Objects.equals(previousPhase, currentPhase)) {
+			LinkedHashMap<String, String> arguments = new LinkedHashMap<>(common);
+			if (previousPhase != null) {
+				arguments.put("previous_phase_id", previousPhase.toString());
+			}
+			if (currentPhase != null) {
+				arguments.put("phase_id", currentPhase.toString());
+			}
+			Set<UUID> targets = Set.copyOf(after.core().players().keySet());
+			PhaseDefinition exited = previousPhase == null
+				? null
+				: definitions.phases().get(previousPhase);
+			if (exited != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					definitions,
+					exited.messageHooks(),
+					MessageHookEvent.EXIT,
+					targets,
+					invoker,
+					arguments
+				);
+			}
+			PhaseDefinition entered = currentPhase == null
+				? null
+				: definitions.phases().get(currentPhase);
+			if (entered != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					definitions,
+					entered.messageHooks(),
+					MessageHookEvent.ENTER,
+					targets,
+					invoker,
+					arguments
+				);
+			}
+		}
+		if (immediateRoleChanged) {
+			for (UUID target : explicitTargets) {
+				PlayerRecord previous = before.core().players().get(target);
+				PlayerRecord current = after.core().players().get(target);
+				if (
+					previous == null
+						|| current == null
+						|| previous.roleId().equals(current.roleId())
+				) {
+					continue;
+				}
+				dispatchRoleMessageHook(
+					server,
+					definitions,
+					common,
+					previous,
+					current,
+					MessageHookEvent.ROLE_CHANGED,
+					false,
+					invoker
+				);
+			}
+		}
+		if (startedFlow) {
+			ActiveFlowDefinitions active = activeFlowDefinitions(after.core()).orElse(null);
+			if (active != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					active.definitions(),
+					active.flow().messageHooks(),
+					MessageHookEvent.START,
+					flowTargets(active.instance()),
+					invoker,
+					flowHookArguments(common, active.instance())
+				);
+			}
+		}
+		if (readinessOpened) {
+			dispatchReadinessFlowStartMessageHook(server, after, invoker);
+		}
+		if (rosterCompletedFlow && flowBefore != null) {
+			ForcedFlowInstance completed = after.core().activeForcedFlow()
+				.filter(value ->
+					value.identity().instanceId().equals(
+						flowBefore.instance().identity().instanceId()
+					)
+				)
+				.orElse(flowBefore.instance());
+			MessageHookDispatcher.dispatch(
+				server,
+				flowBefore.definitions(),
+				flowBefore.flow().messageHooks(),
+				MessageHookEvent.ALL_COMPLETE,
+				flowTargets(completed),
+				invoker,
+				flowHookArguments(common, completed)
+			);
+		}
+		dispatchReadinessCompletionMessageHook(server, before, after, invoker);
+	}
+
+	private static void dispatchRoleMessageHook(
+		final MinecraftServer server,
+		final DefinitionSnapshot definitions,
+		final Map<String, String> common,
+		final PlayerRecord before,
+		final PlayerRecord after,
+		final MessageHookEvent event,
+		final boolean initialization,
+		final Optional<UUID> invoker
+	) {
+		RoleDefinition role = definitions.roles().get(after.roleId());
+		if (role == null) {
+			return;
+		}
+		LinkedHashMap<String, String> arguments = new LinkedHashMap<>(common);
+		if (before != null) {
+			arguments.put("previous_role_id", before.roleId().toString());
+		}
+		arguments.put("role_id", after.roleId().toString());
+		arguments.put("initialization", Boolean.toString(initialization));
+		arguments.put("player", after.playerId().toString());
+		arguments.put("target", after.playerId().toString());
+		arguments.put("player_name", after.lastKnownName());
+		MessageHookDispatcher.dispatch(
+			server,
+			definitions,
+			role.messageHooks(),
+			event,
+			Set.of(after.playerId()),
+			invoker,
+			arguments
+		);
+	}
+
+	private static Map<String, String> gameHookArguments(
+		final MinecraftServer server,
+		final WorldStateV3 state,
+		final Optional<UUID> invoker
+	) {
+		LinkedHashMap<String, String> result = new LinkedHashMap<>();
+		state.core().activeGameId()
+			.ifPresent(value -> result.put("game_id", value.toString()));
+		state.activeGameInstanceId()
+			.ifPresent(value -> result.put("game_instance_id", value.toString()));
+		state.core().activePhaseId()
+			.ifPresent(value -> result.put("phase_id", value.toString()));
+		result.put("state_revision", Long.toString(state.stateRevision()));
+		result.put("server_tick", Integer.toUnsignedString(server.getTickCount()));
+		result.put(
+			"game_elapsed_ticks",
+			Long.toString(
+				state.timeline()
+					.map(WorldStateV3.TimelineInstance::gameElapsedTicks)
+					.orElse(0L)
+			)
+		);
+		invoker.ifPresent(value -> result.put("initiator", value.toString()));
+		return Map.copyOf(result);
+	}
+
+	private static Map<String, String> flowHookArguments(
+		final Map<String, String> common,
+		final ForcedFlowInstance flow
+	) {
+		LinkedHashMap<String, String> result = new LinkedHashMap<>(common);
+		result.put("flow_id", flow.identity().flowId().toString());
+		result.put("flow_version", Integer.toString(flow.identity().flowVersion()));
+		result.put("flow_instance_id", flow.identity().instanceId().toString());
+		result.put("source_action_id", flow.identity().sourceActionId().toString());
+		result.put("initiated_by", flow.identity().initiatedBy().toString());
+		result.put("completed", Integer.toString(flow.runtime().completedCount()));
+		result.put("total", Integer.toString(flow.runtime().totalCount()));
+		return Map.copyOf(result);
+	}
+
+	private static Set<UUID> flowTargets(final ForcedFlowInstance flow) {
+		return flow.runtime().members().values()
+			.stream()
+			.filter(value -> value.status() != FlowMemberStatus.REMOVED)
+			.map(FlowMemberState::playerId)
+			.collect(
+				java.util.stream.Collectors.toCollection(LinkedHashSet::new)
+			);
 	}
 
 	private static OperationCode validateControlRequest(
@@ -2234,6 +2751,17 @@ public final class PixelTzzServerRuntime {
 			);
 			if (!approval.successful()) {
 				return PreparedOperation.failed(approval.code(), approval.message());
+			}
+			var assetGate = MessageServerRuntime.requiredAssetsForGame(
+				server,
+				root.core().activeGameId().orElseThrow(),
+				Set.copyOf(approval.frozenParticipants())
+			);
+			if (!assetGate.ready()) {
+				return PreparedOperation.failed(
+					OperationCode.RESOURCE_BLOCKED,
+					assetGate.message()
+				);
 			}
 			targetLabels = approval.frozenParticipants()
 				.stream()
@@ -2977,10 +3505,29 @@ public final class PixelTzzServerRuntime {
 						onlinePlayerIds(server)
 					)
 				);
-				code = result.code();
-				message = result.message();
-				candidate = result.nextState();
-				timelineChanged = result.successful();
+				if (result.successful()) {
+					var assetGate = MessageServerRuntime.requiredAssetsForGame(
+						server,
+						root.core().activeGameId().orElseThrow(),
+						Set.copyOf(result.frozenParticipants())
+					);
+					if (!assetGate.ready()) {
+						code = OperationCode.RESOURCE_BLOCKED;
+						message = assetGate.message();
+						candidate = Optional.empty();
+						timelineChanged = false;
+					} else {
+						code = result.code();
+						message = result.message();
+						candidate = result.nextState();
+						timelineChanged = true;
+					}
+				} else {
+					code = result.code();
+					message = result.message();
+					candidate = result.nextState();
+					timelineChanged = false;
+				}
 			}
 		} else if (
 			binding.operation().type().equals(RESET_GAME_PROGRESS)
@@ -3280,7 +3827,13 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
-		WorldStateV2 next = committed.state().orElseThrow().core();
+		WorldStateV3 confirmedCommittedRoot = committed.state().orElseThrow();
+		MessageCommands.refreshPlayerCommandTreesIfHostChanged(
+			server,
+			root.core().host().map(WorldStateV2.HostRecord::playerId),
+			confirmedCommittedRoot.core().host().map(WorldStateV2.HostRecord::playerId)
+		);
+		WorldStateV2 next = confirmedCommittedRoot.core();
 		if (readinessChanged) {
 			refreshReadinessPages(
 				server,
@@ -3319,6 +3872,21 @@ public final class PixelTzzServerRuntime {
 			definitions.active().generation(),
 			true
 		);
+		if (!worldReset) {
+			dispatchConfirmedOperationMessageHooks(
+				server,
+				root,
+				confirmedCommittedRoot,
+				definitions.active(),
+				actor.getUUID(),
+				Set.copyOf(binding.targetIds()),
+				startedFlow,
+				readinessOpened,
+				immediateRoleChanged,
+				rosterCompletedFlow,
+				activeBeforeCommit
+			);
+		}
 		if (worldReset) {
 			releaseForcedPages(
 				server,
@@ -7378,6 +7946,12 @@ public final class PixelTzzServerRuntime {
 				payload,
 				authority
 			);
+			case HISTORY_REPLAY -> handleTerminalHistoryReplay(
+				context.server(),
+				player,
+				payload,
+				authority
+			);
 		}
 	}
 
@@ -8033,40 +8607,157 @@ public final class PixelTzzServerRuntime {
 		);
 	}
 
+	private static void handleTerminalHistoryReplay(
+		final MinecraftServer server,
+		final ServerPlayer player,
+		final TerminalIntentC2SPayload payload,
+		final TerminalAuthority authority
+	) {
+		PlayerTerminalSessions.Session session = PLAYER_TERMINAL_SESSIONS.find(
+			player.getUUID()
+		).orElse(null);
+		String nodeId = payload.nodeId().orElse("");
+		String recordKey = payload.historyRecordKey().orElse("");
+		PageDefinition sourcePage = session == null
+			? null
+			: authority.definitions().pages().get(session.current().pageId());
+		if (
+			session == null
+				|| sourcePage == null
+				|| !sourcePage.game().equals(authority.game().id())
+				|| !historyReplayButtonMatches(sourcePage.root(), nodeId)
+		) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.NODE_MISMATCH,
+				"历史重播入口已经变化，本次请求未执行。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		MessageHistoryRecord record = PlayerTerminalProjector.resolveMessageHistoryReplay(
+			server,
+			authority.definitions(),
+			authority.root(),
+			player,
+			new PlayerTerminalProjector.SessionMetadata(
+				session.sessionId(),
+				session.current().instanceId(),
+				session.current().pageId(),
+				session.routeId(),
+				session.definitionGeneration(),
+				session.stateRevision(),
+				true,
+				session.current()
+					.historyRecord()
+					.map(PlayerTerminalSessions.HistoryRecordRef::recordKey)
+			),
+			recordKey
+		).orElse(null);
+		if (record == null) {
+			sendOperationResult(
+				player,
+				payload.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"这条历史记录当前不可重播。",
+				authority.root().stateRevision(),
+				authority.definitions().generation(),
+				false
+			);
+			return;
+		}
+		var replay = MessageServerRuntime.replayHistory(player, record);
+		sendOperationResult(
+			player,
+			payload.requestSequence(),
+			replay.successful()
+				? OperationCode.SUCCESS
+				: OperationCode.ACTION_UNAVAILABLE,
+			replay.successful()
+				? "该记录已进入安全重播调度。"
+				: "这条历史记录当前无法重播，请稍后重试。",
+			authority.root().stateRevision(),
+			authority.definitions().generation(),
+			false
+		);
+	}
+
 	static boolean historyDetailButtonMatches(
 		final NodeDefinition node,
 		final String nodeId,
 		final boolean historyItemScope
 	) {
+		return historyActionButtonMatches(
+			node,
+			nodeId,
+			historyItemScope,
+			ActionType.HISTORY_DETAIL,
+			true
+		);
+	}
+
+	static boolean historyReplayButtonMatches(
+		final NodeDefinition node,
+		final String nodeId
+	) {
+		return historyActionButtonMatches(
+			node,
+			nodeId,
+			false,
+			ActionType.HISTORY_REPLAY,
+			false
+		);
+	}
+
+	private static boolean historyActionButtonMatches(
+		final NodeDefinition node,
+		final String nodeId,
+		final boolean historyItemScope,
+		final ActionType actionType,
+		final boolean requireHistoryItemScope
+	) {
 		if (
 			node.id().filter(nodeId::equals).isPresent()
 				&& node.content() instanceof ButtonContent button
 		) {
-			return historyItemScope
-				&& button.action().type() == ActionType.HISTORY_DETAIL;
+			return (!requireHistoryItemScope || historyItemScope)
+				&& button.action().type() == actionType;
 		}
 		if (node.content() instanceof ChildrenContent children) {
 			return children.children()
 				.stream()
 				.anyMatch(child ->
-					historyDetailButtonMatches(child, nodeId, historyItemScope)
+					historyActionButtonMatches(
+						child,
+						nodeId,
+						historyItemScope,
+						actionType,
+						requireHistoryItemScope
+					)
 				);
 		}
 		if (node.content() instanceof SingleChildContent single) {
-			return historyDetailButtonMatches(
+			return historyActionButtonMatches(
 				single.child(),
 				nodeId,
-				historyItemScope
+				historyItemScope,
+				actionType,
+				requireHistoryItemScope
 			);
 		}
 		if (node.content() instanceof RepeatContent repeat) {
 			boolean templateScope =
 				repeat.items() instanceof BindingValue binding
 					&& binding.path().equals("history.items");
-			return historyDetailButtonMatches(
+			return historyActionButtonMatches(
 				repeat.template(),
 				nodeId,
-				templateScope
+				templateScope,
+				actionType,
+				requireHistoryItemScope
 			);
 		}
 		return false;
@@ -9754,6 +10445,16 @@ public final class PixelTzzServerRuntime {
 		}
 	}
 
+	/**
+	 * Narrow V3B bridge: a committed per-viewer message-history batch can refresh an already-open
+	 * player terminal without exposing the terminal session registry or its mutation surface.
+	 */
+	static void refreshPlayerTerminalsAfterMessageHistory(
+		final MinecraftServer server
+	) {
+		refreshOpenPlayerTerminals(server, false);
+	}
+
 	private static boolean terminalTransitionsToParticipantRecap(
 		final MinecraftServer server,
 		final ServerPlayer player
@@ -10668,6 +11369,12 @@ public final class PixelTzzServerRuntime {
 		}
 
 		ReloadOutcome definitionLoad = DefinitionRegistry.INSTANCE.reload(resourceManager);
+		if (definitionLoad.applied()) {
+			MessageServerRuntime.rebuildAssetAuthority(
+				server,
+				DefinitionRegistry.INSTANCE.view().active()
+			);
+		}
 		PixelTzzWorldState state = PixelTzzWorldState.get(server);
 		boolean animateLoad = state.isSchemaCompatible()
 			&& definitionLoad.applied()

@@ -3,12 +3,16 @@ package io.github.zcpu954861.pixeltzzpro.state;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.DataResult;
 import com.mojang.serialization.codecs.RecordCodecBuilder;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 import net.minecraft.core.UUIDUtil;
 import net.minecraft.resources.Identifier;
@@ -25,18 +29,30 @@ public record WorldStateV4(
 	int schemaVersion,
 	WorldStateV3 core,
 	List<PlayerActionUsage> usages,
-	List<PlayerActionInvocation> invocations
+	List<PlayerActionInvocation> invocations,
+	List<MessageHistoryRecord> messageHistory,
+	Optional<PersistedMessageRuntime.Snapshot> messageRuntime
 ) {
 	public static final int SCHEMA_VERSION = 4;
 	public static final int MAX_PLAYER_ACTION_USAGES = 16_384;
 	public static final int MAX_PLAYER_ACTION_INVOCATIONS = 16_384;
 	public static final int MAX_ACTION_RESULT_CODE_LENGTH = 128;
 	public static final int MAX_ACTION_RESULT_SUMMARY_LENGTH = 512;
+	public static final int MAX_MESSAGE_HISTORY_RECORDS = 4_096;
+	public static final int MAX_MESSAGE_HISTORY_PER_VIEWER = 128;
+	public static final int MAX_MESSAGE_HISTORY_TITLE_LENGTH = 512;
+	public static final int MAX_MESSAGE_HISTORY_BODY_LENGTH = 2_048;
+	public static final int MAX_MESSAGE_HISTORY_SAVED_FIELDS = 64;
+	public static final int MAX_MESSAGE_HISTORY_SAVED_FIELD_KEY_LENGTH = 128;
+	public static final int MAX_MESSAGE_HISTORY_SAVED_FIELD_VALUE_LENGTH = 4_096;
+	public static final int MAX_MESSAGE_HISTORY_SAVED_FIELD_CHARACTERS = 16_384;
 
 	private static final Codec<List<PlayerActionUsage>> USAGES_CODEC =
 		PlayerActionUsage.CODEC.sizeLimitedListOf(MAX_PLAYER_ACTION_USAGES);
 	private static final Codec<List<PlayerActionInvocation>> INVOCATIONS_CODEC =
 		PlayerActionInvocation.CODEC.sizeLimitedListOf(MAX_PLAYER_ACTION_INVOCATIONS);
+	private static final Codec<List<MessageHistoryRecord>> MESSAGE_HISTORY_CODEC =
+		MessageHistoryRecord.CODEC.sizeLimitedListOf(MAX_MESSAGE_HISTORY_RECORDS);
 
 	public static final Codec<WorldStateV4> CODEC = Codec.lazyInitialized(
 		() -> RecordCodecBuilder.<WorldStateV4>create(
@@ -46,7 +62,13 @@ public record WorldStateV4(
 					USAGES_CODEC.fieldOf("player_action_usages").forGetter(WorldStateV4::usages),
 					INVOCATIONS_CODEC
 						.fieldOf("player_action_invocations")
-						.forGetter(WorldStateV4::invocations)
+						.forGetter(WorldStateV4::invocations),
+					MESSAGE_HISTORY_CODEC
+						.optionalFieldOf("message_history", List.of())
+						.forGetter(WorldStateV4::messageHistory),
+					PersistedMessageRuntime.Snapshot.CODEC
+						.optionalFieldOf("message_runtime")
+						.forGetter(WorldStateV4::messageRuntime)
 				)
 				.apply(instance, WorldStateV4::new)
 		).validate(WorldStateV4::validated)
@@ -60,6 +82,35 @@ public record WorldStateV4(
 		invocations = Objects.requireNonNull(invocations, "invocations").stream()
 			.sorted(PlayerActionInvocation.ORDER)
 			.toList();
+		messageHistory = Objects.requireNonNull(messageHistory, "messageHistory").stream()
+			.sorted(MessageHistoryRecord.ORDER)
+			.toList();
+		messageRuntime = Objects.requireNonNull(messageRuntime, "messageRuntime");
+	}
+
+	/**
+	 * Source-compatible constructor for every schema-v4 caller written before message history was
+	 * added. The persisted field is optional as well, so existing v4 worlds decode to an empty
+	 * ledger without a migration or schema bump.
+	 */
+	public WorldStateV4(
+		final int schemaVersion,
+		final WorldStateV3 core,
+		final List<PlayerActionUsage> usages,
+		final List<PlayerActionInvocation> invocations
+	) {
+		this(schemaVersion, core, usages, invocations, List.of(), Optional.empty());
+	}
+
+	/** Source-compatible constructor for callers written after message history but before runtime recovery. */
+	public WorldStateV4(
+		final int schemaVersion,
+		final WorldStateV3 core,
+		final List<PlayerActionUsage> usages,
+		final List<PlayerActionInvocation> invocations,
+		final List<MessageHistoryRecord> messageHistory
+	) {
+		this(schemaVersion, core, usages, invocations, messageHistory, Optional.empty());
 	}
 
 	public static WorldStateV4 initial() {
@@ -67,7 +118,9 @@ public record WorldStateV4(
 			SCHEMA_VERSION,
 			WorldStateV3.initial(),
 			List.of(),
-			List.of()
+			List.of(),
+			List.of(),
+			Optional.empty()
 		);
 	}
 
@@ -87,7 +140,9 @@ public record WorldStateV4(
 			this.schemaVersion,
 			value,
 			sameScope ? this.usages : List.of(),
-			sameScope ? this.invocations : List.of()
+			sameScope ? this.invocations : List.of(),
+			sameScope ? this.messageHistory : List.of(),
+			sameScope ? this.messageRuntime : Optional.empty()
 		);
 	}
 
@@ -96,7 +151,9 @@ public record WorldStateV4(
 			this.schemaVersion,
 			this.core,
 			value,
-			this.invocations
+			this.invocations,
+			this.messageHistory,
+			this.messageRuntime
 		);
 	}
 
@@ -105,8 +162,41 @@ public record WorldStateV4(
 			this.schemaVersion,
 			this.core,
 			this.usages,
-			value
+			value,
+			this.messageHistory,
+			this.messageRuntime
 		);
+	}
+
+	public WorldStateV4 withMessageHistory(final List<MessageHistoryRecord> value) {
+		return new WorldStateV4(
+			this.schemaVersion,
+			this.core,
+			this.usages,
+			this.invocations,
+			value,
+			this.messageRuntime
+		);
+	}
+
+	public WorldStateV4 withMessageRuntime(
+		final Optional<PersistedMessageRuntime.Snapshot> value
+	) {
+		return new WorldStateV4(
+			this.schemaVersion,
+			this.core,
+			this.usages,
+			this.invocations,
+			this.messageHistory,
+			Objects.requireNonNull(value, "value")
+		);
+	}
+
+	public List<MessageHistoryRecord> messageHistoryFor(final UUID viewerId) {
+		Objects.requireNonNull(viewerId, "viewerId");
+		return this.messageHistory.stream()
+			.filter(value -> value.viewerId().equals(viewerId))
+			.toList();
 	}
 
 	public Optional<PlayerActionUsage> usage(
@@ -156,8 +246,22 @@ public record WorldStateV4(
 		if (this.invocations.size() > MAX_PLAYER_ACTION_INVOCATIONS) {
 			return "player action invocation count exceeds " + MAX_PLAYER_ACTION_INVOCATIONS;
 		}
+		if (this.messageHistory.size() > MAX_MESSAGE_HISTORY_RECORDS) {
+			return "message history count exceeds " + MAX_MESSAGE_HISTORY_RECORDS;
+		}
 
 		Optional<UUID> activeScope = this.core.activeGameInstanceId();
+		if (this.messageRuntime.isPresent()) {
+			PersistedMessageRuntime.Snapshot snapshot = this.messageRuntime.orElseThrow();
+			DataResult<PersistedMessageRuntime.Snapshot> runtimeValidation = snapshot.validated();
+			if (runtimeValidation.error().isPresent()) {
+				return "message runtime snapshot is invalid: "
+					+ runtimeValidation.error().orElseThrow().message();
+			}
+			if (activeScope.filter(snapshot.gameInstanceId()::equals).isEmpty()) {
+				return "message runtime snapshot does not belong to the active game instance";
+			}
+		}
 		Set<PlayerActionUsageKey> usageKeys = new HashSet<>();
 		for (PlayerActionUsage usage : this.usages) {
 			String nested = usage.validationError();
@@ -185,7 +289,155 @@ public record WorldStateV4(
 				return "duplicate player action invocation key";
 			}
 		}
+
+		Set<MessageHistoryKey> historyKeys = new HashSet<>();
+		Map<UUID, Integer> historyCountByViewer = new java.util.HashMap<>();
+		for (MessageHistoryRecord record : this.messageHistory) {
+			String nested = record.validationError();
+			if (nested != null) {
+				return "message history record: " + nested;
+			}
+			if (activeScope.filter(record.gameInstanceId()::equals).isEmpty()) {
+				return "message history record does not belong to the active game instance";
+			}
+			if (!historyKeys.add(record.key())) {
+				return "duplicate message history record key";
+			}
+			int count = historyCountByViewer.merge(record.viewerId(), 1, Integer::sum);
+			if (count > MAX_MESSAGE_HISTORY_PER_VIEWER) {
+				return "message history per-viewer count exceeds " + MAX_MESSAGE_HISTORY_PER_VIEWER;
+			}
+		}
 		return null;
+	}
+
+	/**
+	 * One already-authorized, fully resolved history entry for exactly one viewer.
+	 *
+	 * <p>No dynamic resolver input or audience selector is persisted here. Consequently a terminal
+	 * projection can expose this record only to {@link #viewerId()} without evaluating newer data
+	 * pack content or accidentally revealing another recipient's resolved values.
+	 */
+	public record MessageHistoryRecord(
+		UUID gameInstanceId,
+		UUID viewerId,
+		Identifier cueId,
+		UUID messageInstanceId,
+		Optional<Identifier> taskId,
+		long timestampTicks,
+		String title,
+		String body,
+		Map<String, String> savedFields,
+		boolean replayAllowed
+	) {
+		private static final Comparator<MessageHistoryRecord> ORDER = Comparator
+			.comparingLong(MessageHistoryRecord::timestampTicks)
+			.thenComparing(value -> value.cueId().toString())
+			.thenComparing(MessageHistoryRecord::messageInstanceId)
+			.thenComparing(MessageHistoryRecord::viewerId);
+
+		private static final Codec<Map<String, String>> SAVED_FIELDS_CODEC = Codec.unboundedMap(
+			Codec.sizeLimitedString(MAX_MESSAGE_HISTORY_SAVED_FIELD_KEY_LENGTH),
+			Codec.sizeLimitedString(MAX_MESSAGE_HISTORY_SAVED_FIELD_VALUE_LENGTH)
+		);
+
+		public static final Codec<MessageHistoryRecord> CODEC =
+			RecordCodecBuilder.<MessageHistoryRecord>create(
+				instance -> instance.group(
+						UUIDUtil.STRING_CODEC
+							.fieldOf("game_instance_id")
+							.forGetter(MessageHistoryRecord::gameInstanceId),
+						UUIDUtil.STRING_CODEC
+							.fieldOf("viewer_id")
+							.forGetter(MessageHistoryRecord::viewerId),
+						Identifier.CODEC.fieldOf("cue_id").forGetter(MessageHistoryRecord::cueId),
+						UUIDUtil.STRING_CODEC
+							.fieldOf("message_instance_id")
+							.forGetter(MessageHistoryRecord::messageInstanceId),
+						Identifier.CODEC.optionalFieldOf("task_id").forGetter(MessageHistoryRecord::taskId),
+						Codec.LONG.fieldOf("timestamp_ticks").forGetter(MessageHistoryRecord::timestampTicks),
+						Codec.sizeLimitedString(MAX_MESSAGE_HISTORY_TITLE_LENGTH)
+							.fieldOf("title")
+							.forGetter(MessageHistoryRecord::title),
+						Codec.sizeLimitedString(MAX_MESSAGE_HISTORY_BODY_LENGTH)
+							.fieldOf("body")
+							.forGetter(MessageHistoryRecord::body),
+						SAVED_FIELDS_CODEC
+							.optionalFieldOf("saved_fields", Map.of())
+							.forGetter(MessageHistoryRecord::savedFields),
+						Codec.BOOL
+							.optionalFieldOf("replay_allowed", false)
+							.forGetter(MessageHistoryRecord::replayAllowed)
+					)
+					.apply(instance, MessageHistoryRecord::new)
+			).validate(MessageHistoryRecord::validated);
+
+		public MessageHistoryRecord {
+			Objects.requireNonNull(gameInstanceId, "gameInstanceId");
+			Objects.requireNonNull(viewerId, "viewerId");
+			Objects.requireNonNull(cueId, "cueId");
+			Objects.requireNonNull(messageInstanceId, "messageInstanceId");
+			taskId = Objects.requireNonNull(taskId, "taskId");
+			title = Objects.requireNonNull(title, "title");
+			body = Objects.requireNonNull(body, "body");
+			Map<String, String> ordered = new TreeMap<>(
+				Objects.requireNonNull(savedFields, "savedFields")
+			);
+			savedFields = Collections.unmodifiableMap(new LinkedHashMap<>(ordered));
+		}
+
+		MessageHistoryKey key() {
+			return new MessageHistoryKey(
+				this.gameInstanceId,
+				this.viewerId,
+				this.messageInstanceId
+			);
+		}
+
+		private DataResult<MessageHistoryRecord> validated() {
+			String error = validationError();
+			return error == null ? DataResult.success(this) : DataResult.error(() -> error);
+		}
+
+		private String validationError() {
+			if (this.timestampTicks < 0L) {
+				return "timestamp ticks cannot be negative";
+			}
+			if (this.title.isBlank()) {
+				return "title cannot be blank";
+			}
+			if (this.title.length() > MAX_MESSAGE_HISTORY_TITLE_LENGTH) {
+				return "title exceeds " + MAX_MESSAGE_HISTORY_TITLE_LENGTH + " characters";
+			}
+			if (this.body.length() > MAX_MESSAGE_HISTORY_BODY_LENGTH) {
+				return "body exceeds " + MAX_MESSAGE_HISTORY_BODY_LENGTH + " characters";
+			}
+			if (this.savedFields.size() > MAX_MESSAGE_HISTORY_SAVED_FIELDS) {
+				return "saved field count exceeds " + MAX_MESSAGE_HISTORY_SAVED_FIELDS;
+			}
+			int characters = 0;
+			for (Map.Entry<String, String> field : this.savedFields.entrySet()) {
+				String key = field.getKey();
+				String value = field.getValue();
+				if (
+					key == null
+						|| !key.matches("[a-z0-9_.-]{1," + MAX_MESSAGE_HISTORY_SAVED_FIELD_KEY_LENGTH + "}")
+				) {
+					return "saved field key is invalid";
+				}
+				if (value == null || value.length() > MAX_MESSAGE_HISTORY_SAVED_FIELD_VALUE_LENGTH) {
+					return "saved field value exceeds " + MAX_MESSAGE_HISTORY_SAVED_FIELD_VALUE_LENGTH + " characters";
+				}
+				try {
+					characters = Math.addExact(characters, Math.addExact(key.length(), value.length()));
+				} catch (ArithmeticException overflow) {
+					return "saved field character count overflow";
+				}
+			}
+			return characters > MAX_MESSAGE_HISTORY_SAVED_FIELD_CHARACTERS
+				? "saved fields exceed " + MAX_MESSAGE_HISTORY_SAVED_FIELD_CHARACTERS + " characters"
+				: null;
+		}
 	}
 
 	/**
@@ -371,6 +623,18 @@ public record WorldStateV4(
 			Objects.requireNonNull(playerId, "playerId");
 			Objects.requireNonNull(actionId, "actionId");
 			Objects.requireNonNull(requestId, "requestId");
+		}
+	}
+
+	private record MessageHistoryKey(
+		UUID gameInstanceId,
+		UUID viewerId,
+		UUID messageInstanceId
+	) {
+		private MessageHistoryKey {
+			Objects.requireNonNull(gameInstanceId, "gameInstanceId");
+			Objects.requireNonNull(viewerId, "viewerId");
+			Objects.requireNonNull(messageInstanceId, "messageInstanceId");
 		}
 	}
 

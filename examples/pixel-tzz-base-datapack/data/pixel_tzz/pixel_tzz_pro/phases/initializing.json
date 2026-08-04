@@ -4,6 +4,20 @@
   "name": {
     "text": "玩家初始化"
   },
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「玩家初始化」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「玩家初始化」"
+      }
+    }
+  },
   "transitions": [
     "pixel_tzz:ready"
   ]

@@ -1,0 +1,77 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "snapshot"
+    },
+    "concurrency": {
+      "duplicate": "ignore_while_active",
+      "dedupe_targets": true,
+      "priority": 20,
+      "groups": [
+        "acceptance_registered_entity"
+      ]
+    },
+    "control_groups": [
+      "acceptance_registered_entity"
+    ],
+    "default_conflict": "parallel"
+  },
+  "nodes": [
+    {
+      "id": "registered_villager",
+      "type": "text",
+      "at": "0t",
+      "channel": "chat",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "text": "合法实体来源：这条消息应显示本地化的村民名称，且没有玩家头像。",
+                "color": "green"
+              }
+            }
+          ]
+        },
+        "speaker": {
+          "kind": "registered_entity",
+          "entity": "minecraft:villager"
+        },
+        "character_sound_role": "muted",
+        "hold": "30t"
+      }
+    },
+    {
+      "id": "invalid_registered_entity",
+      "type": "text",
+      "at": "40t",
+      "channel": "chat",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "text": "无效实体来源：这条消息应匿名降级为普通系统消息。",
+                "color": "yellow"
+              }
+            }
+          ]
+        },
+        "speaker": {
+          "kind": "registered_entity",
+          "entity": "pixel_tzz:not_a_registered_entity_type"
+        },
+        "character_sound_role": "muted",
+        "hold": "30t"
+      }
+    }
+  ]
+}

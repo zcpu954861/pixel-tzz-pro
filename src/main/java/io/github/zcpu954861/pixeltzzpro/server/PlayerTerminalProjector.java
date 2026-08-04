@@ -45,6 +45,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.MessageHistoryRecord;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.TickTimeFormatter;
 import java.nio.charset.StandardCharsets;
@@ -88,6 +89,8 @@ public final class PlayerTerminalProjector {
 		"pixel-tzz-pro/history-record/v1";
 	private static final String HISTORY_TASK_RECORD_KEY_DOMAIN =
 		"pixel-tzz-pro/history-task/v1";
+	private static final String HISTORY_MESSAGE_RECORD_KEY_DOMAIN =
+		"pixel-tzz-pro/history-message/v1";
 	/*
 	 * Keep a meaningful reserve for the fixed roots and JSON escaping. The exact wire form is still
 	 * checked by BindingContextDocument.encode before it leaves this class.
@@ -104,8 +107,24 @@ public final class PlayerTerminalProjector {
 		final ServerPlayer viewer,
 		final SessionMetadata session
 	) {
+		Objects.requireNonNull(server, "server");
+		Objects.requireNonNull(liveDefinitions, "liveDefinitions");
 		Objects.requireNonNull(state, "state");
-		return project(server, liveDefinitions, state.core(), viewer, session);
+		Objects.requireNonNull(viewer, "viewer");
+		Objects.requireNonNull(session, "session");
+		ViewerSnapshot viewerSnapshot = new ViewerSnapshot(
+			viewer.getUUID(),
+			viewer.getPlainTextName(),
+			true,
+			viewer.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)
+		);
+		return projectDetached(
+			liveDefinitions,
+			state,
+			viewerSnapshot,
+			session,
+			productionPredicates(server, liveDefinitions, state.core(), session)
+		);
 	}
 
 	public static Projection project(
@@ -144,18 +163,62 @@ public final class PlayerTerminalProjector {
 	 */
 	static Projection projectDetached(
 		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV4 state,
+		final ViewerSnapshot viewer,
+		final SessionMetadata session,
+		final PredicateGate predicates
+	) {
+		Objects.requireNonNull(state, "state");
+		return projectDetached(
+			liveDefinitions,
+			state.core(),
+			state.messageHistory(),
+			viewer,
+			session,
+			predicates
+		);
+	}
+
+	static Projection projectDetached(
+		final DefinitionSnapshot liveDefinitions,
 		final WorldStateV3 state,
+		final ViewerSnapshot viewer,
+		final SessionMetadata session,
+		final PredicateGate predicates
+	) {
+		return projectDetached(
+			liveDefinitions,
+			state,
+			List.of(),
+			viewer,
+			session,
+			predicates
+		);
+	}
+
+	private static Projection projectDetached(
+		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV3 state,
+		final List<MessageHistoryRecord> messageHistory,
 		final ViewerSnapshot viewer,
 		final SessionMetadata session,
 		final PredicateGate predicates
 	) {
 		Objects.requireNonNull(liveDefinitions, "liveDefinitions");
 		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(messageHistory, "messageHistory");
 		Objects.requireNonNull(viewer, "viewer");
 		Objects.requireNonNull(session, "session");
 		Objects.requireNonNull(predicates, "predicates");
 		try {
-			return projectChecked(liveDefinitions, state, viewer, session, predicates);
+			return projectChecked(
+				liveDefinitions,
+				state,
+				messageHistory,
+				viewer,
+				session,
+				predicates
+			);
 		} catch (RuntimeException | StackOverflowError error) {
 			return closedProjection(state, viewer, session, "projection_failed");
 		}
@@ -164,6 +227,7 @@ public final class PlayerTerminalProjector {
 	private static Projection projectChecked(
 		final DefinitionSnapshot liveDefinitions,
 		final WorldStateV3 state,
+		final List<MessageHistoryRecord> messageHistory,
 		final ViewerSnapshot viewer,
 		final SessionMetadata session,
 		final PredicateGate predicates
@@ -204,7 +268,8 @@ public final class PlayerTerminalProjector {
 			viewer,
 			session,
 			predicates,
-			currentTaskState(state.timeline())
+			currentTaskState(state.timeline()),
+			messageHistory
 		);
 		JsonObject root = baseDocument(context);
 		OptionalRootsProjection optionalRoots = projectOptionalRoots(context);
@@ -255,13 +320,24 @@ public final class PlayerTerminalProjector {
 		final SessionMetadata session,
 		final String recordKey
 	) {
+		Objects.requireNonNull(server, "server");
+		Objects.requireNonNull(liveDefinitions, "liveDefinitions");
 		Objects.requireNonNull(state, "state");
-		return resolveHistoryDetail(
-			server,
+		Objects.requireNonNull(viewer, "viewer");
+		Objects.requireNonNull(session, "session");
+		Objects.requireNonNull(recordKey, "recordKey");
+		ViewerSnapshot viewerSnapshot = new ViewerSnapshot(
+			viewer.getUUID(),
+			viewer.getPlainTextName(),
+			true,
+			viewer.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)
+		);
+		return resolveHistoryDetailDetached(
 			liveDefinitions,
-			state.core(),
-			viewer,
+			state,
+			viewerSnapshot,
 			session,
+			productionPredicates(server, liveDefinitions, state.core(), session),
 			recordKey
 		);
 	}
@@ -298,7 +374,120 @@ public final class PlayerTerminalProjector {
 
 	static Optional<HistoryDetailTarget> resolveHistoryDetailDetached(
 		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV4 state,
+		final ViewerSnapshot viewer,
+		final SessionMetadata session,
+		final PredicateGate predicates,
+		final String recordKey
+	) {
+		Objects.requireNonNull(state, "state");
+		return resolveHistoryDetailDetached(
+			liveDefinitions,
+			state.core(),
+			state.messageHistory(),
+			viewer,
+			session,
+			predicates,
+			recordKey
+		);
+	}
+
+	/**
+	 * Resolves one message-history replay without exposing a cue, page, or record identifier to the
+	 * client as authority.
+	 *
+	 * <p>The existing detail resolver first proves that the opaque key still belongs to a record
+	 * visible in this exact terminal session. Only then is the viewer-scoped persisted message
+	 * record recovered, and records without the explicit replay opt-in remain unavailable.
+	 */
+	public static Optional<MessageHistoryRecord> resolveMessageHistoryReplay(
+		final MinecraftServer server,
+		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV4 state,
+		final ServerPlayer viewer,
+		final SessionMetadata session,
+		final String recordKey
+	) {
+		Objects.requireNonNull(server, "server");
+		Objects.requireNonNull(liveDefinitions, "liveDefinitions");
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(viewer, "viewer");
+		Objects.requireNonNull(session, "session");
+		Objects.requireNonNull(recordKey, "recordKey");
+		ViewerSnapshot viewerSnapshot = new ViewerSnapshot(
+			viewer.getUUID(),
+			viewer.getPlainTextName(),
+			true,
+			viewer.permissions().hasPermission(Permissions.COMMANDS_GAMEMASTER)
+		);
+		return resolveMessageHistoryReplayDetached(
+			liveDefinitions,
+			state,
+			viewerSnapshot,
+			session,
+			productionPredicates(server, liveDefinitions, state.core(), session),
+			recordKey
+		);
+	}
+
+	static Optional<MessageHistoryRecord> resolveMessageHistoryReplayDetached(
+		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV4 state,
+		final ViewerSnapshot viewer,
+		final SessionMetadata session,
+		final PredicateGate predicates,
+		final String recordKey
+	) {
+		Objects.requireNonNull(state, "state");
+		if (
+			resolveHistoryDetailDetached(
+				liveDefinitions,
+				state,
+				viewer,
+				session,
+				predicates,
+				recordKey
+			).isEmpty()
+		) {
+			return Optional.empty();
+		}
+		UUID activeGameInstance = state.core().activeGameInstanceId().orElse(null);
+		if (activeGameInstance == null) {
+			return Optional.empty();
+		}
+		return state.messageHistoryFor(viewer.playerId())
+			.stream()
+			.filter(MessageHistoryRecord::replayAllowed)
+			.filter(record -> record.gameInstanceId().equals(activeGameInstance))
+			.filter(record ->
+				historyRecordKey(HistoryViewCandidate.message(record)).equals(recordKey)
+			)
+			.findFirst();
+	}
+
+	static Optional<HistoryDetailTarget> resolveHistoryDetailDetached(
+		final DefinitionSnapshot liveDefinitions,
 		final WorldStateV3 state,
+		final ViewerSnapshot viewer,
+		final SessionMetadata session,
+		final PredicateGate predicates,
+		final String recordKey
+	) {
+		return resolveHistoryDetailDetached(
+			liveDefinitions,
+			state,
+			List.of(),
+			viewer,
+			session,
+			predicates,
+			recordKey
+		);
+	}
+
+	private static Optional<HistoryDetailTarget> resolveHistoryDetailDetached(
+		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV3 state,
+		final List<MessageHistoryRecord> messageHistory,
 		final ViewerSnapshot viewer,
 		final SessionMetadata session,
 		final PredicateGate predicates,
@@ -306,6 +495,7 @@ public final class PlayerTerminalProjector {
 	) {
 		Objects.requireNonNull(liveDefinitions, "liveDefinitions");
 		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(messageHistory, "messageHistory");
 		Objects.requireNonNull(viewer, "viewer");
 		Objects.requireNonNull(session, "session");
 		Objects.requireNonNull(predicates, "predicates");
@@ -358,7 +548,8 @@ public final class PlayerTerminalProjector {
 				viewer,
 				session,
 				predicates,
-				currentTaskState(state.timeline())
+				currentTaskState(state.timeline()),
+				messageHistory
 			);
 			return projectOptionalRoots(context)
 				.history()
@@ -366,15 +557,8 @@ public final class PlayerTerminalProjector {
 				.stream()
 				.filter(candidate -> historyRecordKey(candidate).equals(recordKey))
 				.findFirst()
-				.flatMap(candidate ->
-					candidate.presentation()
-						.detailPage()
-						.filter(pageId -> {
-							PageDefinition page = definitions.pages().get(pageId);
-							return page != null && page.game().equals(gameId);
-						})
-						.map(pageId -> new HistoryDetailTarget(recordKey, pageId))
-				);
+				.flatMap(candidate -> historyDetailPage(context, candidate))
+				.map(pageId -> new HistoryDetailTarget(recordKey, pageId));
 		} catch (RuntimeException | StackOverflowError ignored) {
 			return Optional.empty();
 		}
@@ -1061,7 +1245,7 @@ public final class PlayerTerminalProjector {
 				: "events"
 		);
 		JsonArray items = new JsonArray();
-		if (!enabled || context.timeline().isEmpty()) {
+		if (!enabled || (context.timeline().isEmpty() && context.messageHistory().isEmpty())) {
 			history.addProperty("empty", true);
 			history.addProperty("count", 0);
 			history.add("items", items);
@@ -1074,9 +1258,9 @@ public final class PlayerTerminalProjector {
 			);
 		}
 
-		List<HistoryCandidate> candidates = historyCandidates(context);
+		List<HistoryViewCandidate> candidates = combinedHistoryCandidates(context);
 		int from = Math.max(0, candidates.size() - MAX_HISTORY_ITEMS);
-		List<HistoryCandidate> window = candidates.subList(from, candidates.size());
+		List<HistoryViewCandidate> window = candidates.subList(from, candidates.size());
 		HistoryDetailSelection detailSelection = selectHistoryDetail(context, window);
 		List<ReservedHistoryItem> retained = new ArrayList<>();
 		boolean truncated = candidates.size() > MAX_HISTORY_ITEMS;
@@ -1087,7 +1271,7 @@ public final class PlayerTerminalProjector {
 		 * copies before any other list entry so a visible left-side default cannot end up with an
 		 * unavailable right side merely because earlier list rows consumed the shared budget.
 		 */
-		HistoryCandidate detailCandidate = detailSelection.candidate();
+		HistoryViewCandidate detailCandidate = detailSelection.candidate();
 		if (detailCandidate != null) {
 			int index = window.indexOf(detailCandidate);
 			JsonObject item = historyItem(context, detailCandidate);
@@ -1106,7 +1290,7 @@ public final class PlayerTerminalProjector {
 
 		// Compete newest-first, then restore the existing chronological wire order below.
 		for (int index = window.size() - 1; index >= 0; index--) {
-			HistoryCandidate candidate = window.get(index);
+			HistoryViewCandidate candidate = window.get(index);
 			if (candidate == detailCandidate) {
 				continue;
 			}
@@ -1118,7 +1302,7 @@ public final class PlayerTerminalProjector {
 			retained.add(new ReservedHistoryItem(index, candidate, item));
 		}
 		retained.sort(Comparator.comparingInt(ReservedHistoryItem::index));
-		List<HistoryCandidate> visibleCandidates = new ArrayList<>(retained.size());
+		List<HistoryViewCandidate> visibleCandidates = new ArrayList<>(retained.size());
 		for (ReservedHistoryItem reserved : retained) {
 			items.add(reserved.item());
 			visibleCandidates.add(reserved.candidate());
@@ -1139,17 +1323,17 @@ public final class PlayerTerminalProjector {
 
 	private static HistoryDetailSelection selectHistoryDetail(
 		final ProjectionContext context,
-		final List<HistoryCandidate> window
+		final List<HistoryViewCandidate> window
 	) {
 		String recordKey = context.session().historyRecordKey().orElse(null);
-		List<HistoryCandidate> pageCandidates = window.stream()
+		List<HistoryViewCandidate> pageCandidates = window.stream()
 			.filter(value ->
 				historyDetailPage(context, value)
 					.filter(context.session().pageId()::equals)
 					.isPresent()
 			)
 			.toList();
-		HistoryCandidate candidate = recordKey == null
+		HistoryViewCandidate candidate = recordKey == null
 			? null
 			: pageCandidates.stream()
 				.filter(value -> historyRecordKey(value).equals(recordKey))
@@ -1196,6 +1380,33 @@ public final class PlayerTerminalProjector {
 		detail.addProperty("exists", false);
 		detail.addProperty("status", status);
 		return new DetailProjection(detail, truncated);
+	}
+
+	private static List<HistoryViewCandidate> combinedHistoryCandidates(
+		final ProjectionContext context
+	) {
+		List<HistoryViewCandidate> result = new ArrayList<>();
+		if (context.timeline().isPresent()) {
+			historyCandidates(context).stream()
+				.map(HistoryViewCandidate::taskOrEvent)
+				.forEach(result::add);
+		}
+		Optional<UUID> activeScope = context.state().activeGameInstanceId();
+		context.messageHistory().stream()
+			.filter(value -> value.viewerId().equals(context.viewer().playerId()))
+			.filter(value -> activeScope.filter(value.gameInstanceId()::equals).isPresent())
+			.map(HistoryViewCandidate::message)
+			.forEach(result::add);
+		return result.stream()
+			.sorted(
+				Comparator.comparingLong(
+					(HistoryViewCandidate value) -> historyGameTime(value)
+				)
+					.thenComparingInt(PlayerTerminalProjector::historySourceOrder)
+					.thenComparingInt(PlayerTerminalProjector::historyStableOrder)
+					.thenComparing(PlayerTerminalProjector::historyMessageStableKey)
+			)
+			.toList();
 	}
 
 	private static List<HistoryCandidate> historyCandidates(final ProjectionContext context) {
@@ -1314,10 +1525,62 @@ public final class PlayerTerminalProjector {
 		return result.stream()
 			.sorted(
 				Comparator.comparingLong(
-					PlayerTerminalProjector::historyGameTime
+					(HistoryCandidate value) -> historyGameTime(value)
 				).thenComparingInt(HistoryCandidate::stableOrder)
 			)
 			.toList();
+	}
+
+	private static JsonObject historyItem(
+		final ProjectionContext context,
+		final HistoryViewCandidate candidate
+	) {
+		return candidate.message() == null
+			? historyItem(context, candidate.taskOrEvent())
+			: messageHistoryItem(context, candidate.message());
+	}
+
+	private static JsonObject messageHistoryItem(
+		final ProjectionContext context,
+		final MessageHistoryRecord record
+	) {
+		JsonObject item = new JsonObject();
+		item.addProperty("id", historyRecordKey(HistoryViewCandidate.message(record)));
+		item.addProperty("source", "message");
+		item.addProperty("source_name", "消息回顾");
+		item.addProperty("title", bounded(record.title()));
+		item.addProperty("summary", bounded(record.body()));
+		item.addProperty("details", bounded(record.body()));
+		item.addProperty("cue", record.cueId().toString());
+		item.addProperty("message_instance", record.messageInstanceId().toString());
+		item.addProperty("timestamp", record.timestampTicks());
+		item.addProperty("timestamp_ticks", record.timestampTicks());
+		item.addProperty("timestamp_text", formatHistoryTicks(record.timestampTicks()));
+		// Existing history layouts bind these names. The selected V3B timestamp is already resolved
+		// by the server, so this compatibility alias does not claim a new client-side clock source.
+		item.addProperty("game_time", record.timestampTicks());
+		item.addProperty("game_time_ticks", record.timestampTicks());
+		item.addProperty("game_time_text", "发生于 " + formatHistoryTicks(record.timestampTicks()));
+		record.taskId().ifPresent(taskId -> {
+			item.addProperty("task", taskId.toString());
+			TaskDefinition task = context.definitions().tasks().get(taskId);
+			item.addProperty(
+				"task_name",
+				bounded(task == null ? taskId.toString() : task.name().plainText())
+			);
+		});
+		JsonObject savedFields = new JsonObject();
+		record.savedFields().forEach(
+			(key, value) -> savedFields.addProperty(key, bounded(value))
+		);
+		item.add("saved_fields", savedFields);
+		item.addProperty("saved_field_count", savedFields.size());
+		item.addProperty("replay_allowed", record.replayAllowed());
+		item.addProperty(
+			"detail_available",
+			historyDetailPage(context, HistoryViewCandidate.message(record)).isPresent()
+		);
+		return item;
 	}
 
 	private static JsonObject historyItem(
@@ -1427,6 +1690,21 @@ public final class PlayerTerminalProjector {
 
 	private static Optional<Identifier> historyDetailPage(
 		final ProjectionContext context,
+		final HistoryViewCandidate candidate
+	) {
+		if (candidate.message() == null) {
+			return historyDetailPage(context, candidate.taskOrEvent());
+		}
+		PageDefinition page = context.definitions().pages().get(context.session().pageId());
+		return page != null
+			&& page.game().equals(context.game().id())
+			&& currentPageUsesHistory(context)
+			? Optional.of(context.session().pageId())
+			: Optional.empty();
+	}
+
+	private static Optional<Identifier> historyDetailPage(
+		final ProjectionContext context,
 		final HistoryCandidate candidate
 	) {
 		return candidate.presentation()
@@ -1437,8 +1715,8 @@ public final class PlayerTerminalProjector {
 			});
 	}
 
-	private static Optional<HistoryCandidate> lastCandidate(
-		final List<HistoryCandidate> candidates
+	private static Optional<HistoryViewCandidate> lastCandidate(
+		final List<HistoryViewCandidate> candidates
 	) {
 		return candidates.isEmpty()
 			? Optional.empty()
@@ -1458,6 +1736,43 @@ public final class PlayerTerminalProjector {
 				+ "\0"
 				+ candidate.stableOrder();
 		return "h1_" + sha256(material.getBytes(StandardCharsets.UTF_8));
+	}
+
+	private static String historyRecordKey(final HistoryViewCandidate candidate) {
+		if (candidate.message() == null) {
+			return historyRecordKey(candidate.taskOrEvent());
+		}
+		MessageHistoryRecord record = candidate.message();
+		String material = HISTORY_MESSAGE_RECORD_KEY_DOMAIN
+			+ "\0"
+			+ record.gameInstanceId()
+			+ "\0"
+			+ record.viewerId()
+			+ "\0"
+			+ record.cueId()
+			+ "\0"
+			+ record.messageInstanceId();
+		return "h1_" + sha256(material.getBytes(StandardCharsets.UTF_8));
+	}
+
+	private static long historyGameTime(final HistoryViewCandidate candidate) {
+		return candidate.message() == null
+			? historyGameTime(candidate.taskOrEvent())
+			: candidate.message().timestampTicks();
+	}
+
+	private static int historySourceOrder(final HistoryViewCandidate candidate) {
+		return candidate.message() == null ? 0 : 1;
+	}
+
+	private static int historyStableOrder(final HistoryViewCandidate candidate) {
+		return candidate.message() == null ? candidate.taskOrEvent().stableOrder() : 0;
+	}
+
+	private static String historyMessageStableKey(final HistoryViewCandidate candidate) {
+		return candidate.message() == null
+			? ""
+			: candidate.message().cueId() + ":" + candidate.message().messageInstanceId();
 	}
 
 	private static long historyGameTime(final HistoryCandidate candidate) {
@@ -2109,11 +2424,13 @@ public final class PlayerTerminalProjector {
 		ViewerSnapshot viewer,
 		SessionMetadata session,
 		PredicateGate predicates,
-		Optional<PlayerTaskState> taskState
+		Optional<PlayerTaskState> taskState,
+		List<MessageHistoryRecord> messageHistory
 	) {
 		private ProjectionContext {
 			hostId = Objects.requireNonNull(hostId, "hostId");
 			taskState = Objects.requireNonNull(taskState, "taskState");
+			messageHistory = List.copyOf(messageHistory);
 		}
 
 		private Optional<TimelineInstance> timeline() {
@@ -2169,7 +2486,7 @@ public final class PlayerTerminalProjector {
 		JsonObject document,
 		int visibleItems,
 		boolean truncated,
-		List<HistoryCandidate> visibleCandidates
+		List<HistoryViewCandidate> visibleCandidates
 	) {
 	}
 
@@ -2186,7 +2503,7 @@ public final class PlayerTerminalProjector {
 	}
 
 	private record HistoryDetailSelection(
-		HistoryCandidate candidate,
+		HistoryViewCandidate candidate,
 		String status
 	) {
 		private HistoryDetailSelection {
@@ -2196,9 +2513,30 @@ public final class PlayerTerminalProjector {
 
 	private record ReservedHistoryItem(
 		int index,
-		HistoryCandidate candidate,
+		HistoryViewCandidate candidate,
 		JsonObject item
 	) {
+	}
+
+	private record HistoryViewCandidate(
+		HistoryCandidate taskOrEvent,
+		MessageHistoryRecord message
+	) {
+		private HistoryViewCandidate {
+			if ((taskOrEvent == null) == (message == null)) {
+				throw new IllegalArgumentException(
+					"history candidate must contain exactly one authoritative source"
+				);
+			}
+		}
+
+		private static HistoryViewCandidate taskOrEvent(final HistoryCandidate value) {
+			return new HistoryViewCandidate(Objects.requireNonNull(value, "value"), null);
+		}
+
+		private static HistoryViewCandidate message(final MessageHistoryRecord value) {
+			return new HistoryViewCandidate(null, Objects.requireNonNull(value, "value"));
+		}
 	}
 
 	private record HistoryCandidate(

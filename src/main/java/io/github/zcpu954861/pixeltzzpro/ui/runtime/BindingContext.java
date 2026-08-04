@@ -38,6 +38,7 @@ public final class BindingContext {
 	private final Map<Identifier, JsonElement> personalMetadata;
 	private final Map<String, JsonElement> item;
 	private final Map<String, JsonElement> ui;
+	private final Map<String, JsonElement> external;
 
 	private BindingContext(final Builder builder) {
 		this.viewer = copyValues(builder.viewer);
@@ -52,6 +53,7 @@ public final class BindingContext {
 		this.personalMetadata = copyValues(builder.personalMetadata);
 		this.item = copyValues(builder.item);
 		this.ui = copyValues(builder.ui);
+		this.external = copyValues(builder.external);
 	}
 
 	public static Builder builder() {
@@ -93,6 +95,10 @@ public final class BindingContext {
 	public Optional<JsonElement> resolve(final String path) {
 		if (path == null || path.isEmpty()) {
 			return Optional.empty();
+		}
+		JsonElement externalValue = this.external.get(path);
+		if (externalValue != null) {
+			return Optional.of(externalValue.deepCopy());
 		}
 		JsonElement value;
 		if (path.startsWith(FLOW_FIELDS_PREFIX)) {
@@ -171,6 +177,7 @@ public final class BindingContext {
 		this.personalMetadata.forEach(copy::personalMeta);
 		this.item.forEach(copy::item);
 		this.ui.forEach(copy::ui);
+		this.external.forEach(copy::external);
 		return copy;
 	}
 
@@ -223,6 +230,7 @@ public final class BindingContext {
 		private final Map<Identifier, JsonElement> personalMetadata = new LinkedHashMap<>();
 		private final Map<String, JsonElement> item = new LinkedHashMap<>();
 		private final Map<String, JsonElement> ui = new LinkedHashMap<>();
+		private final Map<String, JsonElement> external = new LinkedHashMap<>();
 
 		private Builder() {
 		}
@@ -284,6 +292,14 @@ public final class BindingContext {
 
 		public Builder ui(final String nodeId, final JsonElement value) {
 			put(this.ui, nodeId, value);
+			return this;
+		}
+
+		/**
+		 * Adds one compiler-approved, server-owned binding outside the fixed page roots.
+		 */
+		public Builder external(final String path, final JsonElement value) {
+			put(this.external, path, value);
 			return this;
 		}
 

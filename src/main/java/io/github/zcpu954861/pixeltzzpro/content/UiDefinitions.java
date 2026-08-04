@@ -145,7 +145,8 @@ public final class UiDefinitions {
 		LOCAL,
 		FLOW,
 		REGISTERED,
-		HISTORY_DETAIL
+		HISTORY_DETAIL,
+		HISTORY_REPLAY
 	}
 
 	public enum ConditionOperator {

@@ -1,0 +1,172 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "timing": {
+      "clock": "presentation_time",
+      "synchronization": "per_player"
+    },
+    "audience": {
+      "target": {
+        "source": "current_host",
+        "online_only": true
+      },
+      "evolution": "snapshot"
+    },
+    "concurrency": {
+      "duplicate": "allow",
+      "dedupe_targets": true,
+      "priority": 41,
+      "groups": [
+        "lifecycle_notice"
+      ]
+    },
+    "delivery": {
+      "empty_audience": "complete",
+      "offline_targets": "skip"
+    },
+    "lifecycle": {
+      "screen_start": {
+        "subtitle": "wait_gameplay"
+      },
+      "obscured": {
+        "subtitle": "pause"
+      },
+      "reload": "finish_snapshot",
+      "restart": "transient",
+      "reconnect": "final_only"
+    },
+    "accessibility": {
+      "allow_manual_complete": true,
+      "reduced_motion": "simplified"
+    },
+    "capture": "on_display",
+    "default_conflict": "queue"
+  },
+  "parameters": {
+    "message": {
+      "type": "string",
+      "required": true,
+      "sources": [
+        "call_argument"
+      ],
+      "on_error": "fail"
+    },
+    "completed": {
+      "type": "integer",
+      "required": true,
+      "sources": [
+        "call_argument"
+      ],
+      "on_error": "fail"
+    },
+    "total": {
+      "type": "integer",
+      "required": true,
+      "sources": [
+        "call_argument"
+      ],
+      "on_error": "fail"
+    }
+  },
+  "fields": {
+    "message_text": {
+      "capture": "on_display",
+      "source": {
+        "argument": "message"
+      },
+      "fallback": {
+        "text": "流程进度已更新",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 72,
+        "estimated_width": 360,
+        "max_lines": 2
+      }
+    },
+    "completed_value": {
+      "capture": "on_display",
+      "source": {
+        "argument": "completed"
+      },
+      "fallback": {
+        "text": "0"
+      },
+      "reservation": {
+        "max_graphemes": 10,
+        "estimated_width": 60,
+        "max_lines": 1
+      }
+    },
+    "total_value": {
+      "capture": "on_display",
+      "source": {
+        "argument": "total"
+      },
+      "fallback": {
+        "text": "0"
+      },
+      "reservation": {
+        "max_graphemes": 10,
+        "estimated_width": 60,
+        "max_lines": 1
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "progress_notice",
+      "type": "text",
+      "schedule": {
+        "type": "cue_start"
+      },
+      "channel": "subtitle",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "character_sound_role": "primary",
+        "layout": {
+          "alignment": "center",
+          "max_width": 480,
+          "max_lines": 2,
+          "line_spacing": 1.1,
+          "overflow": "ellipsis"
+        },
+        "text": {
+          "parts": [
+            {
+              "field": {
+                "scope": "cue",
+                "id": "message_text"
+              }
+            },
+            {
+              "component": {
+                "text": " · ",
+                "color": "dark_gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "completed_value"
+              }
+            },
+            {
+              "component": {
+                "text": "/",
+                "color": "gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "total_value"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

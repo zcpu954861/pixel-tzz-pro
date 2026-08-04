@@ -1,0 +1,139 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "timing": {
+      "clock": "presentation_time",
+      "synchronization": "per_player"
+    },
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "snapshot"
+    },
+    "concurrency": {
+      "duplicate": "allow",
+      "dedupe_targets": true,
+      "priority": 42,
+      "groups": [
+        "lifecycle_notice"
+      ]
+    },
+    "delivery": {
+      "empty_audience": "complete",
+      "offline_targets": "skip"
+    },
+    "lifecycle": {
+      "screen_start": {
+        "subtitle": "wait_gameplay"
+      },
+      "obscured": {
+        "subtitle": "pause"
+      },
+      "reload": "finish_snapshot",
+      "restart": "transient",
+      "reconnect": "final_only"
+    },
+    "accessibility": {
+      "allow_manual_complete": true,
+      "reduced_motion": "simplified"
+    },
+    "capture": "on_display",
+    "default_conflict": "queue"
+  },
+  "parameters": {
+    "player_name": {
+      "type": "string",
+      "required": true,
+      "sources": [
+        "call_argument"
+      ],
+      "on_error": "fail"
+    },
+    "message": {
+      "type": "string",
+      "required": true,
+      "sources": [
+        "call_argument"
+      ],
+      "on_error": "fail"
+    }
+  },
+  "fields": {
+    "player_name_text": {
+      "capture": "on_display",
+      "source": {
+        "argument": "player_name"
+      },
+      "fallback": {
+        "text": "玩家",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    },
+    "message_text": {
+      "capture": "on_display",
+      "source": {
+        "argument": "message"
+      },
+      "fallback": {
+        "text": "状态已更新",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 72,
+        "estimated_width": 360,
+        "max_lines": 2
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "player_notice",
+      "type": "text",
+      "schedule": {
+        "type": "cue_start"
+      },
+      "channel": "subtitle",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "character_sound_role": "primary",
+        "layout": {
+          "alignment": "center",
+          "max_width": 480,
+          "max_lines": 2,
+          "line_spacing": 1.1,
+          "overflow": "ellipsis"
+        },
+        "text": {
+          "parts": [
+            {
+              "field": {
+                "scope": "cue",
+                "id": "player_name_text"
+              }
+            },
+            {
+              "component": {
+                "text": " · ",
+                "color": "dark_gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "message_text"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

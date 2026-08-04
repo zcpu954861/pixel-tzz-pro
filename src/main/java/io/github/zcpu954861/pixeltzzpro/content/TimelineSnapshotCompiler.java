@@ -9,7 +9,15 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DocumentKey;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.SourceDocument;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.BranchNode;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FunctionNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.RunFunctionOperation;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookFreezeClosure.Closure;
+import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.PlayerRunFunctionOperation;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.IntermissionDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.PlayerCallback;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
@@ -17,6 +25,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDocument;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -51,7 +60,7 @@ public final class TimelineSnapshotCompiler {
 		"predicates",
 		"predicate_documents"
 	);
-	private static final Set<String> SOURCE_KEYS = Set.of("type", "id", "document");
+	private static final Set<String> SOURCE_KEYS = Set.of("type", "id", "document", "document_json");
 
 	private TimelineSnapshotCompiler() {
 	}
@@ -81,8 +90,22 @@ public final class TimelineSnapshotCompiler {
 		} catch (IllegalArgumentException error) {
 			return FreezeResult.rejected("snapshot_invalid", message(error));
 		}
+		Closure messageClosure;
+		try {
+			messageClosure = MessageHookFreezeClosure.collect(
+				definitions,
+				timelineMessageHooks(definitions, game, reachable)
+			);
+		} catch (IllegalArgumentException error) {
+			return FreezeResult.rejected("snapshot_invalid", message(error));
+		}
 
-		List<DocumentKey> keys = supportingKeys(definitions, game.id(), reachable);
+		List<DocumentKey> keys = supportingKeys(
+			definitions,
+			game.id(),
+			reachable,
+			messageClosure
+		);
 		if (keys.size() > DefinitionCompiler.MAX_DEFINITIONS) {
 			return FreezeResult.rejected(
 				"snapshot_too_large",
@@ -110,8 +133,20 @@ public final class TimelineSnapshotCompiler {
 			source.addProperty("type", key.type().directory());
 			source.addProperty("id", key.id().toString());
 			try {
-				source.add("document", JsonParser.parseString(document.canonicalJson()));
+				JsonElement parsed = JsonParser.parseString(document.canonicalJson());
+				if (parsed.isJsonObject()) {
+					source.add("document", parsed);
+				} else if (isMessageType(key.type())) {
+					source.addProperty("document_json", document.canonicalJson());
+				} else {
+					throw new IllegalArgumentException("definition document must be an object");
+				}
 			} catch (RuntimeException error) {
+				if (isMessageType(key.type())) {
+					source.addProperty("document_json", document.canonicalJson());
+					sources.add(source);
+					continue;
+				}
 				return FreezeResult.rejected(
 					"snapshot_invalid",
 					"canonical source document is invalid JSON: " + key.id()
@@ -120,12 +155,13 @@ public final class TimelineSnapshotCompiler {
 			sources.add(source);
 		}
 		root.add("sources", sources);
-		Set<Identifier> predicates = DefinitionRegistry.referencedPredicates(
-			definitions,
-			game.id()
-		);
+		// FORMAT_VERSION 1 has always serialized the complete discovered function set. Keep that
+		// envelope contract so active 2D/V3A timelines remain restorable after this closure landed.
+		Set<Identifier> functions = new LinkedHashSet<>(definitions.functions());
+		Set<Identifier> predicates = new LinkedHashSet<>(referencedPredicates(definitions, keys));
+		predicates.addAll(messageClosure.predicates());
 		if (
-			definitions.functions().size() > MAX_EXTERNAL_REFERENCES
+			functions.size() > MAX_EXTERNAL_REFERENCES
 				|| predicates.size() > MAX_EXTERNAL_REFERENCES
 		) {
 			return FreezeResult.rejected(
@@ -133,7 +169,7 @@ public final class TimelineSnapshotCompiler {
 				"external reference count exceeds " + MAX_EXTERNAL_REFERENCES
 			);
 		}
-		root.add("functions", identifiers(definitions.functions()));
+		root.add("functions", identifiers(functions));
 		root.add("predicates", identifiers(predicates));
 		JsonObject predicateDocuments = new JsonObject();
 		for (Identifier predicate : predicates.stream().sorted().toList()) {
@@ -283,8 +319,29 @@ public final class TimelineSnapshotCompiler {
 					.orElseThrow(() -> new IllegalArgumentException("unknown definition type"));
 				Identifier id = requiredIdentifier(entry, "id");
 				JsonElement document = entry.get("document");
-				if (document == null || !document.isJsonObject()) {
-					throw new IllegalArgumentException("source document must be an object");
+				JsonElement rawDocument = entry.get("document_json");
+				if ((document == null) == (rawDocument == null)) {
+					throw new IllegalArgumentException(
+						"source must contain exactly one document representation"
+					);
+				}
+				String sourceJson;
+				if (document != null) {
+					if (!document.isJsonObject()) {
+						throw new IllegalArgumentException("source document must be an object");
+					}
+					sourceJson = document.toString();
+				} else {
+					if (
+						!isMessageType(type)
+							|| !rawDocument.isJsonPrimitive()
+							|| !rawDocument.getAsJsonPrimitive().isString()
+					) {
+						throw new IllegalArgumentException(
+							"raw source documents are valid only for message definitions"
+						);
+					}
+					sourceJson = rawDocument.getAsString();
 				}
 				if (!sourceKeys.add(new DocumentKey(type, id))) {
 					throw new IllegalArgumentException("duplicate timeline source " + type + " " + id);
@@ -302,7 +359,7 @@ public final class TimelineSnapshotCompiler {
 								+ ".json"
 						),
 						"pixel-tzz-pro:timeline-frozen",
-						document.toString()
+						sourceJson
 					)
 				);
 			}
@@ -355,22 +412,39 @@ public final class TimelineSnapshotCompiler {
 				);
 			}
 			Set<Identifier> reachable = reachableTasks(restored, restoredGame);
-			if (!restored.tasks().keySet().equals(reachable)) {
+			Closure messageClosure = MessageHookFreezeClosure.collect(
+				restored,
+				timelineMessageHooks(restored, restoredGame, reachable)
+			);
+			Set<DocumentKey> expectedSourceKeys = Set.copyOf(
+				supportingKeys(restored, expectedGame, reachable, messageClosure)
+			);
+			if (!sourceKeys.equals(expectedSourceKeys)) {
 				return RestoreResult.rejected(
 					"snapshot_invalid",
-					"timeline snapshot contains tasks outside its reachable plan"
+					"timeline snapshot source closure does not match its reachable plan"
 				);
 			}
-			if (
-				hasPredicateDocuments
-					&& !DefinitionRegistry.referencedPredicates(
-						restored,
-						expectedGame
-					).equals(predicates)
-			) {
+			Set<Identifier> expectedPredicates = new LinkedHashSet<>(
+				referencedPredicates(restored, expectedSourceKeys)
+			);
+			expectedPredicates.addAll(messageClosure.predicates());
+			if (hasPredicateDocuments && !expectedPredicates.equals(predicates)) {
 				return RestoreResult.rejected(
 					"snapshot_invalid",
 					"predicate references do not match the restored timeline definitions"
+				);
+			}
+			Set<Identifier> expectedFunctions = new LinkedHashSet<>(
+				referencedFunctions(restored, expectedSourceKeys)
+			);
+			expectedFunctions.addAll(messageClosure.functions());
+			// v1 snapshots may legitimately contain unrelated discovered functions. The required
+			// closure must be present, but an existing safe superset is backward compatible.
+			if (!functions.containsAll(expectedFunctions)) {
+				return RestoreResult.rejected(
+					"snapshot_invalid",
+					"function references do not match the restored timeline definitions"
 				);
 			}
 			return RestoreResult.success(restored);
@@ -417,10 +491,171 @@ public final class TimelineSnapshotCompiler {
 		return Set.copyOf(result);
 	}
 
+	private static List<MessageHookSet> timelineMessageHooks(
+		final DefinitionSnapshot definitions,
+		final GameDefinition game,
+		final Set<Identifier> reachableTasks
+	) {
+		List<MessageHookSet> hooks = new ArrayList<>();
+		hooks.add(game.messageHooks());
+		game.readiness().ifPresent(readiness -> hooks.add(readiness.messageHooks()));
+		definitions.roles().values().stream()
+			.filter(role -> role.game().equals(game.id()))
+			.sorted(Comparator.comparing(GameDefinitions.RoleDefinition::id))
+			.map(GameDefinitions.RoleDefinition::messageHooks)
+			.forEach(hooks::add);
+		definitions.phases().values().stream()
+			.filter(phase -> phase.game().equals(game.id()))
+			.sorted(Comparator.comparing(GameDefinitions.PhaseDefinition::id))
+			.map(GameDefinitions.PhaseDefinition::messageHooks)
+			.forEach(hooks::add);
+		definitions.flows().values().stream()
+			.filter(flow -> flow.game().equals(game.id()))
+			.sorted(Comparator.comparing(GameDefinitions.FlowDefinition::id))
+			.map(GameDefinitions.FlowDefinition::messageHooks)
+			.forEach(hooks::add);
+		reachableTasks.stream().sorted().forEach(taskId -> {
+			TaskDefinition task = definitions.tasks().get(taskId);
+			if (task == null) {
+				throw new IllegalArgumentException("reachable task is missing: " + taskId);
+			}
+			hooks.add(task.messageHooks());
+			task.events().forEach(event -> hooks.add(event.messageHooks()));
+		});
+		return List.copyOf(hooks);
+	}
+
+	private static Set<Identifier> referencedPredicates(
+		final DefinitionSnapshot definitions,
+		final Collection<DocumentKey> keys
+	) {
+		Set<Identifier> result = new LinkedHashSet<>();
+		for (DocumentKey key : keys) {
+			switch (key.type()) {
+				case FIELD -> Optional.ofNullable(definitions.fields().get(key.id()))
+					.flatMap(GameDefinitions.FieldDefinition::visibleWhen)
+					.ifPresent(result::add);
+				case FLOW -> Optional.ofNullable(definitions.flows().get(key.id()))
+					.ifPresent(flow -> flow.nodes().values().stream()
+						.filter(BranchNode.class::isInstance)
+						.map(BranchNode.class::cast)
+						.forEach(branch -> branch.cases().forEach(value -> result.add(value.predicate()))));
+				case PANEL_ACTION -> Optional.ofNullable(definitions.panelActions().get(key.id()))
+					.ifPresent(action -> {
+						action.visibleWhen().ifPresent(result::add);
+						action.enabledWhen().ifPresent(result::add);
+					});
+				case PLAYER_ROUTE -> Optional.ofNullable(definitions.playerRoutes().get(key.id()))
+					.flatMap(PlayerTerminalDefinitions.PlayerRouteDefinition::predicate)
+					.ifPresent(result::add);
+				case PLAYER_DATA -> Optional.ofNullable(definitions.playerData().get(key.id()))
+					.flatMap(PlayerTerminalDefinitions.PlayerDataDefinition::predicate)
+					.ifPresent(result::add);
+				case PLAYER_ACTION -> Optional.ofNullable(definitions.playerActions().get(key.id()))
+					.flatMap(PlayerTerminalDefinitions.PlayerActionDefinition::predicate)
+					.ifPresent(result::add);
+				case GAME,
+					ROLE,
+					TEAM,
+					LIFE_STATE,
+					PHASE,
+					TASK,
+					PAGE,
+					THEME,
+					TEXT_EFFECT,
+					MESSAGE_CUE -> {
+				}
+			}
+		}
+		return Set.copyOf(result);
+	}
+
+	private static Set<Identifier> referencedFunctions(
+		final DefinitionSnapshot definitions,
+		final Collection<DocumentKey> keys
+	) {
+		Set<Identifier> result = new LinkedHashSet<>();
+		for (DocumentKey key : keys) {
+			switch (key.type()) {
+				case PHASE -> Optional.ofNullable(definitions.phases().get(key.id()))
+					.ifPresent(phase -> {
+						phase.onEnter().ifPresent(result::add);
+						phase.onExit().ifPresent(result::add);
+					});
+				case FLOW -> Optional.ofNullable(definitions.flows().get(key.id()))
+					.ifPresent(flow -> {
+						flow.onStart().ifPresent(result::add);
+						flow.onPlayerComplete().ifPresent(result::add);
+						flow.onAllComplete().ifPresent(result::add);
+						flow.nodes().values().stream()
+							.filter(FunctionNode.class::isInstance)
+							.map(FunctionNode.class::cast)
+							.map(FunctionNode::function)
+							.forEach(result::add);
+					});
+				case TASK -> Optional.ofNullable(definitions.tasks().get(key.id()))
+					.ifPresent(task -> collectTaskFunctions(task, result));
+				case PANEL_ACTION -> Optional.ofNullable(definitions.panelActions().get(key.id()))
+					.map(GameDefinitions.PanelActionDefinition::operation)
+					.filter(RunFunctionOperation.class::isInstance)
+					.map(RunFunctionOperation.class::cast)
+					.map(RunFunctionOperation::function)
+					.ifPresent(result::add);
+				case PLAYER_ACTION -> Optional.ofNullable(definitions.playerActions().get(key.id()))
+					.map(PlayerTerminalDefinitions.PlayerActionDefinition::operation)
+					.filter(PlayerRunFunctionOperation.class::isInstance)
+					.map(PlayerRunFunctionOperation.class::cast)
+					.map(PlayerRunFunctionOperation::function)
+					.ifPresent(result::add);
+				case GAME,
+					ROLE,
+					TEAM,
+					LIFE_STATE,
+					FIELD,
+					PLAYER_ROUTE,
+					PLAYER_DATA,
+					PAGE,
+					THEME,
+					TEXT_EFFECT,
+					MESSAGE_CUE -> {
+				}
+			}
+		}
+		return Set.copyOf(result);
+	}
+
+	private static void collectTaskFunctions(
+		final TaskDefinition task,
+		final Set<Identifier> result
+	) {
+		var callbacks = task.callbacks();
+		callbacks.onStart().ifPresent(result::add);
+		callbacks.onPause().ifPresent(result::add);
+		callbacks.onResume().ifPresent(result::add);
+		callbacks.onTimeout().ifPresent(result::add);
+		callbacks.onSettled().ifPresent(result::add);
+		task.onStartPlayers().map(PlayerCallback::function).ifPresent(result::add);
+		for (TaskResult taskResult : task.results().values()) {
+			taskResult.onApply().ifPresent(result::add);
+			taskResult.onApplyPlayers().map(PlayerCallback::function).ifPresent(result::add);
+			taskResult.route().intermission().ifPresent(intermission -> {
+				intermission.onStart().ifPresent(result::add);
+				intermission.onPause().ifPresent(result::add);
+				intermission.onResume().ifPresent(result::add);
+				intermission.onComplete().ifPresent(result::add);
+			});
+		}
+	}
+
+	private static boolean isMessageType(final DefinitionType type) {
+		return type == DefinitionType.TEXT_EFFECT || type == DefinitionType.MESSAGE_CUE;
+	}
+
 	private static List<DocumentKey> supportingKeys(
 		final DefinitionSnapshot definitions,
 		final Identifier gameId,
-		final Set<Identifier> reachableTasks
+		final Set<Identifier> reachableTasks,
+		final Closure messageClosure
 	) {
 		List<DocumentKey> keys = new ArrayList<>();
 		keys.add(new DocumentKey(DefinitionType.GAME, gameId));
@@ -465,6 +700,9 @@ public final class TimelineSnapshotCompiler {
 			.stream()
 			.filter(value -> value.game().equals(gameId))
 			.forEach(value -> keys.add(new DocumentKey(DefinitionType.PLAYER_ROUTE, value.id())));
+		// Player-data definitions are part of the timeline's pre-existing support set: the
+		// active-game terminal, history and personal-field projections may read any same-game
+		// entry even when no message cue references it. Message closure only adds dependencies.
 		definitions.playerData()
 			.values()
 			.stream()
@@ -487,6 +725,7 @@ public final class TimelineSnapshotCompiler {
 				}
 			});
 		themes.forEach(id -> keys.add(new DocumentKey(DefinitionType.THEME, id)));
+		keys.addAll(messageClosure.sourceKeys());
 		// ponytail: v1 freezes the same-game support set so restore can reuse the strict compiler.
 		// If the 2 MiB ceiling becomes practical, replace this with a transitive support closure.
 		return keys.stream()

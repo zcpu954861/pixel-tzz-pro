@@ -1,0 +1,20 @@
+{
+  "format_version": 1,
+  "typewriter": {
+    "character_interval": "80ms",
+    "cursor": {
+      "enabled": true,
+      "glyph": "▌",
+      "color": "#FFB65C",
+      "blink": false
+    },
+    "fresh_color": "#FFFFFF",
+    "restore_after_characters": 1,
+    "restore_mode": "instant"
+  },
+  "fade": {
+    "enter": "100ms",
+    "hold": "2s",
+    "exit": "500ms"
+  }
+}

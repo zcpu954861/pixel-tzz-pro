@@ -7,6 +7,14 @@
   "description": {
     "text": "不参与初始化、准备与掉线提醒。"
   },
+  "message_hooks": {
+    "role_changed": {
+      "cue": "pixel_tzz:lifecycle/player_notice",
+      "arguments": {
+        "message": "身份已更新为「旁观者」"
+      }
+    }
+  },
   "tags": [
     "pixel_tzz:spectator"
   ],

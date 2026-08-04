@@ -1,0 +1,104 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "policies": {
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "snapshot"
+    },
+    "delivery": {
+      "empty_audience": "fail",
+      "offline_targets": "skip"
+    },
+    "concurrency": {
+      "duplicate": "ignore_while_active",
+      "dedupe_targets": true,
+      "priority": 20,
+      "groups": [
+        "acceptance_verified_player_speaker"
+      ]
+    },
+    "control_groups": [
+      "acceptance_verified_player_speaker"
+    ],
+    "default_conflict": "parallel"
+  },
+  "parameters": {
+    "target": {
+      "type": "player",
+      "required": true,
+      "sources": [
+        "call_argument",
+        "target"
+      ],
+      "on_error": "fail",
+      "allowed_nodes": [
+        "verified_player_chat"
+      ],
+      "audience": {
+        "source": "call_targets",
+        "online_only": true
+      }
+    }
+  },
+  "fields": {
+    "target_name": {
+      "capture": "on_display",
+      "source": {
+        "argument": "target"
+      },
+      "fallback": {
+        "text": "未知玩家",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "verified_player_chat",
+      "type": "text",
+      "at": "0t",
+      "channel": "chat",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "text": "『玩家来源验证』 ",
+                "color": "aqua",
+                "bold": true
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "target_name"
+              }
+            },
+            {
+              "component": {
+                "text": " 的服务端验证玩家身份。",
+                "color": "white"
+              }
+            }
+          ]
+        },
+        "speaker": {
+          "kind": "player_parameter",
+          "parameter": "target"
+        },
+        "character_sound_role": "muted",
+        "hold": "30t"
+      }
+    }
+  ]
+}

@@ -5,6 +5,20 @@
     "text": "赛前验收"
   },
   "on_exit": "pixel_tzz:acceptance_2d/phase/warmup_exit",
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「赛前验收」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「赛前验收」"
+      }
+    }
+  },
   "transitions": [
     "pixel_tzz:running"
   ]

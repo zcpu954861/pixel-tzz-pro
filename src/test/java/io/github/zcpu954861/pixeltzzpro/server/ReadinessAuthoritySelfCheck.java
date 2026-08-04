@@ -1,17 +1,22 @@
 package io.github.zcpu954861.pixeltzzpro.server;
 
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionType;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
+import io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContract;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditLog;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.CompletionSummary;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FlowInstanceStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FlowMemberStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDefinitionType;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.HostRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PersistentFieldValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
@@ -57,6 +62,7 @@ public final class ReadinessAuthoritySelfCheck {
 		SharedConstants.tryDetectVersion();
 		Bootstrap.bootStrap();
 		DefinitionSnapshot definitions = exampleDefinitions();
+		checkEmptyAudienceCompletionEdge(definitions);
 		WorldStateV3 initial = state();
 		var opened = ReadinessAuthority.open(
 			initial,
@@ -67,7 +73,13 @@ public final class ReadinessAuthoritySelfCheck {
 			new Uuids(100)::next,
 			100L
 		);
-		check(opened.successful(), "readiness must open from the registered ready phase");
+		check(
+			opened.successful(),
+			"readiness must open from the registered ready phase: "
+				+ opened.code()
+				+ " "
+				+ opened.message()
+		);
 		WorldStateV3 ready = opened.nextState().orElseThrow();
 		JsonElement encoded = WorldStateV3.CODEC.encodeStart(JsonOps.INSTANCE, ready)
 			.result()
@@ -78,6 +90,7 @@ public final class ReadinessAuthoritySelfCheck {
 		check(runtime.totalCount() == 2, "all non-host ready_participant members must enter the denominator");
 		check(runtime.members().containsKey(PLAYER), "runner must enter readiness");
 		check(runtime.members().containsKey(HUNTER_PLAYER), "hunter must enter shared readiness");
+		checkFrozenReadinessHookEnvelope(ready, definitions);
 		check(
 			!TimelineApprovalAuthority.approve(
 				ready,
@@ -89,6 +102,7 @@ public final class ReadinessAuthoritySelfCheck {
 
 		WorldStateV3 runnerReady = submit(ready, PLAYER, 0L, 110L);
 		check(!ReadinessAuthority.complete(runnerReady), "one waiting hunter must keep readiness active");
+		checkReconcileLastIncompleteCompletionEdge(runnerReady);
 		WorldStateV3 completed = submit(runnerReady, HUNTER_PLAYER, 0L, 111L);
 		check(ReadinessAuthority.complete(completed), "runner and hunter confirmations must complete readiness");
 		WorldStateV3 approvalState = completed.withCore(
@@ -160,6 +174,142 @@ public final class ReadinessAuthoritySelfCheck {
 			"spectator must be removed while the completed hunter remains in the denominator"
 		);
 		System.out.println("READINESS_AUTHORITY_SELF_CHECK=PASS");
+	}
+
+	private static void checkEmptyAudienceCompletionEdge(
+		final DefinitionSnapshot definitions
+	) {
+		WorldStateV3 base = state();
+		Map<UUID, PlayerRecord> spectators = new LinkedHashMap<>();
+		base.core().players().forEach((id, player) ->
+			spectators.put(id, copyRole(player, SPECTATOR))
+		);
+		WorldStateV3 initial = base.withCore(base.core().withPlayers(spectators));
+		var opened = ReadinessAuthority.open(
+			initial,
+			definitions,
+			HOST,
+			Set.of(HOST, PLAYER, HUNTER_PLAYER),
+			uuid(6),
+			new Uuids(600)::next,
+			90L
+		);
+		check(opened.successful(), "zero-member readiness must still open successfully");
+		WorldStateV3 completed = opened.nextState().orElseThrow();
+		check(
+			ReadinessAuthority.complete(completed),
+			"zero-member readiness must complete in its opening transaction"
+		);
+		check(
+			MessageHookDispatchContract.readinessCompletionEvent(
+				ReadinessAuthority.complete(initial),
+				ReadinessAuthority.complete(completed)
+			).isPresent(),
+			"zero-member opening must expose one readiness COMPLETE rising edge"
+		);
+	}
+
+	private static void checkReconcileLastIncompleteCompletionEdge(
+		final WorldStateV3 runnerReady
+	) {
+		Map<UUID, PlayerRecord> players = new LinkedHashMap<>(runnerReady.core().players());
+		players.put(HUNTER_PLAYER, copyRole(players.get(HUNTER_PLAYER), SPECTATOR));
+		WorldStateV3 spectator = runnerReady.withCore(runnerReady.core().withPlayers(players));
+		var reconciled = ReadinessAuthority.reconcilePlayer(
+			spectator,
+			HUNTER_PLAYER,
+			true,
+			uuid(601),
+			109L,
+			"last incomplete member became spectator"
+		);
+		check(
+			reconciled.successful() && reconciled.changed(),
+			"removing the last incomplete member must reconcile readiness"
+		);
+		WorldStateV3 completed = reconciled.state();
+		check(
+			ReadinessAuthority.complete(completed),
+			"removing the last incomplete member must complete the remaining denominator"
+		);
+		check(
+			MessageHookDispatchContract.readinessCompletionEvent(
+				ReadinessAuthority.complete(runnerReady),
+				ReadinessAuthority.complete(completed)
+			).isPresent(),
+			"last-member reconciliation must expose one readiness COMPLETE rising edge"
+		);
+	}
+
+	private static void checkFrozenReadinessHookEnvelope(
+		final WorldStateV3 ready,
+		final DefinitionSnapshot definitions
+	) {
+		var readiness = ready.readiness().orElseThrow();
+		var frozen = readiness.flow().runtime().executionSnapshot();
+		JsonObject gameDocument = frozenGameDocument(frozen);
+		JsonObject hookEnvelope = gameDocument.getAsJsonObject("readiness");
+		check(hookEnvelope != null, "readiness flow snapshot must retain its readiness definition");
+		check(
+			hookEnvelope.get("action").getAsString()
+				.equals(readiness.flow().identity().sourceActionId().toString()),
+			"frozen readiness definition must belong to the snapshot's source action"
+		);
+		check(
+			hookEnvelope.getAsJsonObject("message_hooks").has("complete"),
+			"frozen readiness envelope must retain the COMPLETE hook registration"
+		);
+
+		var restored = ExecutionSnapshotCompiler.restore(
+			readiness.flow().identity().flowId(),
+			frozen
+		);
+		check(restored.success(), "readiness hook snapshot must restore: " + restored.message());
+		var completeHook = restored.snapshot().orElseThrow().games().get(GAME)
+			.readiness().orElseThrow()
+			.messageHooks().get(MessageHookEvent.COMPLETE)
+			.orElseThrow(() -> new AssertionError(
+				"restored readiness definition must expose the frozen COMPLETE hook"
+			));
+		check(
+			completeHook.cue().equals(id("lifecycle/progress_notice"))
+				&& "『玩家准备』全员就绪".equals(completeHook.arguments().get("message")),
+			"restored COMPLETE hook must preserve its cue and fixed data-pack arguments"
+		);
+		var declared = definitions.games().get(GAME).readiness().orElseThrow();
+		check(
+			readiness.disconnectInvalidates() == declared.disconnectInvalidates()
+				&& readiness.hostCanForce() == declared.hostCanForce(),
+			"runtime readiness controls must remain owned by the persisted readiness instance"
+		);
+
+		var ordinary = ExecutionSnapshotCompiler.freeze(
+			definitions,
+			definitions.flows().get(id("general_tutorial")),
+			definitions.panelActions().get(id("start_general_initialization"))
+		);
+		check(
+			ordinary.success(),
+			"ordinary forced flow must still freeze without readiness ownership: "
+				+ ordinary.code()
+				+ " "
+				+ ordinary.message()
+		);
+		check(
+			!frozenGameDocument(ordinary.frozen().orElseThrow()).has("readiness"),
+			"ordinary forced-flow snapshots must not inherit readiness lifecycle metadata"
+		);
+	}
+
+	private static JsonObject frozenGameDocument(
+		final WorldStateV2.ExecutionSnapshot snapshot
+	) {
+		return snapshot.supportingDefinitions().stream()
+			.filter(source -> source.type() == FrozenDefinitionType.GAME)
+			.filter(source -> source.id().equals(GAME))
+			.findFirst()
+			.map(source -> JsonParser.parseString(source.document().normalizedJson()).getAsJsonObject())
+			.orElseThrow(() -> new AssertionError("execution snapshot lost its frozen game document"));
 	}
 
 	private static WorldStateV3 submit(

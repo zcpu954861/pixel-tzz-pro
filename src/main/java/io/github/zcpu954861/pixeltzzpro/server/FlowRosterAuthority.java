@@ -1219,7 +1219,13 @@ public final class FlowRosterAuthority {
 			case TEAM -> DefinitionType.TEAM;
 			case LIFE_STATE -> DefinitionType.LIFE_STATE;
 			case PHASE -> DefinitionType.PHASE;
+			case TASK -> DefinitionType.TASK;
+			case FLOW -> DefinitionType.FLOW;
 			case PANEL_ACTION -> DefinitionType.PANEL_ACTION;
+			case PLAYER_DATA -> DefinitionType.PLAYER_DATA;
+			case PLAYER_ACTION -> DefinitionType.PLAYER_ACTION;
+			case TEXT_EFFECT -> DefinitionType.TEXT_EFFECT;
+			case MESSAGE_CUE -> DefinitionType.MESSAGE_CUE;
 		};
 	}
 

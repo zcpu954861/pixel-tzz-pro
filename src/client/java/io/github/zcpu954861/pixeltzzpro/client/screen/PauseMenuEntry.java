@@ -15,7 +15,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * Adds one non-invasive entry to the vanilla pause screen; no PauseScreen mixin is required.
+ * Adds the context-sensitive terminal entry to the vanilla pause screen; local presentation
+ * preferences live under the vanilla Options screen instead of competing with gameplay actions.
  */
 public final class PauseMenuEntry {
 	private static final int BRAND_GOLD = 0xF4C95D;
@@ -68,7 +69,8 @@ public final class PauseMenuEntry {
 			}
 
 			// ponytail: another mod changed the vanilla grid; retain a usable fallback instead of guessing its layout.
-			Button entry = buildEntry(client, screen, Math.max(8, scaledWidth - 128), 8, 120);
+			int entryX = Math.max(8, scaledWidth - 128);
+			Button entry = buildEntry(client, screen, entryX, 8, 120);
 			widgets.add(entry);
 			registerLiveRefresh(screen, entry);
 		});

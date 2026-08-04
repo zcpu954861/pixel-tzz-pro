@@ -12,7 +12,15 @@
     "phase": "pixel_tzz:ready",
     "action": "pixel_tzz:open_player_readiness",
     "disconnect_invalidates": true,
-    "host_can_force": false
+    "host_can_force": false,
+    "message_hooks": {
+      "complete": {
+        "cue": "pixel_tzz:lifecycle/progress_notice",
+        "arguments": {
+          "message": "『玩家准备』全员就绪"
+        }
+      }
+    }
   },
   "task_timeline": {
     "initial_task": "pixel_tzz:acceptance/warmup",
@@ -37,5 +45,31 @@
     "default_page": "pixel_tzz:player/home",
     "history_enabled": true,
     "history_source": "tasks"
+  },
+  "message_hooks": {
+    "start": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "『全员逃走中 · 2D 验收夹具』正式开始"
+      }
+    },
+    "pause": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "『全员逃走中 · 2D 验收夹具』已暂停"
+      }
+    },
+    "resume": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "『全员逃走中 · 2D 验收夹具』已继续"
+      }
+    },
+    "end": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "『全员逃走中 · 2D 验收夹具』已结束"
+      }
+    }
   }
 }

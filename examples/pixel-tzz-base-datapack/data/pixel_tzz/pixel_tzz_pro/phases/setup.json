@@ -4,6 +4,20 @@
   "name": {
     "text": "开局设置"
   },
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「开局设置」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「开局设置」"
+      }
+    }
+  },
   "transitions": [
     "pixel_tzz:initializing"
   ]

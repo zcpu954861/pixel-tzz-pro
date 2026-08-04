@@ -31,6 +31,8 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatisticValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.MessageHistoryRecord;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -219,6 +221,7 @@ public final class PlayerTerminalProjectorSelfCheck {
 			List.of(),
 			Optional.empty()
 		);
+		checkMessageHistoryProjection(reloadedDefinitions, running);
 		Projection runnerProjection = project(
 			reloadedDefinitions,
 			running,
@@ -1109,6 +1112,169 @@ public final class PlayerTerminalProjectorSelfCheck {
 				&& !viewer.has("life_state")
 				&& !viewer.has("life_state_name"),
 			"an uninitialized viewer must not leak role or life-state identity even when both player-data grants are eligible"
+		);
+	}
+
+	private static void checkMessageHistoryProjection(
+		final DefinitionSnapshot liveDefinitions,
+		final WorldStateV3 running
+	) {
+		UUID firstInstance = UUID.nameUUIDFromBytes(
+			"history-first".getBytes(StandardCharsets.UTF_8)
+		);
+		UUID latestInstance = UUID.nameUUIDFromBytes(
+			"history-latest".getBytes(StandardCharsets.UTF_8)
+		);
+		MessageHistoryRecord first = new MessageHistoryRecord(
+			GAME_INSTANCE,
+			RUNNER_ID,
+			Identifier.parse("test:opening_notice"),
+			firstInstance,
+			Optional.of(TASK),
+			105L,
+			"『较早消息』",
+			"这是只为逃走者冻结的较早正文。",
+			Map.of("target_name", "Runner"),
+			false
+		);
+		MessageHistoryRecord latest = new MessageHistoryRecord(
+			GAME_INSTANCE,
+			RUNNER_ID,
+			Identifier.parse("test:latest_notice"),
+			latestInstance,
+			Optional.of(TASK),
+			130L,
+			"『最新消息』",
+			"这是默认选中的静态正文。",
+			Map.of("live_score", "7"),
+			true
+		);
+		MessageHistoryRecord otherViewer = new MessageHistoryRecord(
+			GAME_INSTANCE,
+			HUNTER_ID,
+			Identifier.parse("test:hunter_secret"),
+			UUID.nameUUIDFromBytes("hunter-secret".getBytes(StandardCharsets.UTF_8)),
+			Optional.empty(),
+			125L,
+			"猎人私有标题",
+			"逃走者绝不能看到这段正文",
+			Map.of("secret", "hidden"),
+			false
+		);
+		WorldStateV4 root = new WorldStateV4(
+			WorldStateV4.SCHEMA_VERSION,
+			running,
+			List.of(),
+			List.of(),
+			List.of(otherViewer, latest, first)
+		);
+		ViewerSnapshot viewer = new ViewerSnapshot(RUNNER_ID, "Runner", true, false);
+		SessionMetadata session = new SessionMetadata(
+			UUID.nameUUIDFromBytes("history-session".getBytes(StandardCharsets.UTF_8)),
+			UUID.nameUUIDFromBytes("history-page".getBytes(StandardCharsets.UTF_8)),
+			HISTORY_DETAIL,
+			Optional.empty(),
+			10L,
+			running.stateRevision(),
+			true
+		);
+		Projection projection = PlayerTerminalProjector.projectDetached(
+			liveDefinitions,
+			root,
+			viewer,
+			session,
+			PlayerTerminalProjector.PredicateGate.allowAll()
+		);
+		JsonObject projected = document(projection);
+		JsonArray items = projected.getAsJsonObject("history").getAsJsonArray("items");
+		check(
+			items.asList().stream().filter(value ->
+				value.getAsJsonObject().get("source").getAsString().equals("message")
+			).count() == 2
+				&& items.asList().stream().anyMatch(value ->
+					value.getAsJsonObject().get("source").getAsString().equals("event")
+				)
+				&& historyIsChronological(items),
+			"V4 projection must merge the authorized viewer's message records with task/event history"
+		);
+		check(
+			items.asList().stream().noneMatch(value ->
+				value.getAsJsonObject().toString().contains("猎人私有标题")
+					|| value.getAsJsonObject().toString().contains("hidden")
+			),
+			"a viewer projection must never contain another recipient's resolved message history"
+		);
+		JsonObject detail = projected.getAsJsonObject("detail");
+		check(
+			detail.get("exists").getAsBoolean()
+				&& detail.get("status").getAsString().equals("defaulted")
+				&& detail.get("title").getAsString().equals("『最新消息』")
+				&& detail.getAsJsonObject("saved_fields").get("live_score").getAsString().equals("7")
+				&& detail.get("replay_allowed").getAsBoolean(),
+			"an empty selection must default to the latest authorized message on the current history page"
+		);
+		String recordKey = detail.get("id").getAsString();
+		check(
+			PlayerTerminalProjector.resolveHistoryDetailDetached(
+				liveDefinitions,
+				root,
+				viewer,
+				session,
+				PlayerTerminalProjector.PredicateGate.allowAll(),
+				recordKey
+			).map(PlayerTerminalProjector.HistoryDetailTarget::pageId)
+				.filter(HISTORY_DETAIL::equals)
+				.isPresent(),
+			"message history details must route back into the current authorized history page"
+		);
+		check(
+			PlayerTerminalProjector.resolveMessageHistoryReplayDetached(
+				liveDefinitions,
+				root,
+				viewer,
+				session,
+				PlayerTerminalProjector.PredicateGate.allowAll(),
+				recordKey
+			).filter(latest::equals).isPresent(),
+			"an explicitly replayable message record must resolve only for its authorized viewer and current game"
+		);
+		String nonReplayRecordKey = items.asList()
+			.stream()
+			.map(JsonElement::getAsJsonObject)
+			.filter(value ->
+				value.get("title").getAsString().equals("『较早消息』")
+			)
+			.map(value -> value.get("id").getAsString())
+			.findFirst()
+			.orElseThrow();
+		check(
+			PlayerTerminalProjector.resolveMessageHistoryReplayDetached(
+				liveDefinitions,
+				root,
+				viewer,
+				session,
+				PlayerTerminalProjector.PredicateGate.allowAll(),
+				nonReplayRecordKey
+			).isEmpty(),
+			"a visible history record without replay_allowed must remain non-replayable"
+		);
+
+		JsonObject legacy = document(
+			PlayerTerminalProjector.projectDetached(
+				liveDefinitions,
+				running,
+				viewer,
+				session,
+				PlayerTerminalProjector.PredicateGate.allowAll()
+			)
+		);
+		check(
+			legacy.getAsJsonObject("history")
+				.getAsJsonArray("items")
+				.asList()
+				.stream()
+				.noneMatch(value -> value.getAsJsonObject().get("source").getAsString().equals("message")),
+			"the retained V3 overload must not invent or inherit V4 message history"
 		);
 	}
 

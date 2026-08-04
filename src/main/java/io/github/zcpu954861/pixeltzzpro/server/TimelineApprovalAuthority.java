@@ -42,6 +42,9 @@ import net.minecraft.resources.Identifier;
  * containing the frozen first task and a persisted start-phase transition trigger.
  */
 public final class TimelineApprovalAuthority {
+	private static final String REQUIRED_MESSAGE_RESOURCE_BLOCKED =
+		"本游戏存在不可用的必需消息资源，修复数据包并重新加载后才能批准开局。";
+
 	private TimelineApprovalAuthority() {
 	}
 
@@ -188,6 +191,12 @@ public final class TimelineApprovalAuthority {
 			}
 		}
 
+		if (definitions.messageCatalog().startBlockedGames().contains(gameId)) {
+			return ApprovalResult.rejected(
+				OperationCode.RESOURCE_BLOCKED,
+				REQUIRED_MESSAGE_RESOURCE_BLOCKED
+			);
+		}
 		TimelineSnapshotCompiler.FreezeResult freeze =
 			TimelineSnapshotCompiler.freeze(definitions, game);
 		if (!freeze.success()) {

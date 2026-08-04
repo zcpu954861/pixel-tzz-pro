@@ -5,6 +5,20 @@
     "text": "任务验收"
   },
   "on_enter": "pixel_tzz:acceptance_2d/phase/running_enter",
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「任务验收」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「任务验收」"
+      }
+    }
+  },
   "transitions": [
     "pixel_tzz:ended"
   ]

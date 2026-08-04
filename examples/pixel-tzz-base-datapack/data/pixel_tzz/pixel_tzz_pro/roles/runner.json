@@ -8,6 +8,20 @@
     "text": "本轮游戏的普通参与者。"
   },
   "initialization_flow": "pixel_tzz:general_tutorial",
+  "message_hooks": {
+    "initialization": {
+      "cue": "pixel_tzz:lifecycle/player_notice",
+      "arguments": {
+        "message": "「逃走者」身份初始化完成"
+      }
+    },
+    "role_changed": {
+      "cue": "pixel_tzz:lifecycle/player_notice",
+      "arguments": {
+        "message": "身份已更新为「逃走者」"
+      }
+    }
+  },
   "tags": [
     "pixel_tzz:general_initialization",
     "pixel_tzz:ready_participant",

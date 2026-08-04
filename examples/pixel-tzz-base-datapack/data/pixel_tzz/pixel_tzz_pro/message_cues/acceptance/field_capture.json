@@ -1,0 +1,384 @@
+{
+  "format_version": 1,
+  "game": "pixel_tzz:main",
+  "required": true,
+  "policies": {
+    "timing": {
+      "clock": "presentation_time",
+      "synchronization": "synchronized",
+      "synchronized_wait": "5t",
+      "late_arrival": "seek",
+      "synchronization_timeout": "start_available"
+    },
+    "audience": {
+      "target": {
+        "source": "call_targets",
+        "online_only": true
+      },
+      "evolution": "snapshot"
+    },
+    "concurrency": {
+      "duplicate": "ignore_while_active",
+      "dedupe_targets": true,
+      "priority": 20,
+      "groups": [
+        "acceptance_capture"
+      ]
+    },
+    "accessibility": {
+      "allow_manual_complete": true,
+      "reduced_motion": "simplified"
+    },
+    "control_groups": [
+      "acceptance_capture"
+    ],
+    "capture": "on_display",
+    "default_conflict": "queue"
+  },
+  "parameters": {
+    "target": {
+      "type": "player",
+      "required": true,
+      "sources": [
+        "call_argument",
+        "target"
+      ],
+      "on_error": "fail"
+    },
+    "count": {
+      "type": "integer",
+      "default": 0
+    },
+    "label": {
+      "type": "component",
+      "default": {
+        "text": "验收演出"
+      }
+    }
+  },
+  "fields": {
+    "target_name": {
+      "capture": "on_display",
+      "source": {
+        "argument": "target"
+      },
+      "fallback": {
+        "text": "未知玩家",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 32,
+        "estimated_width": 192,
+        "max_lines": 1
+      }
+    },
+    "label_value": {
+      "capture": "on_display",
+      "source": {
+        "argument": "label"
+      },
+      "fallback": {
+        "text": "验收演出",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 96,
+        "estimated_width": 420,
+        "max_lines": 2
+      }
+    },
+    "score_now": {
+      "capture": "on_first_field",
+      "source": {
+        "component": {
+          "score": {
+            "name": "@s",
+            "objective": "pixel_tzz_demo"
+          }
+        }
+      },
+      "fallback": {
+        "text": "0"
+      },
+      "reservation": {
+        "max_graphemes": 12,
+        "estimated_width": 72,
+        "max_lines": 1
+      }
+    },
+    "storage_note": {
+      "capture": "per_field",
+      "source": {
+        "component": {
+          "nbt": "message",
+          "storage": "pixel_tzz:acceptance_3b",
+          "interpret": false
+        }
+      },
+      "fallback": {
+        "text": "暂无记录",
+        "color": "gray"
+      },
+      "reservation": {
+        "max_graphemes": 96,
+        "estimated_width": 360,
+        "max_lines": 2
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "chat_intro",
+      "type": "text",
+      "at": "0t",
+      "channel": "chat",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "speaker": {
+          "kind": "system"
+        },
+        "character_sound_role": "primary",
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "text": "『动态文本』",
+                "color": "aqua",
+                "bold": true,
+                "hover_event": {
+                  "action": "show_text",
+                  "value": {
+                    "text": "V3B 富文本与动态字段验收",
+                    "color": "yellow"
+                  }
+                },
+                "click_event": {
+                  "action": "suggest_command",
+                  "command": "/help"
+                },
+                "insertion": "pixel_tzz:acceptance/field_capture"
+              }
+            },
+            {
+              "component": {
+                "text": " 目标：",
+                "color": "white"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "target_name"
+              }
+            },
+            {
+              "component": {
+                "text": "，计分：",
+                "color": "white"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "score_now"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "title_status",
+      "type": "text",
+      "at": "250ms",
+      "channel": "title",
+      "content": {
+        "effect": "pixel_tzz:decode_notice",
+        "hold": "1.5s",
+        "layout": {
+          "alignment": "center",
+          "offset_y": -12,
+          "max_width": 420,
+          "max_lines": 2,
+          "line_spacing": 1.0,
+          "overflow": "scale"
+        },
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "translate": "multiplayer.player.joined",
+                "with": [
+                  {
+                    "text": "Pixel TZZ"
+                  }
+                ],
+                "color": "green"
+              }
+            },
+            {
+              "component": {
+                "text": " · ",
+                "color": "dark_gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "label_value"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "subtitle_live",
+      "type": "text",
+      "at": "500ms",
+      "channel": "subtitle",
+      "content": {
+        "effect": "pixel_tzz:acceptance",
+        "hold": "2s",
+        "character_sound_role": "muted",
+        "layout": {
+          "alignment": "center",
+          "offset_y": 10,
+          "max_width": 360,
+          "max_lines": 2,
+          "line_spacing": 1.15,
+          "overflow": "ellipsis"
+        },
+        "fields": {
+          "nearest_player": {
+            "capture": "per_field",
+            "source": {
+              "component": {
+                "selector": "@p"
+              }
+            },
+            "fallback": {
+              "text": "附近无人",
+              "color": "gray"
+            },
+            "reservation": {
+              "max_graphemes": 32,
+              "estimated_width": 192,
+              "max_lines": 1
+            }
+          },
+          "call_label": {
+            "capture": "on_first_field",
+            "source": {
+              "argument": "label"
+            },
+            "fallback": {
+              "text": "演出"
+            },
+            "reservation": {
+              "max_graphemes": 96,
+              "estimated_width": 360,
+              "max_lines": 2
+            }
+          }
+        },
+        "text": {
+          "parts": [
+            {
+              "field": {
+                "scope": "content",
+                "id": "call_label"
+              }
+            },
+            {
+              "component": {
+                "text": " · ",
+                "color": "dark_gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "content",
+                "id": "nearest_player"
+              }
+            },
+            {
+              "component": {
+                "text": " · ",
+                "color": "dark_gray"
+              }
+            },
+            {
+              "field": {
+                "scope": "cue",
+                "id": "storage_note"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "action_hint",
+      "type": "text",
+      "at": "1s",
+      "channel": "action_bar",
+      "conflict": "replace",
+      "content": {
+        "hold": "2s",
+        "layout": {
+          "alignment": "right",
+          "offset_x": -12,
+          "offset_y": -4,
+          "max_width": 300,
+          "max_lines": 1,
+          "line_spacing": 1.0,
+          "overflow": "ellipsis"
+        },
+        "text": {
+          "parts": [
+            {
+              "component": {
+                "text": "按 ",
+                "color": "gray"
+              }
+            },
+            {
+              "component": {
+                "keybind": "key.inventory",
+                "color": "yellow"
+              }
+            },
+            {
+              "component": {
+                "text": " 查看物品栏",
+                "color": "gray"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "timeline_sound",
+      "type": "sound",
+      "at": "1.25s",
+      "sound": "minecraft:block.note_block.pling",
+      "category": "ui",
+      "volume": 0.7,
+      "pitch": 1.2
+    },
+    {
+      "id": "timeline_callback",
+      "type": "callback",
+      "schedule": {
+        "type": "cue_event",
+        "event": "all_complete",
+        "offset": "1t"
+      },
+      "function": "pixel_tzz:acceptance_3b/message_complete",
+      "execution": "as_server",
+      "location": "origin"
+    }
+  ]
+}

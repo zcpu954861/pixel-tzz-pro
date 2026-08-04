@@ -1,6 +1,8 @@
 package io.github.zcpu954861.pixeltzzpro;
 
 import io.github.zcpu954861.pixeltzzpro.network.NetworkPayloads;
+import io.github.zcpu954861.pixeltzzpro.server.MessageCommands;
+import io.github.zcpu954861.pixeltzzpro.server.MessageServerRuntime;
 import io.github.zcpu954861.pixeltzzpro.server.PixelTzzServerRuntime;
 import io.github.zcpu954861.pixeltzzpro.server.TimelineCommands;
 import io.github.zcpu954861.pixeltzzpro.server.TimelineServerRuntime;
@@ -19,6 +21,8 @@ public final class PixelTzzPro implements ModInitializer {
 	@Override
 	public void onInitialize() {
 		NetworkPayloads.register();
+		MessageServerRuntime.register();
+		MessageCommands.register();
 		PixelTzzServerRuntime.register();
 		TimelineServerRuntime.register();
 		TimelineCommands.register();

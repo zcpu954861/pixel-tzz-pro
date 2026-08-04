@@ -1,0 +1,30 @@
+{
+  "format_version": 1,
+  "typewriter": {
+    "character_interval": "45ms",
+    "cursor": {
+      "enabled": true,
+      "glyph": "█",
+      "color": "#77E6FF",
+      "blink": true,
+      "blink_period": "400ms"
+    },
+    "fresh_color": "#FFF3A6",
+    "restore_after_characters": 3,
+    "restore_mode": "gradient"
+  },
+  "fade": {
+    "enter": "150ms",
+    "hold": "1.5s",
+    "exit": "300ms"
+  },
+  "character_sound": {
+    "sound": "minecraft:block.note_block.hat",
+    "category": "ui",
+    "every_characters": 2,
+    "skip_whitespace": true,
+    "skip_punctuation": true,
+    "volume": 0.45,
+    "pitch": 1.15
+  }
+}

@@ -74,7 +74,8 @@ public record TerminalIntentC2SPayload(
 			return bounded;
 		});
 		boolean action = intent == Intent.ACTION;
-		boolean historyDetail = intent == Intent.HISTORY_DETAIL;
+		boolean historyRecordIntent =
+			intent == Intent.HISTORY_DETAIL || intent == Intent.HISTORY_REPLAY;
 		if (
 			action
 				!= (
@@ -82,7 +83,7 @@ public record TerminalIntentC2SPayload(
 						&& actionId.isPresent()
 						&& historyRecordKey.isEmpty()
 				)
-				|| historyDetail
+				|| historyRecordIntent
 					!= (
 						nodeId.isPresent()
 							&& actionId.isEmpty()
@@ -90,7 +91,7 @@ public record TerminalIntentC2SPayload(
 					)
 				|| (
 					!action
-						&& !historyDetail
+						&& !historyRecordIntent
 						&& (
 							nodeId.isPresent()
 								|| actionId.isPresent()
@@ -99,7 +100,7 @@ public record TerminalIntentC2SPayload(
 				)
 		) {
 			throw new IllegalArgumentException(
-				"ACTION requires nodeId/actionId; HISTORY_DETAIL requires nodeId/historyRecordKey; BACK and REFRESH forbid all three"
+				"ACTION requires nodeId/actionId; history record intents require nodeId/historyRecordKey; BACK and REFRESH forbid all three"
 			);
 		}
 	}
@@ -213,6 +214,7 @@ public record TerminalIntentC2SPayload(
 		BACK("back"),
 		ACTION("action"),
 		HISTORY_DETAIL("history_detail"),
+		HISTORY_REPLAY("history_replay"),
 		REFRESH("refresh");
 
 		private final String serializedName;

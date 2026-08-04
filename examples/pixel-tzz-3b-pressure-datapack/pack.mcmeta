@@ -1,0 +1,10 @@
+{
+  "pack": {
+    "description": {
+      "text": "Pixel TZZ Pro 3B 资源优先级与复杂度压力覆盖包",
+      "color": "aqua"
+    },
+    "min_format": [107, 1],
+    "max_format": [107, 1]
+  }
+}

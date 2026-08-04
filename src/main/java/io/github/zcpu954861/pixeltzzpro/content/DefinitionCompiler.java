@@ -65,6 +65,45 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TargetSelection;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TeamDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.TransitionPhaseOperation;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.WaitPlayersNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookReference;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AfterNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.ArgumentSource;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AssetSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AudienceEvolution;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AudienceSelector;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AudienceSource;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.AudienceSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.BindingSource;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.CallbackNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.CharacterSoundPatch;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.CharacterSoundRole;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.CharacterSoundSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.ComponentPart;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.ConditionSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.CueNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.DynamicFieldDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.EffectUse;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.FieldPart;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.FieldReference;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.HistorySpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.HistoryTaskSource;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.IdentifierKind;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.LocalizedTemplate;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.MessageCueDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.MissingAssetMode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.ParameterDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.ParameterType;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.PlayerDataParameterSource;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.SpeakerKind;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.SoundNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.StaticComponentPart;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.StaticFallbackSpec;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.TextEffectDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.TextNode;
+import io.github.zcpu954861.pixeltzzpro.content.MessageDefinitions.TextVariant;
+import io.github.zcpu954861.pixeltzzpro.message.GraphemeClusters;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.AuditPolicy;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.CooldownScope;
 import io.github.zcpu954861.pixeltzzpro.content.PlayerTerminalDefinitions.ExecutionContext;
@@ -164,7 +203,9 @@ import java.util.regex.Pattern;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.resources.Identifier;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DisabledMessageDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.DocumentKey;
+import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.MessageCatalog;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot.SourceDocument;
 
 /**
@@ -199,6 +240,40 @@ public final class DefinitionCompiler {
 	public static final int MAX_DIAGNOSTIC_DETAILS = 100;
 	private static final int MAX_SHORT_STRING_LENGTH = 1_024;
 	private static final Pattern LOCAL_ID = Pattern.compile("[a-z0-9_.-]+");
+	private static final Pattern MESSAGE_HOOK_ARGUMENT = Pattern.compile("[a-z][a-z0-9_.-]{0,63}");
+	private static final Pattern MESSAGE_HOOK_DURATION = Pattern.compile(
+		"[0-9]+(?:\\.[0-9]+)?(?:ns|us|ms|s|t)"
+	);
+	private static final Set<MessageHookEvent> GAME_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.START,
+		MessageHookEvent.PAUSE,
+		MessageHookEvent.RESUME,
+		MessageHookEvent.END
+	);
+	private static final Set<MessageHookEvent> PHASE_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.ENTER,
+		MessageHookEvent.EXIT
+	);
+	private static final Set<MessageHookEvent> TASK_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.START,
+		MessageHookEvent.COMPLETE,
+		MessageHookEvent.INTERRUPT
+	);
+	private static final Set<MessageHookEvent> TASK_EVENT_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.TRIGGER
+	);
+	private static final Set<MessageHookEvent> ROLE_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.INITIALIZATION,
+		MessageHookEvent.ROLE_CHANGED
+	);
+	private static final Set<MessageHookEvent> READINESS_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.COMPLETE
+	);
+	private static final Set<MessageHookEvent> FLOW_MESSAGE_HOOKS = Set.of(
+		MessageHookEvent.START,
+		MessageHookEvent.PLAYER_COMPLETE,
+		MessageHookEvent.ALL_COMPLETE
+	);
 	private static final Pattern CALLBACK_MACRO = Pattern.compile("[a-z][a-z0-9_]{0,31}");
 	private static final Pattern HEX_COLOR = Pattern.compile("#[0-9a-fA-F]{6}");
 	private static final Set<String> BUILT_IN_UI_STYLES = Set.of(
@@ -237,7 +312,9 @@ public final class DefinitionCompiler {
 		PLAYER_DATA("player_data"),
 		PLAYER_ACTION("player_actions"),
 		PAGE("pages"),
-		THEME("themes");
+		THEME("themes"),
+		TEXT_EFFECT("text_effects"),
+		MESSAGE_CUE("message_cues");
 
 		private final String directory;
 
@@ -264,14 +341,43 @@ public final class DefinitionCompiler {
 		Identifier id,
 		Identifier resource,
 		String sourcePack,
-		String json
+		String json,
+		Optional<MessageEnvelopeHint> messageEnvelopeHint
 	) {
+		public Source(
+			final DefinitionType type,
+			final Identifier id,
+			final Identifier resource,
+			final String sourcePack,
+			final String json
+		) {
+			this(type, id, resource, sourcePack, json, Optional.empty());
+		}
+
 		public Source {
 			Objects.requireNonNull(type, "type");
 			Objects.requireNonNull(id, "id");
 			Objects.requireNonNull(resource, "resource");
 			sourcePack = sourcePack == null ? "unknown" : sourcePack;
 			Objects.requireNonNull(json, "json");
+			messageEnvelopeHint = messageEnvelopeHint == null
+				? Optional.empty()
+				: messageEnvelopeHint;
+		}
+	}
+
+	/**
+	 * Strictly verified top-level cue fields retained while an oversized document is streamed.
+	 *
+	 * <p>The hint is trusted only when the registry consumed one complete strict JSON document,
+	 * rejected duplicate keys at every depth, and verified both envelope field types.
+	 */
+	public record MessageEnvelopeHint(
+		boolean required,
+		Optional<Identifier> game
+	) {
+		public MessageEnvelopeHint {
+			game = game == null ? Optional.empty() : game;
 		}
 	}
 
@@ -351,6 +457,13 @@ public final class DefinitionCompiler {
 		private final Map<Identifier, PlayerActionDefinition> playerActions = new LinkedHashMap<>();
 		private final Map<Identifier, PageDefinition> pages = new LinkedHashMap<>();
 		private final Map<Identifier, ThemeDefinition> themes = new LinkedHashMap<>();
+		private final Map<Identifier, TextEffectDefinition> textEffects = new LinkedHashMap<>();
+		private final Map<Identifier, MessageCueDefinition> messageCues = new LinkedHashMap<>();
+		private final Map<DocumentKey, DisabledMessageDefinition> disabledMessages = new LinkedHashMap<>();
+		private final Set<Identifier> startBlockedGames = new LinkedHashSet<>();
+		private final Set<DocumentKey> skippedMessages = new HashSet<>();
+		private final Set<DocumentKey> multiGameMessageFailures = new HashSet<>();
+		private final Map<DocumentKey, Set<Identifier>> duplicateMessageGames = new HashMap<>();
 		private final Map<DocumentKey, SourceDocument> sourceDocuments = new LinkedHashMap<>();
 
 		private Compiler(final Set<Identifier> functions, final Set<Identifier> predicates) {
@@ -372,15 +485,20 @@ public final class DefinitionCompiler {
 			long totalCharacters = 0L;
 			for (Source source : sources) {
 				if (source.json().length() > MAX_DEFINITION_CHARACTERS) {
-					add(
-						source,
-						"RESOURCE_LIMIT",
-						"",
-						"definition exceeds " + MAX_DEFINITION_CHARACTERS + " characters"
-					);
-					return new Compilation(Optional.empty(), this.problems, this.problems.totalCount());
+					if (!isMessageDefinition(source.type())) {
+						add(
+							source,
+							"RESOURCE_LIMIT",
+							"",
+							"definition exceeds " + MAX_DEFINITION_CHARACTERS + " characters"
+						);
+						return new Compilation(Optional.empty(), this.problems, this.problems.totalCount());
+					}
 				}
-				totalCharacters += source.json().length();
+				totalCharacters += Math.min(
+					source.json().length(),
+					MAX_DEFINITION_CHARACTERS + 1L
+				);
 				if (totalCharacters > MAX_TOTAL_DEFINITION_CHARACTERS) {
 					add(
 						source,
@@ -390,12 +508,49 @@ public final class DefinitionCompiler {
 					);
 					return new Compilation(Optional.empty(), this.problems, this.problems.totalCount());
 				}
+				if (source.json().length() > MAX_DEFINITION_CHARACTERS) {
+					DocumentKey key = new DocumentKey(source.type(), source.id());
+					MessageIdentity identity = messageIdentity(source);
+					List<Problem> diagnostics = new ArrayList<>();
+					diagnostics.add(
+						messageProblem(
+							source,
+							"RESOURCE_LIMIT",
+							"",
+							"definition exceeds " + MAX_DEFINITION_CHARACTERS + " characters"
+						)
+					);
+					if (
+						source.type() == DefinitionType.MESSAGE_CUE
+							&& !identity.trusted()
+					) {
+						diagnostics.add(
+							messageProblem(
+								source,
+								"UNTRUSTED_ENVELOPE",
+								"",
+								"oversized cue envelope cannot be verified; treating it as optional"
+							)
+						);
+					}
+					disableMessage(
+						source,
+						identity,
+						diagnostics,
+						diagnostics.size()
+					);
+					this.skippedMessages.add(key);
+				}
 			}
 
 			for (Source source : sources) {
 				DefinitionKey key = new DefinitionKey(source.type(), source.id());
 				Source previous = this.origins.putIfAbsent(key, source);
 				if (previous != null) {
+					if (isMessageDefinition(source.type())) {
+						disableDuplicateMessage(previous, source);
+						continue;
+					}
 					add(
 						source,
 						"DUPLICATE_DEFINITION",
@@ -404,11 +559,17 @@ public final class DefinitionCompiler {
 					);
 					continue;
 				}
+				if (this.skippedMessages.contains(new DocumentKey(source.type(), source.id()))) {
+					continue;
+				}
 				parse(source);
 			}
 
 			if (this.problems.isEmpty()) {
 				validateReferences();
+			}
+			if (this.problems.isEmpty()) {
+				validateMessageReferences();
 			}
 			if (!this.problems.isEmpty()) {
 				return new Compilation(Optional.empty(), this.problems, this.problems.totalCount());
@@ -432,6 +593,12 @@ public final class DefinitionCompiler {
 						this.playerActions,
 						this.pages,
 						this.themes,
+						new MessageCatalog(
+							this.textEffects,
+							this.messageCues,
+							this.disabledMessages,
+							this.startBlockedGames
+						),
 						this.sourceDocuments,
 						this.functions,
 						this.predicates,
@@ -443,6 +610,10 @@ public final class DefinitionCompiler {
 		}
 
 		private void parse(final Source source) {
+			if (isMessageDefinition(source.type())) {
+				parseMessageDefinition(source);
+				return;
+			}
 			if (source.type() == DefinitionType.PAGE || source.type() == DefinitionType.THEME) {
 				parseUiDefinition(source);
 				return;
@@ -484,6 +655,9 @@ public final class DefinitionCompiler {
 				case PLAYER_DATA -> parsePlayerData(source, reader);
 				case PLAYER_ACTION -> parsePlayerAction(source, reader);
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
+				case TEXT_EFFECT, MESSAGE_CUE -> throw new IllegalStateException(
+					"message definitions use the shared message parser"
+				);
 			}
 			reader.finish();
 			String canonicalJson = canonical(root);
@@ -573,6 +747,2467 @@ public final class DefinitionCompiler {
 			}
 		}
 
+		private void parseMessageDefinition(final Source source) {
+			MessageIdentity declaredIdentity = messageIdentity(source);
+			storeMessageDocument(source, canonicalMessageSource(source));
+			if (source.type() == DefinitionType.TEXT_EFFECT) {
+				MessageDefinitionParser.ParseResult<TextEffectDefinition> result =
+					MessageDefinitionParser.parseTextEffect(source.id(), source.json());
+				List<Problem> diagnostics = messageProblems(source, result.issues());
+				if (!result.valid()) {
+					disableMessage(
+						source,
+						declaredIdentity,
+						diagnostics,
+						result.totalIssueCount()
+					);
+					return;
+				}
+				TextEffectDefinition effect = result.value().orElse(null);
+				if (effect == null) {
+					disableMessage(
+						source,
+						declaredIdentity,
+						List.of(
+							messageProblem(
+								source,
+								"INVALID_DEFINITION",
+								"",
+								"text effect parser returned no definition"
+							)
+						),
+						1
+					);
+					return;
+				}
+				this.textEffects.put(source.id(), effect);
+				storeMessageDocument(source, effect.canonicalDocument());
+				return;
+			}
+
+			MessageDefinitionParser.ParseResult<MessageCueDefinition> result =
+				MessageDefinitionParser.parseMessageCue(source.id(), source.json());
+			List<Problem> diagnostics = new ArrayList<>(
+				messageProblems(source, result.issues())
+			);
+			if (!declaredIdentity.trusted()) {
+				diagnostics.add(
+					messageProblem(
+						source,
+						"UNTRUSTED_ENVELOPE",
+						"",
+						"cue envelope cannot be verified; treating it as optional"
+					)
+				);
+			}
+			if (!result.valid()) {
+				disableMessage(
+					source,
+					declaredIdentity,
+					diagnostics,
+					result.totalIssueCount() + (declaredIdentity.trusted() ? 0 : 1)
+				);
+				return;
+			}
+			MessageCueDefinition cue = result.value().orElse(null);
+			if (cue == null) {
+				disableMessage(
+					source,
+					declaredIdentity,
+					List.of(
+						messageProblem(
+							source,
+							"INVALID_DEFINITION",
+							"",
+							"message cue parser returned no definition"
+						)
+					),
+					1
+				);
+				return;
+			}
+			this.messageCues.put(source.id(), cue);
+			storeMessageDocument(source, cue.canonicalDocument());
+		}
+
+		private void validateMessageReferences() {
+			for (MessageCueDefinition cue : List.copyOf(this.messageCues.values())) {
+				Source source = origin(DefinitionType.MESSAGE_CUE, cue.id());
+				MessageDiagnostics diagnostics = new MessageDiagnostics(source);
+				validateMessageGame(cue, diagnostics);
+				validateMessageContext(cue, diagnostics);
+				validateMessageAudience(
+					cue.policies().audience().audience(),
+					"/policies/audience/target",
+					cue.game(),
+					diagnostics
+				);
+				if (
+					cue.policies().audience().sensitive()
+						&& cue.policies().audience().evolution() != AudienceEvolution.LIVE_STRICT
+				) {
+					diagnostics.add(
+						"INSECURE_POLICY",
+						"/policies/audience/evolution",
+						"sensitive audiences require live_strict evolution"
+					);
+				}
+
+				Set<String> nodeIds = new LinkedHashSet<>();
+				for (CueNode node : cue.nodes()) {
+					nodeIds.add(node.id());
+				}
+				validateMessageParameters(cue, nodeIds, diagnostics);
+				validateMessageParameterAllowedNodeClosure(cue, diagnostics);
+				validateMessageFields(
+					cue,
+					cue.fields(),
+					"/fields",
+					Optional.empty(),
+					diagnostics
+				);
+				validateMessageStructure(cue, diagnostics);
+				for (int index = 0; index < cue.nodes().size(); index++) {
+					CueNode node = cue.nodes().get(index);
+					String nodePointer = "/nodes/" + index;
+					node.policy()
+						.audience()
+						.ifPresent(
+							audience -> validateMessageAudience(
+								audience,
+								nodePointer + "/audience",
+								cue.game(),
+								diagnostics
+							)
+						);
+					node.header()
+						.when()
+						.ifPresent(
+							condition -> validateMessageCondition(
+								cue,
+								condition,
+								nodePointer + "/when",
+								diagnostics
+							)
+						);
+					if (node instanceof TextNode textNode) {
+						validateMessageTextContent(
+							cue,
+							textNode.id(),
+							textNode.content(),
+							nodePointer + "/content",
+							diagnostics
+						);
+						for (int variantIndex = 0;
+							variantIndex < textNode.variants().size();
+							variantIndex++) {
+							TextVariant variant = textNode.variants().get(variantIndex);
+							String variantPointer = nodePointer + "/variants/" + variantIndex;
+							validateMessageCondition(
+								cue,
+								variant.when(),
+								variantPointer + "/when",
+								diagnostics
+							);
+							validateMessageTextContent(
+								cue,
+								textNode.id(),
+								variant.content(),
+								variantPointer + "/content",
+								diagnostics
+							);
+						}
+					} else if (
+						node instanceof CallbackNode callbackNode
+							&& !this.functions.contains(callbackNode.function())
+					) {
+						diagnostics.add(
+							"MISSING_EXTERNAL_RESOURCE",
+							nodePointer + "/function",
+							"function " + callbackNode.function() + " does not exist"
+						);
+					} else if (node instanceof SoundNode soundNode) {
+						validateMessageMissingFallback(
+							soundNode.missing(),
+							soundNode.fallback(),
+							nodePointer + "/missing",
+							nodePointer + "/fallback",
+							diagnostics
+						);
+					}
+				}
+				cue.history()
+					.ifPresent(history -> validateMessageHistory(cue, history, diagnostics));
+				validateMessageAssets(cue, diagnostics);
+				if (!diagnostics.isEmpty()) {
+					disableMessage(
+						source,
+						new MessageIdentity(cue.required(), cue.game(), true),
+						diagnostics.retained(),
+						diagnostics.totalCount(),
+						cue.staticFallback()
+					);
+				}
+			}
+			validateDeclaredMessageHooks();
+			if (this.games.size() == 1) {
+				Identifier onlyGame = this.games.keySet().iterator().next();
+				boolean hasUnscopedRequiredFailure = this.disabledMessages.entrySet()
+					.stream()
+					.anyMatch(
+						entry -> entry.getValue().required()
+							&& entry.getValue().game().isEmpty()
+							&& !entry.getValue().requiredFallbackSatisfiesStart()
+							&& !this.multiGameMessageFailures.contains(entry.getKey())
+					);
+				if (hasUnscopedRequiredFailure) {
+					this.startBlockedGames.add(onlyGame);
+				}
+			}
+		}
+
+		private void validateDeclaredMessageHooks() {
+			for (GameDefinition game : this.games.values()) {
+				validateMessageHookSet(
+					DefinitionType.GAME,
+					game.id(),
+					game.id(),
+					"/message_hooks",
+					game.messageHooks()
+				);
+				game.readiness().ifPresent(readiness ->
+					validateMessageHookSet(
+						DefinitionType.GAME,
+						game.id(),
+						game.id(),
+						"/readiness/message_hooks",
+						readiness.messageHooks()
+					)
+				);
+			}
+			for (RoleDefinition role : this.roles.values()) {
+				validateMessageHookSet(
+					DefinitionType.ROLE,
+					role.id(),
+					role.game(),
+					"/message_hooks",
+					role.messageHooks()
+				);
+			}
+			for (PhaseDefinition phase : this.phases.values()) {
+				validateMessageHookSet(
+					DefinitionType.PHASE,
+					phase.id(),
+					phase.game(),
+					"/message_hooks",
+					phase.messageHooks()
+				);
+			}
+			for (FlowDefinition flow : this.flows.values()) {
+				validateMessageHookSet(
+					DefinitionType.FLOW,
+					flow.id(),
+					flow.game(),
+					"/message_hooks",
+					flow.messageHooks()
+				);
+			}
+			for (TaskDefinition task : this.tasks.values()) {
+				validateMessageHookSet(
+					DefinitionType.TASK,
+					task.id(),
+					task.game(),
+					"/message_hooks",
+					task.messageHooks()
+				);
+				for (int index = 0; index < task.events().size(); index++) {
+					validateMessageHookSet(
+						DefinitionType.TASK,
+						task.id(),
+						task.game(),
+						"/events/" + index + "/message_hooks",
+						task.events().get(index).messageHooks()
+					);
+				}
+			}
+		}
+
+		private void validateMessageHookSet(
+			final DefinitionType ownerType,
+			final Identifier ownerId,
+			final Identifier ownerGame,
+			final String pointer,
+			final MessageHookSet hooks
+		) {
+			for (Map.Entry<MessageHookEvent, MessageHookReference> entry : hooks.hooks().entrySet()) {
+				MessageHookReference reference = entry.getValue();
+				Identifier cueId = reference.cue();
+				String hookPointer = pointer
+					+ "/"
+					+ entry.getKey().name().toLowerCase(Locale.ROOT);
+				MessageCueDefinition cue = this.messageCues.get(cueId);
+				if (cue == null) {
+					DocumentKey key = new DocumentKey(DefinitionType.MESSAGE_CUE, cueId);
+					if (this.disabledMessages.containsKey(key)) {
+						continue;
+					}
+					add(
+						origin(ownerType, ownerId),
+						"MISSING_REFERENCE",
+						hookPointer,
+						"message cue " + cueId + " does not exist"
+					);
+					continue;
+				}
+				if (cue.game().filter(ownerGame::equals).isEmpty()) {
+					add(
+						origin(ownerType, ownerId),
+						"CROSS_GAME_REFERENCE",
+						hookPointer,
+						cue.game().isEmpty()
+							? "message hook cue " + cueId + " is not scoped to game " + ownerGame
+							: "message hook cue " + cueId + " belongs to " + cue.game().orElseThrow()
+					);
+				}
+				validateMessageHookArguments(
+					ownerType,
+					ownerId,
+					hookPointer,
+					cue,
+					reference
+				);
+			}
+		}
+
+		/**
+		 * Rejects fixed hook values that can never be consumed by the referenced cue. This keeps a
+		 * bad lifecycle hook from surviving compilation only to fail after its owning gameplay
+		 * transaction has already committed. Identifier arguments are also checked against this
+		 * generation so the freeze compiler can retain the exact referenced definition.
+		 */
+		private void validateMessageHookArguments(
+			final DefinitionType ownerType,
+			final Identifier ownerId,
+			final String hookPointer,
+			final MessageCueDefinition cue,
+			final MessageHookReference reference
+		) {
+			for (Map.Entry<String, String> argument : reference.arguments().entrySet()) {
+				String pointer = hookPointer + "/arguments/" + escapePointer(argument.getKey());
+				ParameterDefinition parameter = cue.parameters().get(argument.getKey());
+				if (parameter == null) {
+					add(
+						origin(ownerType, ownerId),
+						"UNDECLARED_ARGUMENT",
+						pointer,
+						"message hook argument "
+							+ argument.getKey()
+							+ " is not declared by cue "
+							+ cue.id()
+					);
+					continue;
+				}
+				if (!fixedHookArgumentMatches(argument.getValue(), parameter)) {
+					add(
+						origin(ownerType, ownerId),
+						"TYPE_MISMATCH",
+						pointer,
+						"fixed message hook argument does not match parameter type "
+							+ parameter.type().name().toLowerCase(Locale.ROOT)
+					);
+					continue;
+				}
+				if (parameter.type() == ParameterType.IDENTIFIER) {
+					Identifier identifier = Identifier.tryParse(argument.getValue().strip());
+					if (
+						identifier != null
+							&& !messageIdentifierReferenceExists(
+								identifier,
+								parameter.identifierKind()
+							)
+					) {
+						add(
+							origin(ownerType, ownerId),
+							"MISSING_REFERENCE",
+							pointer,
+							"message hook identifier argument references missing "
+								+ parameter.identifierKind().name().toLowerCase(Locale.ROOT)
+								+ " "
+								+ identifier
+						);
+					}
+				}
+			}
+		}
+
+		private static boolean fixedHookArgumentMatches(
+			final String value,
+			final ParameterDefinition parameter
+		) {
+			try {
+				return switch (parameter.type()) {
+					case STRING, PLAYER -> true;
+					case INTEGER -> {
+						Long.parseLong(value.strip());
+						yield true;
+					}
+					case DECIMAL -> {
+						new BigDecimal(value.strip());
+						yield true;
+					}
+					case BOOLEAN -> {
+						String normalized = value.strip().toLowerCase(Locale.ROOT);
+						yield normalized.equals("true") || normalized.equals("false");
+					}
+					case IDENTIFIER -> Identifier.tryParse(value.strip()) != null;
+					case COMPONENT -> {
+						JsonElement parsed = JsonParser.parseString(value);
+						yield !parsed.isJsonNull();
+					}
+					case DURATION -> MESSAGE_HOOK_DURATION.matcher(
+						value.strip().toLowerCase(Locale.ROOT)
+					).matches();
+				};
+			} catch (RuntimeException invalid) {
+				return false;
+			}
+		}
+
+		private boolean messageIdentifierReferenceExists(
+			final Identifier id,
+			final IdentifierKind kind
+		) {
+			return switch (kind) {
+				case ANY -> true;
+				case GAME -> this.games.containsKey(id);
+				case PHASE -> this.phases.containsKey(id);
+				case TASK -> this.tasks.containsKey(id);
+				case FIELD -> this.fields.containsKey(id);
+				case ROLE -> this.roles.containsKey(id);
+				case TEAM -> this.teams.containsKey(id);
+				case LIFE_STATE -> this.lifeStates.containsKey(id);
+				case PLAYER_DATA -> this.playerData.containsKey(id);
+				case EVENT -> nestedTaskMemberExists(id, true);
+				case STATISTIC -> nestedTaskMemberExists(id, false);
+			};
+		}
+
+		private boolean nestedTaskMemberExists(final Identifier nestedId, final boolean event) {
+			return this.tasks.values().stream().anyMatch(task -> {
+				String prefix = task.id().getPath() + "/";
+				if (
+					!nestedId.getNamespace().equals(task.id().getNamespace())
+						|| !nestedId.getPath().startsWith(prefix)
+				) {
+					return false;
+				}
+				String localId = nestedId.getPath().substring(prefix.length());
+				return event
+					? task.events().stream().anyMatch(value -> value.id().equals(localId))
+					: task.statistics().stream().anyMatch(value -> value.id().equals(localId));
+			});
+		}
+
+		private void validateMessageGame(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			if (cue.required() && cue.game().isEmpty()) {
+				diagnostics.add(
+					"MISSING_REQUIRED",
+					"/game",
+					"required message cues must declare an owning game"
+				);
+			}
+			cue.game().ifPresent(game -> {
+				if (!this.games.containsKey(game)) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/game",
+						"game " + game + " does not exist"
+					);
+				}
+			});
+		}
+
+		private void validateMessageContext(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			Set<Identifier> contextGames = cue.policies().context().games();
+			for (Identifier game : contextGames) {
+				if (!this.games.containsKey(game)) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/policies/context/games",
+						"game " + game + " does not exist"
+					);
+				} else if (cue.game().isPresent() && !cue.game().orElseThrow().equals(game)) {
+					diagnostics.add(
+						"CROSS_GAME_REFERENCE",
+						"/policies/context/games",
+						"context game " + game + " differs from cue game " + cue.game().orElseThrow()
+					);
+				}
+			}
+			for (Identifier phaseId : cue.policies().context().phases()) {
+				PhaseDefinition phase = this.phases.get(phaseId);
+				if (phase == null) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/policies/context/phases",
+						"phase " + phaseId + " does not exist"
+					);
+					continue;
+				}
+				validateMessageContextGame(
+					cue,
+					contextGames,
+					phase.game(),
+					"/policies/context/phases",
+					"phase " + phaseId,
+					diagnostics
+				);
+			}
+			for (Identifier taskId : cue.policies().context().tasks()) {
+				TaskDefinition task = this.tasks.get(taskId);
+				if (task == null) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/policies/context/tasks",
+						"task " + taskId + " does not exist"
+					);
+					continue;
+				}
+				validateMessageContextGame(
+					cue,
+					contextGames,
+					task.game(),
+					"/policies/context/tasks",
+					"task " + taskId,
+					diagnostics
+				);
+			}
+		}
+
+		private void validateMessageContextGame(
+			final MessageCueDefinition cue,
+			final Set<Identifier> contextGames,
+			final Identifier targetGame,
+			final String pointer,
+			final String target,
+			final MessageDiagnostics diagnostics
+		) {
+			if (cue.game().isPresent() && !cue.game().orElseThrow().equals(targetGame)) {
+				diagnostics.add(
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					target + " belongs to " + targetGame
+				);
+			} else if (!contextGames.isEmpty() && !contextGames.contains(targetGame)) {
+				diagnostics.add(
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					target + " is outside the declared context games " + contextGames
+				);
+			}
+		}
+
+		private void validateMessageAudience(
+			final AudienceSpec audience,
+			final String pointer,
+			final Optional<Identifier> game,
+			final MessageDiagnostics diagnostics
+		) {
+			for (int index = 0; index < audience.selectors().size(); index++) {
+				AudienceSelector selector = audience.selectors().get(index);
+				String selectorPointer = audience.selectors().size() == 1
+					? pointer
+					: pointer + "/any_of/" + index;
+				for (Identifier role : selector.roles()) {
+					validateMessageOwnedReference(
+						role,
+						this.roles,
+						RoleDefinition::game,
+						game,
+						selectorPointer + "/roles",
+						"role",
+						diagnostics
+					);
+				}
+				for (Identifier team : selector.teams()) {
+					validateMessageOwnedReference(
+						team,
+						this.teams,
+						TeamDefinition::game,
+						game,
+						selectorPointer + "/teams",
+						"team",
+						diagnostics
+					);
+				}
+				for (Identifier lifeState : selector.lifeStates()) {
+					validateMessageOwnedReference(
+						lifeState,
+						this.lifeStates,
+						LifeStateDefinition::game,
+						game,
+						selectorPointer + "/life_states",
+						"life state",
+						diagnostics
+					);
+				}
+				for (Identifier tag : selector.roleTags()) {
+					validateMessageTag(
+						tag,
+						this.roles,
+						RoleDefinition::game,
+						RoleDefinition::tags,
+						game,
+						selectorPointer + "/role_tags",
+						"role",
+						diagnostics
+					);
+				}
+				for (Identifier tag : selector.teamTags()) {
+					validateMessageTag(
+						tag,
+						this.teams,
+						TeamDefinition::game,
+						TeamDefinition::tags,
+						game,
+						selectorPointer + "/team_tags",
+						"team",
+						diagnostics
+					);
+				}
+				for (Identifier tag : selector.lifeStateTags()) {
+					validateMessageTag(
+						tag,
+						this.lifeStates,
+						LifeStateDefinition::game,
+						LifeStateDefinition::tags,
+						game,
+						selectorPointer + "/life_state_tags",
+						"life-state",
+						diagnostics
+					);
+				}
+			}
+		}
+
+		private <T> void validateMessageOwnedReference(
+			final Identifier targetId,
+			final Map<Identifier, T> targets,
+			final java.util.function.Function<T, Identifier> gameGetter,
+			final Optional<Identifier> expectedGame,
+			final String pointer,
+			final String targetType,
+			final MessageDiagnostics diagnostics
+		) {
+			T target = targets.get(targetId);
+			if (target == null) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					targetType + " " + targetId + " does not exist"
+				);
+			} else if (
+				expectedGame.isPresent()
+					&& !expectedGame.orElseThrow().equals(gameGetter.apply(target))
+			) {
+				diagnostics.add(
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					targetType + " " + targetId + " belongs to " + gameGetter.apply(target)
+				);
+			}
+		}
+
+		private <T> void validateMessageTag(
+			final Identifier tag,
+			final Map<Identifier, T> targets,
+			final java.util.function.Function<T, Identifier> gameGetter,
+			final java.util.function.Function<T, Set<Identifier>> tagGetter,
+			final Optional<Identifier> expectedGame,
+			final String pointer,
+			final String targetType,
+			final MessageDiagnostics diagnostics
+		) {
+			List<T> matches = targets.values()
+				.stream()
+				.filter(target -> tagGetter.apply(target).contains(tag))
+				.toList();
+			if (matches.isEmpty()) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					targetType + " tag " + tag + " is not declared"
+				);
+			} else if (
+				expectedGame.isPresent()
+					&& matches.stream().noneMatch(
+						target -> expectedGame.orElseThrow().equals(gameGetter.apply(target))
+					)
+			) {
+				diagnostics.add(
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					targetType + " tag " + tag + " is not declared by " + expectedGame.orElseThrow()
+				);
+			}
+		}
+
+		private void validateMessageParameters(
+			final MessageCueDefinition cue,
+			final Set<String> nodeIds,
+			final MessageDiagnostics diagnostics
+		) {
+			for (Map.Entry<String, ParameterDefinition> entry : cue.parameters().entrySet()) {
+				String name = entry.getKey();
+				ParameterDefinition parameter = entry.getValue();
+				String pointer = "/parameters/" + escapePointer(name);
+				parameter.audience()
+					.ifPresent(
+						audience -> validateMessageAudience(
+							audience,
+							pointer + "/audience",
+							cue.game(),
+							diagnostics
+						)
+					);
+				for (String node : parameter.allowedNodes()) {
+					if (!nodeIds.contains(node)) {
+						diagnostics.add(
+							"MISSING_REFERENCE",
+							pointer + "/allowed_nodes",
+							"allowed node " + node + " is not declared"
+						);
+					}
+				}
+				if (
+					parameter.sensitive()
+						&& parameter.audience().isEmpty()
+				) {
+					diagnostics.add(
+						"INSECURE_POLICY",
+						pointer + "/audience",
+						"sensitive parameters must declare their authorized audience"
+					);
+				}
+				if (
+					parameter.sensitive()
+						&& cue.policies().audience().evolution() != AudienceEvolution.LIVE_STRICT
+				) {
+					diagnostics.add(
+						"INSECURE_POLICY",
+						pointer + "/sensitive",
+						"sensitive parameters require live_strict audience evolution"
+					);
+				}
+				for (int sourceIndex = 0; sourceIndex < parameter.sources().size(); sourceIndex++) {
+					if (
+						parameter.sources().get(sourceIndex)
+							instanceof PlayerDataParameterSource playerDataSource
+					) {
+						validateMessagePlayerData(
+							playerDataSource.field(),
+							cue.game(),
+							pointer + "/sources/" + sourceIndex + "/field",
+							diagnostics
+						);
+					}
+				}
+				if (
+					parameter.type() == ParameterType.IDENTIFIER
+						&& parameter.identifierKind() != IdentifierKind.ANY
+				) {
+					parameter.canonicalDefault()
+						.ifPresent(
+							value -> validateMessageIdentifierLiteral(
+								value,
+								parameter.identifierKind(),
+								cue.game(),
+								pointer + "/default",
+								diagnostics
+							)
+						);
+					parameter.onError()
+						.canonicalFallback()
+						.ifPresent(
+							value -> validateMessageIdentifierLiteral(
+								value,
+								parameter.identifierKind(),
+								cue.game(),
+								pointer + "/on_error/fallback",
+								diagnostics
+							)
+						);
+				}
+			}
+			for (String parameter : cue.policies().concurrency().dedupeParameters()) {
+				if (!cue.parameters().containsKey(parameter)) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/policies/concurrency/dedupe_parameters",
+						"dedupe parameter " + parameter + " is not declared"
+					);
+				}
+			}
+			cue.policies().concurrency().refreshKey().ifPresent(parameter -> {
+				if (!cue.parameters().containsKey(parameter)) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/policies/concurrency/refresh_key",
+						"refresh key parameter " + parameter + " is not declared"
+					);
+				}
+			});
+		}
+
+		private void validateMessageIdentifierLiteral(
+			final String canonicalValue,
+			final IdentifierKind kind,
+			final Optional<Identifier> game,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			Identifier value;
+			try {
+				JsonElement element = JsonParser.parseString(canonicalValue);
+				value = element.isJsonPrimitive() && element.getAsJsonPrimitive().isString()
+					? parseIdentifier(element.getAsString())
+					: null;
+			} catch (JsonParseException error) {
+				value = null;
+			}
+			if (value == null) {
+				diagnostics.add(
+					"TYPE_MISMATCH",
+					pointer,
+					"identifier default or fallback must be a namespaced identifier"
+				);
+				return;
+			}
+			switch (kind) {
+				case ANY -> {
+				}
+				case GAME -> validateMessagePlainReference(
+					value,
+					this.games,
+					pointer,
+					"game",
+					diagnostics
+				);
+				case PHASE -> validateMessageOwnedReference(
+					value,
+					this.phases,
+					PhaseDefinition::game,
+					game,
+					pointer,
+					"phase",
+					diagnostics
+				);
+				case TASK -> validateMessageOwnedReference(
+					value,
+					this.tasks,
+					TaskDefinition::game,
+					game,
+					pointer,
+					"task",
+					diagnostics
+				);
+				case FIELD -> validateMessageOwnedReference(
+					value,
+					this.fields,
+					FieldDefinition::game,
+					game,
+					pointer,
+					"field",
+					diagnostics
+				);
+				case ROLE -> validateMessageOwnedReference(
+					value,
+					this.roles,
+					RoleDefinition::game,
+					game,
+					pointer,
+					"role",
+					diagnostics
+				);
+				case TEAM -> validateMessageOwnedReference(
+					value,
+					this.teams,
+					TeamDefinition::game,
+					game,
+					pointer,
+					"team",
+					diagnostics
+				);
+				case LIFE_STATE -> validateMessageOwnedReference(
+					value,
+					this.lifeStates,
+					LifeStateDefinition::game,
+					game,
+					pointer,
+					"life state",
+					diagnostics
+				);
+				case PLAYER_DATA -> validateMessagePlayerData(
+					value,
+					game,
+					pointer,
+					diagnostics
+				);
+				case EVENT -> validateMessageNestedTaskIdentifier(
+					value,
+					game,
+					true,
+					pointer,
+					diagnostics
+				);
+				case STATISTIC -> validateMessageNestedTaskIdentifier(
+					value,
+					game,
+					false,
+					pointer,
+					diagnostics
+				);
+			}
+		}
+
+		private void validateMessageParameterAllowedNodeClosure(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			MessageParameterUseGraph.UseGraph uses = MessageParameterUseGraph.compile(cue);
+			for (Map.Entry<String, ParameterDefinition> entry : cue.parameters().entrySet()) {
+				String parameterId = entry.getKey();
+				Set<String> allowedNodes = entry.getValue().allowedNodes();
+				if (allowedNodes.isEmpty()) {
+					continue;
+				}
+				String pointer = "/parameters/"
+					+ escapePointer(parameterId)
+					+ "/allowed_nodes";
+				for (CueNode node : cue.nodes()) {
+					if (
+						uses.parametersForNode(node.id()).contains(parameterId)
+							&& !allowedNodes.contains(node.id())
+					) {
+						diagnostics.add(
+							"UNAUTHORIZED_REFERENCE",
+							pointer,
+							"parameter "
+								+ parameterId
+								+ " is used by node "
+								+ node.id()
+								+ " but that node is not listed in allowed_nodes"
+						);
+					}
+				}
+				if (uses.historyParameters().contains(parameterId)) {
+					/* History has no node ID and cannot opt into a non-empty node allowlist. */
+					diagnostics.add(
+						"UNAUTHORIZED_REFERENCE",
+						pointer,
+						"parameter "
+							+ parameterId
+							+ " restricts allowed_nodes and cannot be referenced by history"
+					);
+				}
+			}
+		}
+
+		private void validateMessagePlainReference(
+			final Identifier target,
+			final Map<Identifier, ?> targets,
+			final String pointer,
+			final String targetType,
+			final MessageDiagnostics diagnostics
+		) {
+			if (!targets.containsKey(target)) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					targetType + " " + target + " does not exist"
+				);
+			}
+		}
+
+		private void validateMessageNestedTaskIdentifier(
+			final Identifier target,
+			final Optional<Identifier> game,
+			final boolean event,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			List<TaskDefinition> matches = this.tasks.values()
+				.stream()
+				.filter(task -> game.isEmpty() || game.orElseThrow().equals(task.game()))
+				.filter(task -> event
+					? task.events().stream().anyMatch(
+						value -> nestedTaskIdentifier(task.id(), value.id()).equals(target)
+					)
+					: task.statistics().stream().anyMatch(
+						value -> nestedTaskIdentifier(task.id(), value.id()).equals(target)
+					))
+				.toList();
+			if (matches.isEmpty()) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					(event ? "event " : "statistic ")
+						+ target
+						+ " does not exist; expected <task-id>/"
+						+ (event ? "<event-id>" : "<statistic-id>")
+				);
+			}
+		}
+
+		private static Identifier nestedTaskIdentifier(
+			final Identifier task,
+			final String localId
+		) {
+			return Identifier.fromNamespaceAndPath(
+				task.getNamespace(),
+				task.getPath() + "/" + localId
+			);
+		}
+
+		private void validateMessageFields(
+			final MessageCueDefinition cue,
+			final Map<String, DynamicFieldDefinition> fields,
+			final String pointer,
+			final Optional<String> nodeId,
+			final MessageDiagnostics diagnostics
+		) {
+			for (Map.Entry<String, DynamicFieldDefinition> entry : fields.entrySet()) {
+				String fieldPointer = pointer + "/" + escapePointer(entry.getKey()) + "/source";
+				DynamicFieldDefinition field = entry.getValue();
+				if (field.source() instanceof ArgumentSource argument) {
+					ParameterDefinition parameter = cue.parameters().get(argument.parameter());
+					if (parameter == null) {
+						diagnostics.add(
+							"MISSING_REFERENCE",
+							fieldPointer + "/argument",
+							"parameter " + argument.parameter() + " is not declared"
+						);
+					}
+				} else if (field.source() instanceof BindingSource binding) {
+					validateMessageBinding(
+						binding.path(),
+						cue.game(),
+						fieldPointer + "/binding",
+						diagnostics
+					);
+				}
+			}
+		}
+
+		private void validateMessagePlayerData(
+			final Identifier id,
+			final Optional<Identifier> game,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			PlayerDataDefinition data = this.playerData.get(id);
+			if (data == null) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					"player data " + id + " does not exist"
+				);
+				return;
+			}
+			if (game.isPresent() && !game.orElseThrow().equals(data.game())) {
+				diagnostics.add(
+					"CROSS_GAME_REFERENCE",
+					pointer,
+					"player data " + id + " belongs to " + data.game()
+				);
+			}
+			if (!data.surfaces().contains(PlayerSurface.DYNAMIC_MESSAGE)) {
+				diagnostics.add(
+					"UNAUTHORIZED_REFERENCE",
+					pointer,
+					"player data " + id + " is not authorized for dynamic_message"
+				);
+			}
+		}
+
+		private void validateMessageBinding(
+			final String path,
+			final Optional<Identifier> game,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			if (path.startsWith("personal/")) {
+				String rawId = path.substring("personal/".length());
+				Identifier id = parseIdentifier(rawId);
+				if (id == null) {
+					diagnostics.add(
+						"INVALID_IDENTIFIER",
+						pointer,
+						"personal binding must contain a namespaced player-data ID"
+					);
+				} else {
+					validateMessagePlayerData(id, game, pointer, diagnostics);
+				}
+				return;
+			}
+			if (!path.startsWith("personal_meta/")) {
+				/*
+				 * Other paths are resolved by the active game's existing BindingRuntime and
+				 * BindingContext. Do not freeze a second, message-only binding registry here.
+				 */
+				return;
+			}
+			String suffix = path.substring("personal_meta/".length());
+			int propertySeparator = suffix.lastIndexOf('/');
+			String property = propertySeparator <= 0
+				? ""
+				: suffix.substring(propertySeparator + 1);
+			if (
+				propertySeparator <= 0
+					|| (!property.equals("name") && !property.equals("value_name"))
+			) {
+				diagnostics.add(
+					"UNKNOWN_BINDING",
+					pointer,
+					"personal metadata exposes only /name and /value_name"
+				);
+				return;
+			}
+			Identifier id = parseIdentifier(suffix.substring(0, propertySeparator));
+			if (id == null) {
+				diagnostics.add(
+					"INVALID_IDENTIFIER",
+					pointer,
+					"personal metadata binding must contain a namespaced player-data ID"
+				);
+				return;
+			}
+			PlayerDataDefinition data = this.playerData.get(id);
+			validateMessagePlayerData(id, game, pointer, diagnostics);
+			if (data == null) {
+				return;
+			}
+			if (property.equals("name") && data.name().isEmpty()) {
+				diagnostics.add(
+					"MISSING_REFERENCE",
+					pointer,
+					"player data " + id + " does not declare a name"
+				);
+			}
+			if (property.equals("value_name")) {
+				Identifier fieldId = data.source().id().orElse(null);
+				FieldDefinition field = fieldId == null ? null : this.fields.get(fieldId);
+				if (
+					data.source().type() != PlayerDataSourceType.EXCLUSIVE_CHOICE
+						|| field == null
+						|| field.type() != FieldType.EXCLUSIVE_CHOICE
+				) {
+					diagnostics.add(
+						"TYPE_MISMATCH",
+						pointer,
+						"player data " + id + " must expose an exclusive-choice value"
+					);
+				}
+			}
+		}
+
+		private void validateMessageTextContent(
+			final MessageCueDefinition cue,
+			final String nodeId,
+			final MessageDefinitions.TextContent content,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			validateMessageFields(
+				cue,
+				content.fields(),
+				pointer + "/fields",
+				Optional.of(nodeId),
+				diagnostics
+			);
+			validateMessageLocalizedTemplate(
+				cue,
+				content.text(),
+				content.fields(),
+				Optional.of(nodeId),
+				pointer + "/text",
+				diagnostics
+			);
+			content.effect().ifPresent(
+				effect -> validateMessageEffect(
+					effect,
+					pointer + "/effect",
+					diagnostics
+				)
+			);
+			validateMessageSpeaker(cue, nodeId, content, pointer + "/speaker", diagnostics);
+		}
+
+		private void validateMessageLocalizedTemplate(
+			final MessageCueDefinition cue,
+			final LocalizedTemplate localized,
+			final Map<String, DynamicFieldDefinition> localFields,
+			final Optional<String> nodeId,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			validateMessageTemplate(
+				cue,
+				localized.fallback().parts(),
+				localFields,
+				nodeId,
+				pointer + "/fallback",
+				diagnostics
+			);
+			localized.locales().forEach(
+				(locale, template) -> validateMessageTemplate(
+					cue,
+					template.parts(),
+					localFields,
+					nodeId,
+					pointer + "/locales/" + escapePointer(locale),
+					diagnostics
+				)
+			);
+		}
+
+		private void validateMessageTemplate(
+			final MessageCueDefinition cue,
+			final List<ComponentPart> parts,
+			final Map<String, DynamicFieldDefinition> localFields,
+			final Optional<String> nodeId,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			for (int index = 0; index < parts.size(); index++) {
+				ComponentPart part = parts.get(index);
+				if (!(part instanceof FieldPart fieldPart)) {
+					continue;
+				}
+				FieldReference reference = fieldPart.field();
+				Map<String, DynamicFieldDefinition> scope =
+					reference.scope() == MessageDefinitions.FieldScope.CUE
+						? cue.fields()
+						: localFields;
+				DynamicFieldDefinition field = scope.get(reference.id());
+				String fieldPointer = pointer + "/parts/" + index + "/field/id";
+				if (field == null) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						fieldPointer,
+						"field " + reference.id() + " is not declared in " + reference.scope()
+					);
+					continue;
+				}
+			}
+		}
+
+		private void validateMessageEffect(
+			final EffectUse effect,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			TextEffectDefinition preset = effect.preset()
+				.map(this.textEffects::get)
+				.orElse(null);
+			effect.preset().ifPresent(id -> {
+				if (preset == null) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						pointer + "/preset",
+						"text effect " + id + " does not exist"
+					);
+				}
+			});
+			CharacterSoundPatch patch = effect.overrides().characterSound().orElse(null);
+			if (patch == null) {
+				return;
+			}
+			CharacterSoundSpec base = preset == null
+				? null
+				: preset.characterSound().orElse(null);
+			if (patch.sound().isEmpty() && base == null) {
+				diagnostics.add(
+					"MISSING_REQUIRED",
+					pointer + "/overrides/character_sound/sound",
+					"character_sound requires a sound when no preset supplies one"
+				);
+			}
+			MissingAssetMode missing = patch.missing()
+				.orElse(base == null ? MissingAssetMode.SILENT : base.missing());
+			Optional<Identifier> fallback = patch.fallback().isPresent()
+				? patch.fallback()
+				: base == null ? Optional.empty() : base.fallback();
+			if (missing == MissingAssetMode.FALLBACK && fallback.isEmpty()) {
+				diagnostics.add(
+					"MISSING_REQUIRED",
+					pointer + "/overrides/character_sound/fallback",
+					"fallback mode requires a fallback sound"
+				);
+			} else if (
+				missing != MissingAssetMode.FALLBACK
+					&& patch.fallback().isPresent()
+			) {
+				diagnostics.add(
+					"CONTRADICTORY_VALUE",
+					pointer + "/overrides/character_sound/missing",
+					"an explicit fallback sound requires fallback missing mode"
+				);
+			}
+		}
+
+		private void validateMessageSpeaker(
+			final MessageCueDefinition cue,
+			final String nodeId,
+			final MessageDefinitions.TextContent content,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			switch (content.speaker().kind()) {
+				case PLAYER_PARAMETER -> {
+					String parameterId = content.speaker().parameter().orElse(null);
+					ParameterDefinition parameter = parameterId == null
+						? null
+						: cue.parameters().get(parameterId);
+					if (parameter == null) {
+						diagnostics.add(
+							"MISSING_REFERENCE",
+							pointer + "/parameter",
+							"speaker player parameter is not declared"
+						);
+					} else {
+						if (parameter.type() != ParameterType.PLAYER) {
+							diagnostics.add(
+								"TYPE_MISMATCH",
+								pointer + "/parameter",
+								"speaker parameter must have player type"
+							);
+						}
+					}
+				}
+				case REGISTERED_ENTITY -> {
+					if (content.speaker().entity().isEmpty()) {
+						diagnostics.add(
+							"MISSING_REQUIRED",
+							pointer + "/entity",
+							"registered_entity speaker requires an entity ID"
+						);
+					}
+				}
+				case SYSTEM, NARRATOR -> {
+					if (content.speaker().parameter().isPresent()) {
+						diagnostics.add(
+							"CONTRADICTORY_VALUE",
+							pointer + "/parameter",
+							"parameter is only valid for player_parameter speakers"
+						);
+					}
+					if (content.speaker().entity().isPresent()) {
+						diagnostics.add(
+							"CONTRADICTORY_VALUE",
+							pointer + "/entity",
+							"entity is only valid for registered_entity speakers"
+						);
+					}
+				}
+			}
+		}
+
+		private void validateMessageCondition(
+			final MessageCueDefinition cue,
+			final ConditionSpec condition,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			condition.predicate().ifPresent(predicate -> {
+				if (!this.predicates.contains(predicate)) {
+					diagnostics.add(
+						"MISSING_EXTERNAL_RESOURCE",
+						pointer + "/predicate",
+						"predicate " + predicate + " does not exist"
+					);
+				}
+			});
+			condition.expression()
+				.ifPresent(
+					expression -> validateMessageConditionExpression(
+						cue,
+						expression,
+						pointer + "/expression",
+						diagnostics
+					)
+				);
+		}
+
+		private void validateMessageConditionExpression(
+			final MessageCueDefinition cue,
+			final ConditionExpression condition,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			if (condition instanceof ComparisonCondition comparison) {
+				validateMessageConditionValue(cue, comparison.left(), pointer + "/left", diagnostics);
+				validateMessageConditionValue(cue, comparison.right(), pointer + "/right", diagnostics);
+			} else if (condition instanceof JunctionCondition junction) {
+				for (int index = 0; index < junction.conditions().size(); index++) {
+					validateMessageConditionExpression(
+						cue,
+						junction.conditions().get(index),
+						pointer + "/" + index,
+						diagnostics
+					);
+				}
+			} else if (condition instanceof NotCondition not) {
+				validateMessageConditionExpression(
+					cue,
+					not.condition(),
+					pointer + "/not",
+					diagnostics
+				);
+			} else if (condition instanceof ExistsCondition exists) {
+				validateMessageConditionValue(
+					cue,
+					exists.binding(),
+					pointer + "/exists",
+					diagnostics
+				);
+			}
+		}
+
+		private void validateMessageConditionValue(
+			final MessageCueDefinition cue,
+			final ValueExpression value,
+			final String pointer,
+			final MessageDiagnostics diagnostics
+		) {
+			if (value instanceof BindingValue binding) {
+				validateMessageBinding(binding.path(), cue.game(), pointer, diagnostics);
+			}
+		}
+
+		private void validateMessageStructure(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			if (cue.nodes().size() > MessageDefinitionParser.MAX_NODES) {
+				diagnostics.add(
+					"RESOURCE_LIMIT",
+					"/nodes",
+					"node count exceeds " + MessageDefinitionParser.MAX_NODES
+				);
+			}
+			Map<String, Integer> nodeIndexes = new LinkedHashMap<>();
+			Map<String, String> dependencies = new LinkedHashMap<>();
+			long expandedNodes = 0L;
+			int totalVariants = 0;
+			int primaryCharacterTracks = 0;
+			long soundNodes = 0L;
+			long callbackNodes = 0L;
+			for (int index = 0; index < cue.nodes().size(); index++) {
+				CueNode node = cue.nodes().get(index);
+				Integer previous = nodeIndexes.putIfAbsent(node.id(), index);
+				if (previous != null) {
+					diagnostics.add(
+						"DUPLICATE_VALUE",
+						"/nodes/" + index + "/id",
+						"node ID " + node.id() + " was already declared at index " + previous
+					);
+				}
+				int repeat = node.header().repeat().count();
+				if (repeat < 1 || repeat > MessageDefinitionParser.MAX_REPEAT_COUNT) {
+					diagnostics.add(
+						"OUT_OF_RANGE",
+						"/nodes/" + index + "/repeat/count",
+						"repeat count must be between 1 and "
+							+ MessageDefinitionParser.MAX_REPEAT_COUNT
+					);
+				}
+				expandedNodes += Math.max(0, repeat);
+				if (node.header().schedule() instanceof AfterNode after) {
+					dependencies.put(node.id(), after.nodeId());
+				}
+				if (node instanceof TextNode text) {
+					totalVariants += text.variants().size();
+					if (text.variants().size() > MessageDefinitionParser.MAX_VARIANTS_PER_NODE) {
+						diagnostics.add(
+							"RESOURCE_LIMIT",
+							"/nodes/" + index + "/variants",
+							"text variants exceed "
+								+ MessageDefinitionParser.MAX_VARIANTS_PER_NODE
+						);
+					}
+					boolean primary = text.content().characterSoundRole()
+						== CharacterSoundRole.PRIMARY;
+					primary |= text.variants()
+						.stream()
+						.anyMatch(
+							variant -> variant.content().characterSoundRole()
+								== CharacterSoundRole.PRIMARY
+						);
+					primaryCharacterTracks += primary ? 1 : 0;
+				} else if (node instanceof SoundNode) {
+					soundNodes++;
+				} else if (node instanceof CallbackNode) {
+					callbackNodes++;
+				}
+			}
+			if (expandedNodes > MessageDefinitionParser.MAX_EXPANDED_NODES) {
+				diagnostics.add(
+					"RESOURCE_LIMIT",
+					"/nodes",
+					"repeat expansion exceeds "
+						+ MessageDefinitionParser.MAX_EXPANDED_NODES
+						+ " nodes"
+				);
+			}
+			if (totalVariants > MessageDefinitionParser.MAX_TOTAL_VARIANTS) {
+				diagnostics.add(
+					"RESOURCE_LIMIT",
+					"/nodes",
+					"total text variants exceed "
+						+ MessageDefinitionParser.MAX_TOTAL_VARIANTS
+				);
+			}
+			if (primaryCharacterTracks > 1) {
+				diagnostics.add(
+					"MULTIPLE_PRIMARY_TRACKS",
+					"/nodes",
+					"message cue may declare only one primary character-sound track"
+				);
+			}
+			for (Map.Entry<String, String> dependency : dependencies.entrySet()) {
+				if (!nodeIndexes.containsKey(dependency.getValue())) {
+					int index = nodeIndexes.getOrDefault(dependency.getKey(), 0);
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/nodes/" + index + "/schedule/node",
+						"scheduled node " + dependency.getValue() + " is not declared"
+					);
+				}
+			}
+			validateMessageScheduleCycles(dependencies, nodeIndexes, diagnostics);
+			final long retainedSoundNodes = soundNodes;
+			final long retainedCallbackNodes = callbackNodes;
+			final int retainedVariantCount = totalVariants;
+			cue.softLimits().maxNodes().ifPresent(maximum -> {
+				if (cue.nodes().size() > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_nodes",
+						"node count " + cue.nodes().size() + " exceeds " + maximum
+					);
+				}
+			});
+			cue.softLimits().maxSoundNodes().ifPresent(maximum -> {
+				if (retainedSoundNodes > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_sound_nodes",
+						"sound node count " + retainedSoundNodes + " exceeds " + maximum
+					);
+				}
+			});
+			cue.softLimits().maxCallbackNodes().ifPresent(maximum -> {
+				if (retainedCallbackNodes > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_callback_nodes",
+						"callback node count " + retainedCallbackNodes + " exceeds " + maximum
+					);
+				}
+			});
+			cue.softLimits().maxVariants().ifPresent(maximum -> {
+				if (retainedVariantCount > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_variants",
+						"variant count " + retainedVariantCount + " exceeds " + maximum
+					);
+				}
+			});
+			validateMessageTextSoftLimits(cue, diagnostics);
+		}
+
+		private void validateMessageTextSoftLimits(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			if (
+				cue.softLimits().maxVisibleGraphemes().isEmpty()
+					&& cue.softLimits().maxLines().isEmpty()
+			) {
+				return;
+			}
+			long visibleGraphemes = 0L;
+			long visibleLines = 0L;
+			boolean unboundedGraphemes = false;
+			boolean unboundedLines = false;
+			for (CueNode candidate : cue.nodes()) {
+				if (!(candidate instanceof TextNode node)) {
+					continue;
+				}
+				TextBudget nodeBudget = textBudget(cue, node.content());
+				for (TextVariant variant : node.variants()) {
+					nodeBudget = nodeBudget.maximum(textBudget(cue, variant.content()));
+				}
+				long repeats = node.header().repeat().count();
+				visibleGraphemes = saturatedAdd(
+					visibleGraphemes,
+					saturatedMultiply(nodeBudget.graphemes(), repeats)
+				);
+				visibleLines = saturatedAdd(
+					visibleLines,
+					saturatedMultiply(nodeBudget.lines(), repeats)
+				);
+				unboundedGraphemes |= nodeBudget.unboundedGraphemes();
+				unboundedLines |= nodeBudget.unboundedLines();
+			}
+			final long retainedGraphemes = visibleGraphemes;
+			final long retainedLines = visibleLines;
+			final boolean retainedUnboundedGraphemes = unboundedGraphemes;
+			final boolean retainedUnboundedLines = unboundedLines;
+			cue.softLimits().maxVisibleGraphemes().ifPresent(maximum -> {
+				if (retainedUnboundedGraphemes) {
+					diagnostics.add(
+						"UNBOUNDED_SOFT_LIMIT",
+						"/soft_limits/max_visible_graphemes",
+						"visible grapheme budget contains a field without reservation.max_graphemes"
+					);
+				} else if (retainedGraphemes > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_visible_graphemes",
+						"worst-case visible grapheme count "
+							+ retainedGraphemes
+							+ " exceeds "
+							+ maximum
+					);
+				}
+			});
+			cue.softLimits().maxLines().ifPresent(maximum -> {
+				if (retainedUnboundedLines) {
+					diagnostics.add(
+						"UNBOUNDED_SOFT_LIMIT",
+						"/soft_limits/max_lines",
+						"visible line budget contains a field without reservation.max_lines "
+							+ "or a content layout max_lines"
+					);
+				} else if (retainedLines > maximum) {
+					diagnostics.add(
+						"SOFT_LIMIT_EXCEEDED",
+						"/soft_limits/max_lines",
+						"worst-case visible line count "
+							+ retainedLines
+							+ " exceeds "
+							+ maximum
+					);
+				}
+			});
+		}
+
+		private TextBudget textBudget(
+			final MessageCueDefinition cue,
+			final MessageDefinitions.TextContent content
+		) {
+			TextBudget result = templateBudget(cue, content, content.text().fallback());
+			for (var localized : content.text().locales().values()) {
+				result = result.maximum(templateBudget(cue, content, localized));
+			}
+			if (content.layout().maxLines().isPresent()) {
+				result = new TextBudget(
+					result.graphemes(),
+					Math.min(
+						result.lines(),
+						content.layout().maxLines().orElseThrow().longValue()
+					),
+					result.unboundedGraphemes(),
+					false
+				);
+			}
+			return result;
+		}
+
+		private TextBudget templateBudget(
+			final MessageCueDefinition cue,
+			final MessageDefinitions.TextContent content,
+			final MessageDefinitions.ComponentTemplate template
+		) {
+			long graphemes = 0L;
+			long lines = 0L;
+			boolean hasContent = false;
+			boolean unboundedGraphemes = false;
+			boolean unboundedLines = false;
+			for (ComponentPart part : template.parts()) {
+				if (part instanceof StaticComponentPart fixed) {
+					String plainText = fixed.component().plainText();
+					if (!plainText.isEmpty()) {
+						hasContent = true;
+						graphemes = saturatedAdd(
+							graphemes,
+							GraphemeClusters.count(plainText)
+						);
+						lines = saturatedAdd(lines, newlineCount(plainText));
+					}
+					continue;
+				}
+				FieldPart reference = (FieldPart)part;
+				DynamicFieldDefinition field =
+					reference.field().scope() == MessageDefinitions.FieldScope.CUE
+						? cue.fields().get(reference.field().id())
+						: content.fields().get(reference.field().id());
+				if (field == null) {
+					continue;
+				}
+				hasContent = true;
+				Optional<Integer> maxGraphemes = field.reservation()
+					.flatMap(MessageDefinitions.FieldReservation::maxGraphemes);
+				Optional<Integer> maxLines = field.reservation()
+					.flatMap(MessageDefinitions.FieldReservation::maxLines);
+				graphemes = saturatedAdd(
+					graphemes,
+					maxGraphemes.map(Integer::longValue)
+						.orElseGet(() ->
+							field.fallback()
+								.map(value ->
+									(long)GraphemeClusters.count(value.plainText())
+								)
+								.orElse(0L)
+						)
+				);
+				lines = saturatedAdd(
+					lines,
+					Math.max(
+						0L,
+						maxLines.map(Integer::longValue)
+							.orElseGet(() ->
+								field.fallback()
+									.map(value -> newlineCount(value.plainText()) + 1L)
+									.orElse(1L)
+							)
+							- 1L
+					)
+				);
+				unboundedGraphemes |= maxGraphemes.isEmpty();
+				unboundedLines |= maxLines.isEmpty();
+			}
+			return new TextBudget(
+				graphemes,
+				hasContent ? saturatedAdd(lines, 1L) : 0L,
+				unboundedGraphemes,
+				unboundedLines
+			);
+		}
+
+		private static long newlineCount(final String value) {
+			return value.chars().filter(character -> character == '\n').count();
+		}
+
+		private static long saturatedAdd(final long left, final long right) {
+			if (left >= Long.MAX_VALUE - right) {
+				return Long.MAX_VALUE;
+			}
+			return left + right;
+		}
+
+		private static long saturatedMultiply(final long left, final long right) {
+			if (left == 0L || right == 0L) {
+				return 0L;
+			}
+			return left > Long.MAX_VALUE / right
+				? Long.MAX_VALUE
+				: left * right;
+		}
+
+		private record TextBudget(
+			long graphemes,
+			long lines,
+			boolean unboundedGraphemes,
+			boolean unboundedLines
+		) {
+			private TextBudget maximum(final TextBudget other) {
+				return new TextBudget(
+					Math.max(this.graphemes, other.graphemes),
+					Math.max(this.lines, other.lines),
+					this.unboundedGraphemes || other.unboundedGraphemes,
+					this.unboundedLines || other.unboundedLines
+				);
+			}
+		}
+
+		private void validateMessageScheduleCycles(
+			final Map<String, String> dependencies,
+			final Map<String, Integer> nodeIndexes,
+			final MessageDiagnostics diagnostics
+		) {
+			Set<String> complete = new HashSet<>();
+			Set<String> visiting = new LinkedHashSet<>();
+			for (String node : dependencies.keySet()) {
+				validateMessageScheduleNode(
+					node,
+					dependencies,
+					nodeIndexes,
+					visiting,
+					complete,
+					diagnostics
+				);
+			}
+		}
+
+		private void validateMessageScheduleNode(
+			final String node,
+			final Map<String, String> dependencies,
+			final Map<String, Integer> nodeIndexes,
+			final Set<String> visiting,
+			final Set<String> complete,
+			final MessageDiagnostics diagnostics
+		) {
+			if (complete.contains(node)) {
+				return;
+			}
+			if (!visiting.add(node)) {
+				diagnostics.add(
+					"CYCLIC_REFERENCE",
+					"/nodes/" + nodeIndexes.getOrDefault(node, 0) + "/schedule/node",
+					"schedule dependency cycle includes " + node
+				);
+				return;
+			}
+			String dependency = dependencies.get(node);
+			if (dependency != null && dependencies.containsKey(dependency)) {
+				validateMessageScheduleNode(
+					dependency,
+					dependencies,
+					nodeIndexes,
+					visiting,
+					complete,
+					diagnostics
+				);
+			}
+			visiting.remove(node);
+			complete.add(node);
+		}
+
+		private void validateMessageHistory(
+			final MessageCueDefinition cue,
+			final HistorySpec history,
+			final MessageDiagnostics diagnostics
+		) {
+			if (
+				history.audience().selectors().stream()
+					.anyMatch(selector -> selector.source() == AudienceSource.CURRENT_HOST)
+			) {
+				diagnostics.add(
+					"UNREACHABLE_HISTORY_AUDIENCE",
+					"/history/audience",
+					"current_host cannot be used for message history because the host console "
+						+ "and timeline do not consume player-history records; use an audience "
+						+ "with a player-terminal projection"
+				);
+			}
+			validateMessageAudience(
+				history.audience(),
+				"/history/audience",
+				cue.game(),
+				diagnostics
+			);
+			validateMessageLocalizedTemplate(
+				cue,
+				history.title(),
+				Map.of(),
+				Optional.empty(),
+				"/history/title",
+				diagnostics
+			);
+			validateMessageLocalizedTemplate(
+				cue,
+				history.body(),
+				Map.of(),
+				Optional.empty(),
+				"/history/body",
+				diagnostics
+			);
+			if (history.taskSource() == HistoryTaskSource.PARAMETER) {
+				String parameterId = history.taskParameter().orElse(null);
+				ParameterDefinition parameter = parameterId == null
+					? null
+					: cue.parameters().get(parameterId);
+				if (parameter == null) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/history/task_parameter",
+						"history task parameter is not declared"
+					);
+				} else if (
+					parameter.type() != ParameterType.IDENTIFIER
+						|| (
+							parameter.identifierKind() != IdentifierKind.ANY
+								&& parameter.identifierKind() != IdentifierKind.TASK
+						)
+				) {
+					diagnostics.add(
+						"TYPE_MISMATCH",
+						"/history/task_parameter",
+						"history task parameter must be an identifier parameter of task kind"
+					);
+				}
+			} else if (history.taskParameter().isPresent()) {
+				diagnostics.add(
+					"CONTRADICTORY_VALUE",
+					"/history/task_parameter",
+					"task_parameter requires parameter task_source"
+				);
+			}
+			for (String field : history.savedFields()) {
+				if (!cue.fields().containsKey(field)) {
+					diagnostics.add(
+						"MISSING_REFERENCE",
+						"/history/saved_fields",
+						"saved history field " + field + " is not a cue field"
+					);
+				}
+			}
+		}
+
+		private void validateMessageAssets(
+			final MessageCueDefinition cue,
+			final MessageDiagnostics diagnostics
+		) {
+			Set<String> identities = new HashSet<>();
+			for (int index = 0; index < cue.assets().size(); index++) {
+				AssetSpec asset = cue.assets().get(index);
+				String pointer = "/assets/" + index;
+				String identity = asset.type() + ":" + asset.id();
+				if (!identities.add(identity)) {
+					diagnostics.add(
+						"DUPLICATE_VALUE",
+						pointer,
+						"asset " + identity + " is declared more than once"
+					);
+				}
+				validateMessageMissingFallback(
+					asset.missing(),
+					asset.fallback(),
+					pointer + "/missing",
+					pointer + "/fallback",
+					diagnostics
+				);
+				if (
+					asset.missing() == MissingAssetMode.BLOCK_START
+						&& !asset.requiredForStart()
+				) {
+					diagnostics.add(
+						"CONTRADICTORY_VALUE",
+						pointer + "/required_for_start",
+						"block_start assets must be required_for_start"
+					);
+				}
+			}
+		}
+
+		private void validateMessageMissingFallback(
+			final MissingAssetMode missing,
+			final Optional<Identifier> fallback,
+			final String missingPointer,
+			final String fallbackPointer,
+			final MessageDiagnostics diagnostics
+		) {
+			if (missing == MissingAssetMode.FALLBACK && fallback.isEmpty()) {
+				diagnostics.add(
+					"MISSING_REQUIRED",
+					fallbackPointer,
+					"fallback mode requires a fallback resource"
+				);
+			} else if (missing != MissingAssetMode.FALLBACK && fallback.isPresent()) {
+				diagnostics.add(
+					"CONTRADICTORY_VALUE",
+					missingPointer,
+					"fallback resource requires fallback missing mode"
+				);
+			}
+		}
+
+		private final class MessageDiagnostics {
+			private final Source source;
+			private final List<Problem> retained = new ArrayList<>();
+			private int totalCount;
+
+			private MessageDiagnostics(final Source source) {
+				this.source = source;
+			}
+
+			private void add(
+				final String code,
+				final String pointer,
+				final String message
+			) {
+				this.totalCount++;
+				if (this.retained.size() < MAX_DIAGNOSTIC_DETAILS) {
+					this.retained.add(messageProblem(this.source, code, pointer, message));
+				}
+			}
+
+			private boolean isEmpty() {
+				return this.totalCount == 0;
+			}
+
+			private List<Problem> retained() {
+				return List.copyOf(this.retained);
+			}
+
+			private int totalCount() {
+				return this.totalCount;
+			}
+		}
+
+		private List<Problem> messageProblems(
+			final Source source,
+			final List<MessageDefinitionParser.Issue> issues
+		) {
+			List<Problem> diagnostics = new ArrayList<>(
+				Math.min(issues.size(), MAX_DIAGNOSTIC_DETAILS)
+			);
+			for (MessageDefinitionParser.Issue issue : issues) {
+				if (diagnostics.size() >= MAX_DIAGNOSTIC_DETAILS) {
+					break;
+				}
+				diagnostics.add(
+					messageProblem(source, issue.code(), issue.path(), issue.message())
+				);
+			}
+			return List.copyOf(diagnostics);
+		}
+
+		private static List<Problem> retainMessageDiagnostics(final List<Problem> diagnostics) {
+			if (diagnostics.size() <= MAX_DIAGNOSTIC_DETAILS) {
+				return List.copyOf(diagnostics);
+			}
+			return List.copyOf(diagnostics.subList(0, MAX_DIAGNOSTIC_DETAILS));
+		}
+
+		private Problem messageProblem(
+			final Source source,
+			final String code,
+			final String pointer,
+			final String message
+		) {
+			return new Problem(
+				code,
+				source == null ? null : source.type(),
+				source == null ? null : source.id(),
+				source == null ? null : source.resource(),
+				source == null ? "unknown" : source.sourcePack(),
+				pointer == null ? "" : pointer,
+				message == null ? "unknown error" : message
+			);
+		}
+
+		private void disableDuplicateMessage(final Source previous, final Source source) {
+			DocumentKey key = new DocumentKey(source.type(), source.id());
+			List<Problem> diagnostics = new ArrayList<>();
+			diagnostics.add(
+				messageProblem(
+					source,
+					"DUPLICATE_DEFINITION",
+					"",
+					"definition already supplied by " + previous.resource()
+				)
+			);
+			MessageIdentity identity = MessageIdentity.optional();
+			if (source.type() == DefinitionType.MESSAGE_CUE) {
+				MessageIdentity previousIdentity = messageIdentity(previous);
+				MessageIdentity currentIdentity = messageIdentity(source);
+				DisabledMessageDefinition accumulated = this.disabledMessages.get(key);
+				boolean required = (
+					previousIdentity.trusted() && previousIdentity.required()
+				)
+					|| (currentIdentity.trusted() && currentIdentity.required())
+					|| (accumulated != null && accumulated.required());
+				Set<Identifier> declaredGames = this.duplicateMessageGames.computeIfAbsent(
+					key,
+					ignored -> new LinkedHashSet<>()
+				);
+				if (declaredGames.isEmpty()) {
+					if (previousIdentity.trusted()) {
+						previousIdentity.game().ifPresent(declaredGames::add);
+					}
+					if (accumulated != null) {
+						accumulated.game().ifPresent(declaredGames::add);
+					}
+				}
+				if (currentIdentity.trusted()) {
+					currentIdentity.game().ifPresent(declaredGames::add);
+				} else {
+					diagnostics.add(
+						messageProblem(
+							source,
+							"UNTRUSTED_ENVELOPE",
+							"",
+							"duplicate cue envelope cannot be verified; treating it as optional"
+						)
+					);
+				}
+				Optional<Identifier> game = declaredGames.size() == 1
+					? Optional.of(declaredGames.iterator().next())
+					: Optional.empty();
+				if (declaredGames.size() > 1) {
+					this.multiGameMessageFailures.add(key);
+					diagnostics.add(
+						messageProblem(
+							source,
+							"CONFLICTING_GAME_CONTEXT",
+							"/game",
+							"duplicate definitions declare conflicting games " + declaredGames
+						)
+					);
+				}
+				if (required && declaredGames.size() > 1) {
+					this.startBlockedGames.addAll(declaredGames);
+				}
+				identity = new MessageIdentity(required, game, true);
+			}
+			disableMessage(source, identity, diagnostics, diagnostics.size());
+		}
+
+		private void disableMessage(
+			final Source source,
+			final MessageIdentity identity,
+			final List<Problem> diagnostics,
+			final int totalDiagnosticCount
+		) {
+			disableMessage(
+				source,
+				identity,
+				diagnostics,
+				totalDiagnosticCount,
+				Optional.empty()
+			);
+		}
+
+		private void disableMessage(
+			final Source source,
+			final MessageIdentity identity,
+			final List<Problem> diagnostics,
+			final int totalDiagnosticCount,
+			final Optional<StaticFallbackSpec> staticFallback
+		) {
+			DocumentKey key = new DocumentKey(source.type(), source.id());
+			SourceDocument document = messageSourceDocument(source, canonicalMessageSource(source));
+			this.sourceDocuments.put(key, document);
+			if (source.type() == DefinitionType.TEXT_EFFECT) {
+				this.textEffects.remove(source.id());
+			} else if (source.type() == DefinitionType.MESSAGE_CUE) {
+				this.messageCues.remove(source.id());
+			}
+			DisabledMessageDefinition previous = this.disabledMessages.get(key);
+			List<Problem> merged = new ArrayList<>();
+			int mergedTotal = totalDiagnosticCount;
+			if (previous != null) {
+				merged.addAll(previous.diagnostics());
+				mergedTotal += previous.totalDiagnosticCount();
+			}
+			merged.addAll(diagnostics);
+			Optional<StaticFallbackSpec> retainedFallback = staticFallback == null
+				? Optional.empty()
+				: staticFallback;
+			if (retainedFallback.isEmpty() && previous != null) {
+				retainedFallback = previous.staticFallback();
+			}
+			this.disabledMessages.put(
+				key,
+				new DisabledMessageDefinition(
+					document,
+					identity.required(),
+					identity.game(),
+					retainedFallback,
+					retainMessageDiagnostics(merged),
+					Math.max(mergedTotal, merged.size())
+				)
+			);
+			boolean fallbackSatisfiesRequired = retainedFallback
+				.filter(StaticFallbackSpec::fallbackSatisfiesRequired)
+				.isPresent();
+			if (identity.required() && !fallbackSatisfiesRequired) {
+				identity.game().ifPresent(this.startBlockedGames::add);
+				if (
+					identity.game().isEmpty()
+						&& this.games.size() == 1
+						&& !this.multiGameMessageFailures.contains(key)
+				) {
+					this.startBlockedGames.add(this.games.keySet().iterator().next());
+				}
+			}
+		}
+
+		private MessageIdentity messageIdentity(final Source source) {
+			if (source.type() != DefinitionType.MESSAGE_CUE) {
+				return MessageIdentity.optional();
+			}
+			if (source.messageEnvelopeHint().isPresent()) {
+				MessageEnvelopeHint hint = source.messageEnvelopeHint().orElseThrow();
+				return new MessageIdentity(hint.required(), hint.game(), true);
+			}
+			if (source.json().length() > MAX_DEFINITION_CHARACTERS) {
+				return MessageIdentity.untrusted();
+			}
+			try {
+				JsonElement root = parseStrict(source.json());
+				if (!root.isJsonObject()) {
+					return MessageIdentity.untrusted();
+				}
+				JsonObject object = root.getAsJsonObject();
+				JsonElement requiredValue = object.get("required");
+				boolean trusted = requiredValue == null || requiredValue.isJsonNull();
+				boolean required = false;
+				if (
+					requiredValue != null
+						&& !requiredValue.isJsonNull()
+						&& requiredValue.isJsonPrimitive()
+						&& requiredValue.getAsJsonPrimitive().isBoolean()
+				) {
+					trusted = true;
+					required = requiredValue.getAsBoolean();
+				}
+				JsonElement gameValue = object.get("game");
+				Optional<Identifier> game = Optional.empty();
+				if (
+					gameValue != null
+						&& !gameValue.isJsonNull()
+						&& gameValue.isJsonPrimitive()
+						&& gameValue.getAsJsonPrimitive().isString()
+				) {
+					game = Optional.ofNullable(parseIdentifier(gameValue.getAsString()));
+					if (game.isEmpty()) {
+						trusted = false;
+					}
+				} else if (gameValue != null && !gameValue.isJsonNull()) {
+					trusted = false;
+				}
+				return trusted
+					? new MessageIdentity(required, game, true)
+					: MessageIdentity.untrusted();
+			} catch (IOException | JsonParseException | NumberFormatException error) {
+				return MessageIdentity.untrusted();
+			}
+		}
+
+		private void storeMessageDocument(final Source source, final String canonicalJson) {
+			SourceDocument document = messageSourceDocument(source, canonicalJson);
+			this.sourceDocuments.put(document.key(), document);
+		}
+
+		private SourceDocument messageSourceDocument(
+			final Source source,
+			final String canonicalJson
+		) {
+			DocumentKey key = new DocumentKey(source.type(), source.id());
+			return new SourceDocument(
+				key,
+				source.resource(),
+				source.sourcePack(),
+				canonicalJson,
+				sha256(canonicalJson)
+			);
+		}
+
+		private String canonicalMessageSource(final Source source) {
+			if (source.json().length() > MAX_DEFINITION_CHARACTERS) {
+				return source.json().substring(0, MAX_DEFINITION_CHARACTERS + 1);
+			}
+			try {
+				return canonical(parseStrict(source.json()));
+			} catch (IOException | JsonParseException | NumberFormatException error) {
+				return source.json();
+			}
+		}
+
+		private static boolean isMessageDefinition(final DefinitionType type) {
+			return type == DefinitionType.TEXT_EFFECT || type == DefinitionType.MESSAGE_CUE;
+		}
+
+		private record MessageIdentity(
+			boolean required,
+			Optional<Identifier> game,
+			boolean trusted
+		) {
+			private MessageIdentity {
+				game = game == null ? Optional.empty() : game;
+			}
+
+			private static MessageIdentity optional() {
+				return new MessageIdentity(false, Optional.empty(), true);
+			}
+
+			private static MessageIdentity untrusted() {
+				return new MessageIdentity(false, Optional.empty(), false);
+			}
+		}
+
+		private MessageHookSet parseMessageHooks(
+			final ObjectReader parent,
+			final Set<MessageHookEvent> allowedEvents
+		) {
+			JsonObject object = parent.optionalObject("message_hooks");
+			if (object == null) {
+				return MessageHookSet.empty();
+			}
+			ObjectReader hooksReader = parent.child("message_hooks", object);
+			if (object.size() > MessageHookDefinitions.MAX_HOOKS_PER_OWNER) {
+				add(
+					parent.source,
+					"RESOURCE_LIMIT",
+					hooksReader.pointer(""),
+					"message hook count exceeds "
+						+ MessageHookDefinitions.MAX_HOOKS_PER_OWNER
+				);
+			}
+			Map<MessageHookEvent, MessageHookReference> hooks = new LinkedHashMap<>();
+			for (String eventName : object.keySet()) {
+				JsonElement element = hooksReader.take(eventName);
+				String pointer = hooksReader.pointer("/" + escapePointer(eventName));
+				MessageHookEvent event;
+				try {
+					event = MessageHookEvent.valueOf(eventName.toUpperCase(Locale.ROOT));
+				} catch (IllegalArgumentException error) {
+					add(
+						parent.source,
+						"INVALID_ENUM",
+						pointer,
+						"unknown message hook event " + eventName
+					);
+					continue;
+				}
+				if (!allowedEvents.contains(event)) {
+					add(
+						parent.source,
+						"INVALID_COMBINATION",
+						pointer,
+						"message hook event " + eventName + " is not allowed for this definition"
+					);
+					continue;
+				}
+				MessageHookReference reference = parseMessageHookReference(
+					parent.source,
+					pointer,
+					element
+				);
+				if (reference != null) {
+					hooks.put(event, reference);
+				}
+			}
+			hooksReader.finish();
+			return new MessageHookSet(hooks);
+		}
+
+		private MessageHookReference parseMessageHookReference(
+			final Source source,
+			final String pointer,
+			final JsonElement element
+		) {
+			if (element != null && element.isJsonPrimitive()
+				&& element.getAsJsonPrimitive().isString()) {
+				Identifier cue = parseIdentifier(element.getAsString());
+				if (cue == null) {
+					add(
+						source,
+						"INVALID_IDENTIFIER",
+						pointer,
+						"expected an explicitly namespaced message cue identifier"
+					);
+					return null;
+				}
+				return new MessageHookReference(cue);
+			}
+			if (element == null || !element.isJsonObject()) {
+				add(
+					source,
+					"TYPE_MISMATCH",
+					pointer,
+					"message hook must be a cue identifier string or an object"
+				);
+				return null;
+			}
+			ObjectReader reader = new ObjectReader(
+				source,
+				pointer,
+				element.getAsJsonObject(),
+				this.problems
+			);
+			Identifier cue = reader.requiredIdentifier("cue");
+			JsonObject argumentsObject = reader.optionalObject("arguments");
+			Map<String, String> arguments = parseMessageHookArguments(
+				source,
+				reader.pointer("/arguments"),
+				argumentsObject
+			);
+			reader.finish();
+			return cue == null ? null : new MessageHookReference(cue, arguments);
+		}
+
+		private Map<String, String> parseMessageHookArguments(
+			final Source source,
+			final String pointer,
+			final JsonObject object
+		) {
+			if (object == null) {
+				return Map.of();
+			}
+			if (object.size() > MessageHookDefinitions.MAX_FIXED_ARGUMENTS) {
+				add(
+					source,
+					"RESOURCE_LIMIT",
+					pointer,
+					"message hook fixed argument count exceeds "
+						+ MessageHookDefinitions.MAX_FIXED_ARGUMENTS
+				);
+			}
+			Map<String, String> arguments = new LinkedHashMap<>();
+			for (Map.Entry<String, JsonElement> entry : object.entrySet()) {
+				String name = entry.getKey();
+				String argumentPointer = pointer + "/" + escapePointer(name);
+				if (!MESSAGE_HOOK_ARGUMENT.matcher(name).matches()) {
+					add(
+						source,
+						"INVALID_LOCAL_ID",
+						argumentPointer,
+						"expected lowercase [a-z][a-z0-9_.-]{0,63}"
+					);
+					continue;
+				}
+				if (MessageHookDefinitions.RESERVED_AUTOMATIC_ARGUMENTS.contains(name)) {
+					add(
+						source,
+						"INVALID_COMBINATION",
+						argumentPointer,
+						"fixed message hook arguments cannot override an automatic argument"
+					);
+					continue;
+				}
+				JsonElement value = entry.getValue();
+				if (value == null || !value.isJsonPrimitive()) {
+					add(
+						source,
+						"TYPE_MISMATCH",
+						argumentPointer,
+						"fixed message hook argument must be a string, number, or boolean"
+					);
+					continue;
+				}
+				String canonical = value.getAsJsonPrimitive().getAsString();
+				if (canonical.length() > MAX_SHORT_STRING_LENGTH) {
+					add(source, "RESOURCE_LIMIT", argumentPointer, "fixed argument is too long");
+					continue;
+				}
+				arguments.put(name, canonical);
+			}
+			return Map.copyOf(arguments);
+		}
+
 		private void parseGame(final Source source, final ObjectReader reader) {
 			Integer apiVersion = reader.requiredInt("api_version");
 			Integer contentVersion = reader.requiredInt("content_version");
@@ -583,6 +3218,7 @@ public final class DefinitionCompiler {
 			Optional<TaskTimeline> taskTimeline = parseTaskTimeline(reader);
 			Optional<ReadinessDefinition> readiness = parseReadiness(reader);
 			Optional<PlayerTerminalConfig> playerTerminal = parsePlayerTerminalConfig(reader);
+			MessageHookSet messageHooks = parseMessageHooks(reader, GAME_MESSAGE_HOOKS);
 			if (
 				apiVersion != null
 					&& (
@@ -652,7 +3288,8 @@ public final class DefinitionCompiler {
 						defaultLifeState,
 						taskTimeline,
 						readiness,
-						playerTerminal
+						playerTerminal,
+						messageHooks
 					)
 				);
 			}
@@ -694,6 +3331,7 @@ public final class DefinitionCompiler {
 				true
 			);
 			boolean hostCanForce = reader.optionalBoolean("host_can_force", false);
+			MessageHookSet messageHooks = parseMessageHooks(reader, READINESS_MESSAGE_HOOKS);
 			reader.finish();
 			return phase == null || action == null
 				? Optional.empty()
@@ -702,7 +3340,8 @@ public final class DefinitionCompiler {
 						phase,
 						action,
 						disconnectInvalidates,
-						hostCanForce
+						hostCanForce,
+						messageHooks
 					)
 				);
 		}
@@ -778,6 +3417,7 @@ public final class DefinitionCompiler {
 			Optional<Identifier> initializationFlow = reader.optionalIdentifier("initialization_flow");
 			Set<Identifier> tags = reader.optionalIdentifierSet("tags");
 			TabStyle tab = parseTab(reader, true);
+			MessageHookSet messageHooks = parseMessageHooks(reader, ROLE_MESSAGE_HOOKS);
 			if (game != null && name != null) {
 				this.roles.put(
 					source.id(),
@@ -788,7 +3428,8 @@ public final class DefinitionCompiler {
 						description,
 						initializationFlow,
 						tags,
-						tab
+						tab,
+						messageHooks
 					)
 				);
 			}
@@ -896,10 +3537,13 @@ public final class DefinitionCompiler {
 			Set<Identifier> transitions = reader.optionalIdentifierSet("transitions");
 			Optional<Identifier> onEnter = reader.optionalIdentifier("on_enter");
 			Optional<Identifier> onExit = reader.optionalIdentifier("on_exit");
+			MessageHookSet messageHooks = parseMessageHooks(reader, PHASE_MESSAGE_HOOKS);
 			if (game != null && name != null) {
 				this.phases.put(
 					source.id(),
-					new PhaseDefinition(source.id(), game, name, transitions, onEnter, onExit)
+					new PhaseDefinition(
+						source.id(), game, name, transitions, onEnter, onExit, messageHooks
+					)
 				);
 			}
 		}
@@ -1287,6 +3931,7 @@ public final class DefinitionCompiler {
 			Optional<Identifier> onStart = reader.optionalIdentifier("on_start");
 			Optional<Identifier> onPlayerComplete = reader.optionalIdentifier("on_player_complete");
 			Optional<Identifier> onAllComplete = reader.optionalIdentifier("on_all_complete");
+			MessageHookSet messageHooks = parseMessageHooks(reader, FLOW_MESSAGE_HOOKS);
 			JsonArray nodesArray = reader.requiredArray("nodes");
 			Map<String, FlowNode> nodes;
 			if (nodesArray.size() > MAX_FLOW_NODES) {
@@ -1338,7 +3983,8 @@ public final class DefinitionCompiler {
 						onStart,
 						onPlayerComplete,
 						onAllComplete,
-						nodes
+						nodes,
+						messageHooks
 					)
 				);
 			}
@@ -1747,6 +4393,7 @@ public final class DefinitionCompiler {
 			Map<String, TaskResult> results = parseTaskResults(source, reader);
 			List<TaskEventDefinition> events = parseTaskEvents(source, reader);
 			List<TaskStatisticDefinition> statistics = parseTaskStatistics(source, reader);
+			MessageHookSet messageHooks = parseMessageHooks(reader, TASK_MESSAGE_HOOKS);
 
 			if (version != null && version < 1) {
 				add(source, "OUT_OF_RANGE", "/version", "task version must be positive");
@@ -1818,7 +4465,8 @@ public final class DefinitionCompiler {
 						onStartPlayers,
 						results,
 						events,
-						statistics
+						statistics,
+						messageHooks
 					)
 				);
 			}
@@ -2171,6 +4819,10 @@ public final class DefinitionCompiler {
 					source,
 					reader
 				);
+				MessageHookSet messageHooks = parseMessageHooks(
+					reader,
+					TASK_EVENT_MESSAGE_HOOKS
+				);
 				if (
 					policy == TaskEventPolicy.REPEATABLE
 						&& (
@@ -2214,7 +4866,8 @@ public final class DefinitionCompiler {
 							allowedStates,
 							audience,
 							recapVisibility,
-							playerHistory
+							playerHistory,
+							messageHooks
 						)
 					);
 				}
@@ -5225,12 +7878,14 @@ public final class DefinitionCompiler {
 					"history.empty",
 					"detail.exists",
 					"detail.detail_available",
+					"detail.replay_allowed",
 					"item.online",
 					"item.admin",
 					"item.host",
 					"item.ready",
 					"item.initialized",
-					"item.detail_available" -> UiValueType.BOOLEAN;
+					"item.detail_available",
+					"item.replay_allowed" -> UiValueType.BOOLEAN;
 				case "session.revision",
 					"session.generation",
 					"flow.version",

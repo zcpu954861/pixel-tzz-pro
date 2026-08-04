@@ -2,10 +2,17 @@ package io.github.zcpu954861.pixeltzzpro.client;
 
 import io.github.zcpu954861.pixeltzzpro.client.animation.LoadingActionBarAnimator;
 import io.github.zcpu954861.pixeltzzpro.client.animation.OperationSubtitleAnimator;
+import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessageKeyBindings;
+import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessageAssetReporter;
+import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePlayback;
+import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePreferences;
+import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessageWireState;
+import io.github.zcpu954861.pixeltzzpro.client.message.MessageHudOverlay;
 import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState.ConnectionStatus;
 import io.github.zcpu954861.pixeltzzpro.client.screen.DataDrivenPageScreen;
 import io.github.zcpu954861.pixeltzzpro.client.screen.ForcedFlowPauseScreen;
 import io.github.zcpu954861.pixeltzzpro.client.screen.LivePageSupervisor;
+import io.github.zcpu954861.pixeltzzpro.client.screen.OptionsMenuEntry;
 import io.github.zcpu954861.pixeltzzpro.client.screen.PauseMenuEntry;
 import io.github.zcpu954861.pixeltzzpro.client.screen.TransitioningConsoleScreen;
 import io.github.zcpu954861.pixeltzzpro.client.ui.PixelTzzRenderPipelines;
@@ -15,6 +22,11 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageAssetManifestS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageControlS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageFieldDeltaS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessageNodeAppendS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.MessagePlanS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayload;
@@ -44,6 +56,7 @@ import net.minecraft.client.gui.components.toasts.SystemToast;
  */
 public final class PixelTzzProClient implements ClientModInitializer {
 	private static Boolean lastModUiVisible;
+	private static boolean messagePhysicalConnectionActive;
 	private static final String MOD_VERSION = FabricLoader.getInstance()
 		.getModContainer("pixel-tzz-pro")
 		.orElseThrow()
@@ -53,7 +66,9 @@ public final class PixelTzzProClient implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+		ClientMessagePreferences.initialize();
 		PixelTzzRenderPipelines.register();
+		MessageHudOverlay.register();
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			SystemToast.forceHide(
 				client.gui.toastManager(),
@@ -66,6 +81,12 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			LivePageSupervisor.reset();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			if (!messagePhysicalConnectionActive) {
+				messagePhysicalConnectionActive = true;
+				ClientMessageAssetReporter.beginConnection();
+				ClientMessageWireState.beginConnection();
+				ClientMessagePlayback.reset(client);
+			}
 			lastModUiVisible = null;
 		});
 		ClientPlayConnectionEvents.DISCONNECT.register((listener, client) -> {
@@ -76,6 +97,10 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			ClientSessionState.disconnect();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			ClientMessageAssetReporter.disconnect();
+			ClientMessageWireState.disconnect();
+			ClientMessagePlayback.reset(client);
+			messagePhysicalConnectionActive = false;
 			lastModUiVisible = null;
 		});
 
@@ -153,9 +178,32 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			HostSubtitleS2CPayload.TYPE,
 			(payload, context) -> OperationSubtitleAnimator.enqueue(payload.message())
 		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			MessageAssetManifestS2CPayload.TYPE,
+			(payload, context) -> ClientMessageAssetReporter.accept(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			MessagePlanS2CPayload.TYPE,
+			(payload, context) -> ClientMessageWireState.accept(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			MessageFieldDeltaS2CPayload.TYPE,
+			(payload, context) -> ClientMessageWireState.accept(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			MessageNodeAppendS2CPayload.TYPE,
+			(payload, context) -> ClientMessageWireState.accept(payload)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			MessageControlS2CPayload.TYPE,
+			(payload, context) -> ClientMessageWireState.accept(payload)
+		);
 
-		ClientTickEvents.END_CLIENT_TICK.register(LoadingActionBarAnimator::tick);
-		ClientTickEvents.END_CLIENT_TICK.register(OperationSubtitleAnimator::tick);
+		// Announce resource-reload start before the fresh asset report emitted in the same tick, so
+		// the server invalidates the old observation first and cannot leave the new one pending.
+		ClientTickEvents.END_CLIENT_TICK.register(ClientMessageWireState::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(ClientMessageAssetReporter::tick);
+		ClientTickEvents.END_CLIENT_TICK.register(ClientMessagePlayback::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(LivePageSupervisor::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 			boolean visible = client.gui.screen() instanceof TransitioningConsoleScreen
@@ -187,10 +235,18 @@ public final class PixelTzzProClient implements ClientModInitializer {
 
 					@Override
 					public void onResourceManagerReload(final ResourceManager resourceManager) {
-						ClientPageState.retryResourcePreflight();
+						ClientMessageWireState.beginResourceReload();
+						try {
+							ClientPageState.retryResourcePreflight();
+						} finally {
+							ClientMessageWireState.finishResourceReload();
+							ClientMessageAssetReporter.resourcesReloaded();
+						}
 					}
 				}
-			);
+		);
+		ClientMessageKeyBindings.register(ClientMessagePlayback::manualComplete);
 		PauseMenuEntry.register();
+		OptionsMenuEntry.register();
 	}
 }

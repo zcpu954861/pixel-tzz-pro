@@ -7,6 +7,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldScope;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.FieldType;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PhaseDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.IntermissionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.PlayerCallback;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
@@ -14,7 +15,6 @@ import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskResult;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskTimeline;
 import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
-import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.server.TaskCallbackLedgerAuthority.MutationResult;
 import io.github.zcpu954861.pixeltzzpro.server.TaskCallbackLedgerAuthority.PrepareResult;
 import io.github.zcpu954861.pixeltzzpro.server.TaskCallbackLedgerAuthority.PreparedInvocation;
@@ -51,7 +51,6 @@ import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -960,7 +959,14 @@ public final class TimelineServerRuntime {
 		} else {
 			recovered = incrementTimelineRevision(recovered);
 		}
-		return commitLifecycle(server, root, current, recovered).successful();
+		return commitLifecycle(
+			server,
+			root,
+			current,
+			recovered,
+			Optional.empty(),
+			false
+		).successful();
 	}
 
 	private static CallbackBatch executeCallbacks(
@@ -1686,7 +1692,8 @@ public final class TimelineServerRuntime {
 			expectedRoot,
 			expectedTimeline,
 			nextTimeline,
-			Optional.empty()
+			Optional.empty(),
+			true
 		);
 	}
 
@@ -1696,6 +1703,24 @@ public final class TimelineServerRuntime {
 		final TimelineInstance expectedTimeline,
 		final TimelineInstance nextTimeline,
 		final Optional<Identifier> phase
+	) {
+		return commitLifecycle(
+			server,
+			expectedRoot,
+			expectedTimeline,
+			nextTimeline,
+			phase,
+			true
+		);
+	}
+
+	private static RuntimeResult commitLifecycle(
+		final MinecraftServer server,
+		final WorldStateV3 expectedRoot,
+		final TimelineInstance expectedTimeline,
+		final TimelineInstance nextTimeline,
+		final Optional<Identifier> phase,
+		final boolean emitMessageHooks
 	) {
 		PixelTzzWorldState.CommitV3Result committed = PixelTzzWorldState.get(server)
 			.commitV3(
@@ -1723,7 +1748,15 @@ public final class TimelineServerRuntime {
 			return RuntimeResult.failed(OperationCode.REVISION_MISMATCH, committed.reason());
 		}
 		PixelTzzServerRuntime.timelineStateChanged(server);
-		sendLifecycleSubtitle(server, expectedTimeline, nextTimeline);
+		if (emitMessageHooks) {
+			emitLifecycleMessageHooks(
+				server,
+				expectedRoot,
+				expectedTimeline,
+				committed.state().orElseThrow(),
+				nextTimeline
+			);
+		}
 		if (
 			nextTimeline.status() == TimelineStatus.COMPLETED
 				|| nextTimeline.status() == TimelineStatus.INTERRUPTED
@@ -1733,91 +1766,275 @@ public final class TimelineServerRuntime {
 		return RuntimeResult.changed("timeline lifecycle committed");
 	}
 
-	private static void sendLifecycleSubtitle(
+	private static void emitLifecycleMessageHooks(
 		final MinecraftServer server,
+		final WorldStateV3 beforeRoot,
 		final TimelineInstance before,
+		final WorldStateV3 afterRoot,
 		final TimelineInstance after
 	) {
-		TaskInstance task = before.currentTask().orElse(null);
-		if (task == null) {
+		DefinitionSnapshot snapshot = frozenSnapshot(server, after).orElse(null);
+		if (snapshot == null) {
+			PixelTzzPro.LOGGER.warn(
+				"V3B timeline hooks were skipped because frozen snapshot {} could not be restored",
+				after.instanceId()
+			);
 			return;
 		}
-		String name = frozenTaskName(server, before, task.taskId())
-			.orElse(task.taskId().getPath());
-		Optional<String> subtitle = lifecycleSubtitle(before.status(), after.status(), name);
-		if (subtitle.isEmpty()) {
+		GameDefinition game = snapshot.games().get(after.gameId());
+		if (game == null) {
 			return;
 		}
-		WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElse(null);
-		UUID hostId = root == null
-			? null
-			: root.core().host().map(value -> value.playerId()).orElse(null);
-		ServerPlayer host = hostId == null ? null : server.getPlayerList().getPlayer(hostId);
-		if (host == null || !ServerPlayNetworking.canSend(host, HostSubtitleS2CPayload.TYPE)) {
-			return;
-		}
-		ServerPlayNetworking.send(
-			host,
-			new HostSubtitleS2CPayload(
-				Integer.toUnsignedLong(server.getTickCount()),
-				subtitle.orElseThrow()
-			)
+		Set<UUID> gameTargets = Set.copyOf(afterRoot.core().players().keySet());
+		Optional<UUID> invoker = afterRoot.core().host().map(value -> value.playerId());
+		Map<String, String> common = lifecycleHookArguments(
+			server,
+			afterRoot,
+			after,
+			invoker
 		);
-	}
 
-	static Optional<String> lifecycleSubtitle(
-		final TimelineStatus before,
-		final TimelineStatus after,
-		final String taskName
-	) {
-		Objects.requireNonNull(before, "before");
-		Objects.requireNonNull(after, "after");
-		Objects.requireNonNull(taskName, "taskName");
-		String prefix;
-		if (before == TimelineStatus.STARTING && after == TimelineStatus.RUNNING) {
-			prefix = "任务开始";
-		} else if (
-			before == TimelineStatus.SETTLING
+		Identifier previousPhase = beforeRoot.core().activePhaseId().orElse(null);
+		Identifier currentPhase = afterRoot.core().activePhaseId().orElse(null);
+		if (!Objects.equals(previousPhase, currentPhase)) {
+			LinkedHashMap<String, String> phaseArguments = new LinkedHashMap<>(common);
+			if (previousPhase != null) {
+				phaseArguments.put("previous_phase_id", previousPhase.toString());
+			}
+			if (currentPhase != null) {
+				phaseArguments.put("phase_id", currentPhase.toString());
+			}
+			PhaseDefinition exited = previousPhase == null
+				? null
+				: snapshot.phases().get(previousPhase);
+			if (exited != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					snapshot,
+					exited.messageHooks(),
+					MessageHookEvent.EXIT,
+					gameTargets,
+					invoker,
+					phaseArguments
+				);
+			}
+			PhaseDefinition entered = currentPhase == null
+				? null
+				: snapshot.phases().get(currentPhase);
+			if (entered != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					snapshot,
+					entered.messageHooks(),
+					MessageHookEvent.ENTER,
+					gameTargets,
+					invoker,
+					phaseArguments
+				);
+			}
+		}
+
+		Set<UUID> previousHistory = before.taskHistory()
+			.stream()
+			.map(TaskInstance::taskInstanceId)
+			.collect(java.util.stream.Collectors.toUnmodifiableSet());
+		for (TaskInstance terminal : after.taskHistory()) {
+			if (previousHistory.contains(terminal.taskInstanceId())) {
+				continue;
+			}
+			TaskDefinition task = snapshot.tasks().get(terminal.taskId());
+			if (task == null) {
+				continue;
+			}
+			MessageHookEvent event = terminal.status() == TaskStatus.INTERRUPTED
+				? MessageHookEvent.INTERRUPT
+				: MessageHookEvent.COMPLETE;
+			MessageHookDispatcher.dispatch(
+				server,
+				snapshot,
+				task.messageHooks(),
+				event,
+				Set.copyOf(terminal.participants()),
+				invoker,
+				taskHookArguments(common, task, terminal, event)
+			);
+		}
+
+		TaskInstance beforeTask = before.currentTask().orElse(null);
+		TaskInstance afterTask = after.currentTask().orElse(null);
+		if (
+			beforeTask != null
+				&& afterTask != null
+				&& beforeTask.taskInstanceId().equals(afterTask.taskInstanceId())
+				&& businessTaskStatus(beforeTask) == TaskStatus.STARTING
+				&& businessTaskStatus(afterTask) == TaskStatus.RUNNING
+		) {
+			TaskDefinition task = snapshot.tasks().get(afterTask.taskId());
+			if (task != null) {
+				MessageHookDispatcher.dispatch(
+					server,
+					snapshot,
+					task.messageHooks(),
+					MessageHookEvent.START,
+					Set.copyOf(afterTask.participants()),
+					invoker,
+					taskHookArguments(common, task, afterTask, MessageHookEvent.START)
+				);
+			}
+		}
+
+		TimelineStatus beforeStatus = businessTimelineStatus(before);
+		TimelineStatus afterStatus = businessTimelineStatus(after);
+		if (
+			beforeStatus == TimelineStatus.STARTING
+				&& afterStatus == TimelineStatus.RUNNING
+		) {
+			MessageHookDispatcher.dispatch(
+				server,
+				snapshot,
+				game.messageHooks(),
+				MessageHookEvent.START,
+				gameTargets,
+				invoker,
+				common
+			);
+		}
+		if (!before.paused() && after.paused()) {
+			LinkedHashMap<String, String> arguments = new LinkedHashMap<>(common);
+			after.pauseReason().ifPresent(value -> arguments.put("pause_reason", value));
+			MessageHookDispatcher.dispatch(
+				server,
+				snapshot,
+				game.messageHooks(),
+				MessageHookEvent.PAUSE,
+				gameTargets,
+				invoker,
+				arguments
+			);
+		} else if (before.paused() && !after.paused()) {
+			MessageHookDispatcher.dispatch(
+				server,
+				snapshot,
+				game.messageHooks(),
+				MessageHookEvent.RESUME,
+				gameTargets,
+				invoker,
+				common
+			);
+		}
+		if (
+			beforeStatus != TimelineStatus.COMPLETED
+				&& beforeStatus != TimelineStatus.INTERRUPTED
 				&& (
-					after == TimelineStatus.INTERMISSION
-						|| after == TimelineStatus.STARTING
-						|| after == TimelineStatus.COMPLETED
+					afterStatus == TimelineStatus.COMPLETED
+						|| afterStatus == TimelineStatus.INTERRUPTED
 				)
 		) {
-			prefix = "任务结束";
-		} else if (after == TimelineStatus.INTERRUPTED && before != TimelineStatus.INTERRUPTED) {
-			prefix = "任务已终止";
-		} else {
-			return Optional.empty();
+			LinkedHashMap<String, String> arguments = new LinkedHashMap<>(common);
+			arguments.put("end_status", afterStatus.getSerializedName());
+			arguments.put(
+				"end_reason",
+				afterStatus == TimelineStatus.INTERRUPTED
+					? "timeline_interrupted"
+					: "timeline_completed"
+			);
+			MessageHookDispatcher.dispatch(
+				server,
+				snapshot,
+				game.messageHooks(),
+				MessageHookEvent.END,
+				gameTargets,
+				invoker,
+				arguments
+			);
 		}
-		return Optional.of(prefix + " · " + taskName);
 	}
 
-	private static Optional<String> frozenTaskName(
+	private static Map<String, String> lifecycleHookArguments(
 		final MinecraftServer server,
+		final WorldStateV3 root,
 		final TimelineInstance timeline,
-		final Identifier taskId
+		final Optional<UUID> invoker
+	) {
+		LinkedHashMap<String, String> result = new LinkedHashMap<>();
+		result.put("game_id", timeline.gameId().toString());
+		root.activeGameInstanceId()
+			.ifPresent(value -> result.put("game_instance_id", value.toString()));
+		root.core().activePhaseId()
+			.ifPresent(value -> result.put("phase_id", value.toString()));
+		result.put("state_revision", Long.toString(root.stateRevision()));
+		result.put("server_tick", Integer.toUnsignedString(server.getTickCount()));
+		result.put("game_elapsed_ticks", Long.toString(timeline.gameElapsedTicks()));
+		invoker.ifPresent(value -> result.put("initiator", value.toString()));
+		return Map.copyOf(result);
+	}
+
+	private static Map<String, String> taskHookArguments(
+		final Map<String, String> common,
+		final TaskDefinition definition,
+		final TaskInstance task,
+		final MessageHookEvent event
+	) {
+		LinkedHashMap<String, String> result = new LinkedHashMap<>(common);
+		result.put("task_id", task.taskId().toString());
+		result.put("task_instance_id", task.taskInstanceId().toString());
+		result.put("task_kind", task.kind().getSerializedName());
+		result.put("task_elapsed_ticks", Long.toString(task.elapsedTicks()));
+		task.result().ifPresent(frozen -> {
+			result.put("result_id", frozen.resultId());
+			TaskResult declared = definition.results().get(frozen.resultId());
+			if (declared != null) {
+				String semantic = declared.style().customSemantic()
+					.map(Identifier::toString)
+					.orElseGet(() ->
+						declared.style().semantic().name().toLowerCase(java.util.Locale.ROOT)
+					);
+				result.put("result_semantic", semantic);
+			}
+		});
+		if (event == MessageHookEvent.INTERRUPT) {
+			result.put("interrupt_reason", "timeline_interrupted");
+		}
+		return Map.copyOf(result);
+	}
+
+	private static TimelineStatus businessTimelineStatus(final TimelineInstance timeline) {
+		return timeline.status() == TimelineStatus.BLOCKED
+			? timeline.resumeStatus().orElseThrow()
+			: timeline.status();
+	}
+
+	private static TaskStatus businessTaskStatus(final TaskInstance task) {
+		return task.status() == TaskStatus.BLOCKED
+			? task.resumeStatus().orElseThrow()
+			: task.status();
+	}
+
+	private static Optional<DefinitionSnapshot> frozenSnapshot(
+		final MinecraftServer server,
+		final TimelineInstance timeline
 	) {
 		CachedSnapshot cached = SNAPSHOT_CACHE.get(server);
-		DefinitionSnapshot snapshot = cached != null
+		if (
+			cached != null
 				&& cached.timelineInstanceId().equals(timeline.instanceId())
 				&& cached.sha256().equals(timeline.snapshot().sha256())
-			? cached.snapshot()
-			: null;
-		if (snapshot == null) {
-			TimelineSnapshotCompiler.RestoreResult restored = TimelineSnapshotCompiler.restore(
-				timeline.gameId(),
-				timeline.snapshot()
-			);
-			if (!restored.success()) {
-				return Optional.empty();
-			}
-			snapshot = restored.snapshot().orElseThrow();
+		) {
+			return Optional.of(cached.snapshot());
 		}
-		TaskDefinition definition = snapshot.tasks().get(taskId);
-		return definition == null
-			? Optional.empty()
-			: Optional.of(definition.name().plainText());
+		TimelineSnapshotCompiler.RestoreResult restored = TimelineSnapshotCompiler.restore(
+			timeline.gameId(),
+			timeline.snapshot()
+		);
+		if (!restored.success()) {
+			return Optional.empty();
+		}
+		DefinitionSnapshot snapshot = restored.snapshot().orElseThrow();
+		SNAPSHOT_CACHE.put(
+			server,
+			new CachedSnapshot(timeline.instanceId(), timeline.snapshot().sha256(), snapshot)
+		);
+		return Optional.of(snapshot);
 	}
 
 	private static Optional<WorldStateV3> commitCallbackLedger(

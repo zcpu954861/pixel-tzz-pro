@@ -4,6 +4,20 @@
   "name": {
     "text": "等待玩家准备"
   },
+  "message_hooks": {
+    "enter": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "进入阶段「等待玩家准备」"
+      }
+    },
+    "exit": {
+      "cue": "pixel_tzz:lifecycle/notice",
+      "arguments": {
+        "message": "离开阶段「等待玩家准备」"
+      }
+    }
+  },
   "transitions": [
     "pixel_tzz:warmup"
   ]

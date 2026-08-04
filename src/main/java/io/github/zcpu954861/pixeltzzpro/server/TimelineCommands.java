@@ -5,6 +5,7 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskEventDefinition;
+import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
 import io.github.zcpu954861.pixeltzzpro.content.TaskDefinitions.TaskStatisticDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
@@ -14,10 +15,13 @@ import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.FrozenPlayerValue;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TaskStatisticValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.TimelineInstance;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.commands.CommandSourceStack;
@@ -203,10 +207,67 @@ public final class TimelineCommands {
 		if (!result.successful()) {
 			return fail(source, result.code(), result.message());
 		}
-		if (result.changed() && !commit(source.getServer(), resolved, result.nextState().orElseThrow())) {
-			return fail(source, OperationCode.REVISION_MISMATCH, "记录事件时世界状态已经变化");
+		if (result.changed()) {
+			TimelineInstance next = result.nextState().orElseThrow();
+			if (!commit(source.getServer(), resolved, next)) {
+				return fail(source, OperationCode.REVISION_MISMATCH, "记录事件时世界状态已经变化");
+			}
+			dispatchEventHook(source, resolved, next, event, frozenPlayer);
 		}
 		return succeed(source, "任务事件已记录：" + eventId);
+	}
+
+	private static void dispatchEventHook(
+		final CommandSourceStack source,
+		final ResolvedTask resolved,
+		final TimelineInstance committedTimeline,
+		final TaskEventDefinition event,
+		final Optional<FrozenPlayerValue> frozenPlayer
+	) {
+		MinecraftServer server = source.getServer();
+		WorldStateV3 root = PixelTzzWorldState.get(server).currentV3().orElse(null);
+		TaskInstance task = committedTimeline.currentTask().orElse(null);
+		if (root == null || task == null) {
+			return;
+		}
+		Optional<UUID> invoker = Optional.ofNullable(source.getPlayer())
+			.map(ServerPlayer::getUUID);
+		LinkedHashMap<String, String> arguments = new LinkedHashMap<>();
+		arguments.put("game_id", committedTimeline.gameId().toString());
+		root.activeGameInstanceId()
+			.ifPresent(value -> arguments.put("game_instance_id", value.toString()));
+		root.core().activePhaseId()
+			.ifPresent(value -> arguments.put("phase_id", value.toString()));
+		arguments.put("state_revision", Long.toString(root.stateRevision()));
+		arguments.put("server_tick", Integer.toUnsignedString(server.getTickCount()));
+		arguments.put(
+			"game_elapsed_ticks",
+			Long.toString(committedTimeline.gameElapsedTicks())
+		);
+		arguments.put("task_id", task.taskId().toString());
+		arguments.put("task_instance_id", task.taskInstanceId().toString());
+		arguments.put("task_kind", task.kind().getSerializedName());
+		arguments.put("task_elapsed_ticks", Long.toString(task.elapsedTicks()));
+		arguments.put("event", event.id());
+		arguments.put("event_state", task.status().getSerializedName());
+		invoker.ifPresent(value -> arguments.put("initiator", value.toString()));
+		frozenPlayer.ifPresent(value -> {
+			arguments.put("event_player", value.playerId().toString());
+			arguments.put("player", value.playerId().toString());
+			arguments.put("player_name", value.playerName());
+		});
+		Set<UUID> targets = frozenPlayer
+			.map(value -> Set.of(value.playerId()))
+			.orElseGet(() -> Set.copyOf(task.participants()));
+		MessageHookDispatcher.dispatch(
+			server,
+			resolved.snapshot().orElseThrow(),
+			event.messageHooks(),
+			MessageHookEvent.TRIGGER,
+			targets,
+			invoker,
+			arguments
+		);
 	}
 
 	private static int setStatistic(
