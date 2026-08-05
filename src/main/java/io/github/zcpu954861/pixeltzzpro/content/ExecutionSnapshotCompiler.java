@@ -558,7 +558,11 @@ public final class ExecutionSnapshotCompiler {
 					PANEL_ACTION,
 					PLAYER_ROUTE,
 					PAGE,
-					THEME -> false;
+					THEME,
+					HUD_COMPONENT,
+					HUD_LAYOUT,
+					HUD_PROFILE,
+					COUNTDOWN -> false;
 			})
 			.filter(key -> key.type() != DefinitionType.FLOW || !key.id().equals(flowId))
 			.forEach(keys::add);
@@ -841,7 +845,11 @@ public final class ExecutionSnapshotCompiler {
 			case FIELD,
 				PLAYER_ROUTE,
 				PAGE,
-				THEME -> throw new IllegalArgumentException(
+				THEME,
+				HUD_COMPONENT,
+				HUD_LAYOUT,
+				HUD_PROFILE,
+				COUNTDOWN -> throw new IllegalArgumentException(
 				"type is not a supporting definition: " + type
 			);
 		};

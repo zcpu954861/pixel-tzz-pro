@@ -9,6 +9,7 @@ import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.MU
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.PANEL;
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.PANEL_BORDER;
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SECONDARY_TEXT;
+import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SUCCESS;
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SURFACE;
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SURFACE_BORDER;
 import static io.github.zcpu954861.pixeltzzpro.client.ui.style.ConsolePalette.SURFACE_RAISED;
@@ -32,9 +33,9 @@ public final class ModSettingsScreen extends Screen {
 	private static final int PANEL_WIDTH = 532;
 	private static final int PANEL_HEIGHT = 296;
 	private static final int CARD_X = PANEL_X + 14;
-	private static final int CARD_Y = 132;
+	private static final int CARD_Y = 106;
 	private static final int CARD_WIDTH = 248;
-	private static final int CARD_HEIGHT = 112;
+	private static final int CARD_HEIGHT = 78;
 	private static final int CARD_GAP = 8;
 
 	private final Screen parent;
@@ -81,6 +82,21 @@ public final class ModSettingsScreen extends Screen {
 			Tooltip.create(Component.translatable("pixel_tzz_pro.settings.controls.tooltip"))
 		);
 		this.addRenderableWidget(controls);
+
+		CategoryButton hud = new CategoryButton(
+			CARD_X,
+			CARD_Y + CARD_HEIGHT + CARD_GAP,
+			CARD_WIDTH,
+			CARD_HEIGHT,
+			Component.translatable("pixel_tzz_pro.settings.hud"),
+			Component.translatable("pixel_tzz_pro.settings.hud.eyebrow"),
+			Component.translatable("pixel_tzz_pro.settings.hud.description"),
+			"HUD",
+			SUCCESS,
+			button -> this.minecraft.gui.setScreen(new HudSettingsScreen(this))
+		);
+		hud.setTooltip(Tooltip.create(Component.translatable("pixel_tzz_pro.settings.hud.tooltip")));
+		this.addRenderableWidget(hud);
 
 		ConsoleButton back = new ConsoleButton(
 			PANEL_X + PANEL_WIDTH - 132,
@@ -274,35 +290,37 @@ public final class ModSettingsScreen extends Screen {
 			}
 
 			int iconX = getX() + 15;
-			int iconY = getY() + 18;
-			int iconSize = 52;
+			int iconY = getY() + 12;
+			int iconSize = Math.min(52, getHeight() - 24);
 			graphics.fill(iconX, iconY, iconX + iconSize, iconY + iconSize, 0xFF17212B);
 			graphics.outline(iconX, iconY, iconSize, iconSize, this.accent);
 			graphics.fill(iconX + 5, iconY + 5, iconX + 7, iconY + iconSize - 5, this.accent);
 			int iconTextX = iconX + Math.max(0, (iconSize - font.width(this.icon)) / 2) + 2;
-			graphics.text(font, this.icon, iconTextX, iconY + 22, this.accent, true);
+			graphics.text(font, this.icon, iconTextX, iconY + Math.max(4, (iconSize - font.lineHeight) / 2), this.accent, true);
 
 			int copyX = getX() + 82;
 			int copyWidth = getWidth() - 96;
-			graphics.text(font, this.eyebrow, copyX, getY() + 16, this.accent, false);
-			graphics.text(font, getMessage(), copyX, getY() + 34, text, true);
+			graphics.text(font, this.eyebrow, copyX, getY() + 10, this.accent, false);
+			graphics.text(font, getMessage(), copyX, getY() + 26, text, true);
 			graphics.textWithWordWrap(
 				font,
 				this.description,
 				copyX,
-				getY() + 55,
+				getY() + 43,
 				copyWidth,
 				this.active ? SECONDARY_TEXT : MUTED_TEXT,
 				false
 			);
-			graphics.text(
-				font,
-				Component.translatable("pixel_tzz_pro.settings.open"),
-				copyX,
-				getBottom() - 18,
-				highlighted ? this.accent : MUTED_TEXT,
-				false
-			);
+			if (getHeight() >= 96) {
+				graphics.text(
+					font,
+					Component.translatable("pixel_tzz_pro.settings.open"),
+					copyX,
+					getBottom() - 18,
+					highlighted ? this.accent : MUTED_TEXT,
+					false
+				);
+			}
 			handleCursor(graphics);
 		}
 	}

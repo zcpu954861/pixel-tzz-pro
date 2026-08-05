@@ -2,6 +2,13 @@ package io.github.zcpu954861.pixeltzzpro.network;
 
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPreviewClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPreviewReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPreviewRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudResyncRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostSubtitleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.MessageCapabilitiesC2SPayload;
@@ -14,6 +21,10 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.MessagePlanS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.MessageScreenStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownCheckpointSoundS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownReplaceS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
@@ -95,6 +106,8 @@ public final class NetworkPayloads {
 				MessageScreenStateC2SPayload.TYPE,
 				MessageScreenStateC2SPayload.STREAM_CODEC
 			);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(HudResyncRequestC2SPayload.TYPE, HudResyncRequestC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
@@ -146,5 +159,18 @@ public final class NetworkPayloads {
 				MessageControlS2CPayload.TYPE,
 				MessageControlS2CPayload.STREAM_CODEC
 			);
+		PayloadTypeRegistry.clientboundPlay().register(HudReplaceS2CPayload.TYPE, HudReplaceS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(HudPatchS2CPayload.TYPE, HudPatchS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(HudClearS2CPayload.TYPE, HudClearS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownReplaceS2CPayload.TYPE, CountdownReplaceS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownPatchS2CPayload.TYPE, CountdownPatchS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownClearS2CPayload.TYPE, CountdownClearS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+			CountdownCheckpointSoundS2CPayload.TYPE,
+			CountdownCheckpointSoundS2CPayload.STREAM_CODEC
+		);
+		PayloadTypeRegistry.clientboundPlay().register(HudPreviewReplaceS2CPayload.TYPE, HudPreviewReplaceS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(HudPreviewClearS2CPayload.TYPE, HudPreviewClearS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(HudPreviewRequestC2SPayload.TYPE, HudPreviewRequestC2SPayload.STREAM_CODEC);
 	}
 }

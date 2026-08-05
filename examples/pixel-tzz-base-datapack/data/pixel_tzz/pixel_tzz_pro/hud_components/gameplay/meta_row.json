@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "type": "row",
+  "priority": "primary",
+  "children": [
+    "pixel_tzz:gameplay/role_badge",
+    "pixel_tzz:gameplay/task_timer",
+    "pixel_tzz:gameplay/game_timer",
+    "pixel_tzz:gameplay/event_counter"
+  ],
+  "gap": 7,
+  "alignment": "center"
+}

@@ -1,0 +1,21 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "critical",
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "等待游戏流程",
+          "color": "#55D7E6",
+          "bold": true
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 1,
+    "overflow": "ellipsis"
+  }
+}

@@ -5,7 +5,8 @@
     "type": "role"
   },
   "surfaces": [
-    "terminal"
+    "terminal",
+    "hud"
   ],
   "audience": {
     "exclude_host": true,

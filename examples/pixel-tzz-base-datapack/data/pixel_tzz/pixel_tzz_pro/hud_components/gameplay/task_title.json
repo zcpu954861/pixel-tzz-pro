@@ -1,0 +1,46 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "critical",
+  "bindings": {
+    "task_name": {
+      "value_type": "component",
+      "source": {
+        "type": "player_data",
+        "field": "pixel_tzz:current_task_name"
+      },
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "当前任务  ",
+          "color": "#55D7E6"
+        }
+      },
+      {
+        "field": {
+          "scope": "component",
+          "id": "task_name"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 2,
+    "overflow": "wrap"
+  },
+  "style": {
+    "font_weight": "bold"
+  },
+  "client_control": {
+    "visibility": "locked_shown",
+    "compact": "locked"
+  }
+}

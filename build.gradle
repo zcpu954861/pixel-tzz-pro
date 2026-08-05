@@ -218,6 +218,185 @@ tasks.register("protocolV12SelfCheck", JavaExec) {
 	jvmArgs "--sun-misc-unsafe-memory-access=allow"
 }
 
+tasks.register("protocolV13SelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3C bounded HUD/countdown frame and namespace checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.ProtocolV13SelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudDefinitionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the strict V3C HUD/countdown definition and frozen-closure checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudDefinitionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudProjectionCompilerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C least-privilege HUD/countdown projection checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudProjectionCompilerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudRouteClosureSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3C HUD route, reference closure, and isolation checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudRouteClosureSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudSnapshotProtocolSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs direct V3C client HUD/countdown Replace, Patch, Clear, and monotonic-version checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudSnapshotProtocolSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudLayoutVariantProtocolSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C data-pack layout variant projection, closure, and client wire checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudLayoutVariantProtocolSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudMinecraftBindingSourceAccessSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C Minecraft-backed HUD binding source and terminal-state checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.HudMinecraftBindingSourceAccessSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudPreviewBindingSourceAccessSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C read-only host-preview binding-source isolation checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudPreviewBindingSourceAccessSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudPreviewServerRuntimeContractSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Checks the host-only, recipient-isolated, side-effect-free V3C preview runtime."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudPreviewServerRuntimeContractSelfCheck"
+	workingDir project.projectDir
+}
+
+tasks.register("hudClientPreferencesSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C client preference bounds and authoritative policy-narrowing checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudClientPreferencesSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudLayoutPolicySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs pure V3C layout geometry and client policy envelope checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.HudLayoutPolicySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("hudAnimationLifecycleSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs V3C HUD/countdown quiet-refresh and animation lifecycle checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.client.hud.HudAnimationLifecycleSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownDefinitionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs complete strict V3C countdown parser and integrated reference checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.CountdownDefinitionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownAuthoritySelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3C opening-countdown authority state-machine checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.CountdownAuthoritySelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownRestrictionSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3C countdown restriction and idempotent-release checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.CountdownRestrictionSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownPersistenceSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the schema-v5 countdown persistence and recovery checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.state.CountdownPersistenceSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownCallbackLedgerSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the V3C countdown callback at-most-once ledger checks."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.CountdownCallbackLedgerSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
+tasks.register("countdownCallbackRetryConfirmationSelfCheck", JavaExec) {
+	group = "verification"
+	description = "Runs the ledger-bound V3C countdown callback retry confirmation and integration contracts."
+	dependsOn testClasses
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = "io.github.zcpu954861.pixeltzzpro.server.CountdownCallbackRetryConfirmationSelfCheck"
+	workingDir project.projectDir
+	jvmArgs "--sun-misc-unsafe-memory-access=allow"
+}
+
 tasks.register("flowCallbackRunnerSelfCheck", JavaExec) {
 	group = "verification"
 	description = "Runs the isolated data-pack callback macro checks."
@@ -839,4 +1018,6 @@ tasks.named("test") {
 	failOnNoDiscoveredTests = false
 }
 
-check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV11SelfCheck, protocolV12SelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, playerActionAuthoritySelfCheck, playerTerminalRuntimeBridgeSelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck, playerTerminalProjectorSelfCheck, playerTerminalRouterSelfCheck, playerTerminalSessionsSelfCheck, pressureFixtureSelfCheck, messageDefinitionSelfCheck, messageHookDefinitionSelfCheck, messageHookFreezeClosureSelfCheck, messageHookDispatchContractSelfCheck, messagePolicySchemaSelfCheck, messageExternalContentPolicySelfCheck, messageFixtureSelfCheck, messageTextTimelineSelfCheck, messageFrameTimelineSelfCheck, messageDynamicCaptureSchedulerSelfCheck, messagePrelayoutDurationSelfCheck, messageVisualEffectsSelfCheck, messageInstanceAuthoritySelfCheck, messageFinalProjectionPlannerSelfCheck, messageFinalProjectionTransportContractSelfCheck, messageReconnectProjectionSelfCheck, messageFinalOnlyHandshakePolicySelfCheck, messageDeliveryLifecycleAuthoritySelfCheck, messageSynchronizationAuthoritySelfCheck, messageLifecyclePolicyRouterSelfCheck, messageLiveContextAuthoritySelfCheck, messageAssetAuthoritySelfCheck, messageAssetPlaybackResolverSelfCheck, messageServerAssetGateSelfCheck, messageAssetProtocolSelfCheck, messageHistoryAuthoritySelfCheck, messageHistoryMaterializerSelfCheck, messageHistoryReplaySanitizerSelfCheck, messageRuntimePersistenceAuthoritySelfCheck, messageRuntimePersistenceMapperSelfCheck, messageColdStartRecoveryContractSelfCheck, messageCommandsSelfCheck, hostMessagePreviewSanitizerSelfCheck, dynamicChatSpeakerSourceSelfCheck, messageRegisteredEntitySpeakerSelfCheck, settingsUiContractSelfCheck
+check.dependsOn hudLayoutVariantProtocolSelfCheck, hudMinecraftBindingSourceAccessSelfCheck, hudPreviewBindingSourceAccessSelfCheck, hudPreviewServerRuntimeContractSelfCheck, hudProjectionCompilerSelfCheck, hudAnimationLifecycleSelfCheck
+
+check.dependsOn foundationSelfCheck, subtitleQueueTimelineSelfCheck, pageFrameworkSelfCheck, confirmationTokensSelfCheck, hostAuthoritySelfCheck, forcedFlowAuthoritySelfCheck, statePersistenceSelfCheck, worldStateColdStartSelfCheck, protocolV11SelfCheck, protocolV12SelfCheck, protocolV13SelfCheck, hudDefinitionSelfCheck, hudRouteClosureSelfCheck, hudSnapshotProtocolSelfCheck, hudClientPreferencesSelfCheck, hudLayoutPolicySelfCheck, countdownDefinitionSelfCheck, countdownAuthoritySelfCheck, countdownRestrictionSelfCheck, countdownPersistenceSelfCheck, countdownCallbackLedgerSelfCheck, countdownCallbackRetryConfirmationSelfCheck, flowCallbackRunnerSelfCheck, flowCallbackAuthoritySelfCheck, playerActionAuthoritySelfCheck, playerTerminalRuntimeBridgeSelfCheck, taskCallbackRunnerSelfCheck, taskCallbackLedgerAuthoritySelfCheck, taskFactAuthoritySelfCheck, timelineAuthoritySelfCheck, timelineServerRuntimeSelfCheck, timelineViewSelfCheck, exclusiveChoiceAuthoritySelfCheck, timelineControlOperationSelfCheck, timelineApprovalAuthoritySelfCheck, timelineCommandsSelfCheck, worldResetAuthoritySelfCheck, flowRosterAuthoritySelfCheck, hostFlowBossBarSelfCheck, controlRequestGateSelfCheck, worldActivityInitializationSelfCheck, phaseTransitionAuthoritySelfCheck, readinessAuthoritySelfCheck, tabListDisplaySelfCheck, playerTerminalProjectorSelfCheck, playerTerminalRouterSelfCheck, playerTerminalSessionsSelfCheck, pressureFixtureSelfCheck, messageDefinitionSelfCheck, messageHookDefinitionSelfCheck, messageHookFreezeClosureSelfCheck, messageHookDispatchContractSelfCheck, messagePolicySchemaSelfCheck, messageExternalContentPolicySelfCheck, messageFixtureSelfCheck, messageTextTimelineSelfCheck, messageFrameTimelineSelfCheck, messageDynamicCaptureSchedulerSelfCheck, messagePrelayoutDurationSelfCheck, messageVisualEffectsSelfCheck, messageInstanceAuthoritySelfCheck, messageFinalProjectionPlannerSelfCheck, messageFinalProjectionTransportContractSelfCheck, messageReconnectProjectionSelfCheck, messageFinalOnlyHandshakePolicySelfCheck, messageDeliveryLifecycleAuthoritySelfCheck, messageSynchronizationAuthoritySelfCheck, messageLifecyclePolicyRouterSelfCheck, messageLiveContextAuthoritySelfCheck, messageAssetAuthoritySelfCheck, messageAssetPlaybackResolverSelfCheck, messageServerAssetGateSelfCheck, messageAssetProtocolSelfCheck, messageHistoryAuthoritySelfCheck, messageHistoryMaterializerSelfCheck, messageHistoryReplaySanitizerSelfCheck, messageRuntimePersistenceAuthoritySelfCheck, messageRuntimePersistenceMapperSelfCheck, messageColdStartRecoveryContractSelfCheck, messageCommandsSelfCheck, hostMessagePreviewSanitizerSelfCheck, dynamicChatSpeakerSourceSelfCheck, messageRegisteredEntitySpeakerSelfCheck, settingsUiContractSelfCheck

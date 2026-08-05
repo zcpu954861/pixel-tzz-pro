@@ -9,8 +9,10 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
 import io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContract;
+import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.FrozenActivationContext;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditLog;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.CompletionSummary;
@@ -140,6 +142,34 @@ public final class ReadinessAuthoritySelfCheck {
 			offline.readiness().orElseThrow().flow().runtime().members().get(PLAYER).status()
 				== FlowMemberStatus.OFFLINE,
 			"disconnected readiness member must be classified offline"
+		);
+		var approvedTimeline = approval.nextState().orElseThrow().timeline().orElseThrow();
+		var frozenTimeline = TimelineSnapshotCompiler.restore(GAME, approvedTimeline.snapshot());
+		check(frozenTimeline.success(), "approved timeline snapshot must restore for delayed launch");
+		var delayedLaunch = TimelineApprovalAuthority.activateFrozen(
+			offline,
+			frozenTimeline.snapshot().orElseThrow(),
+			approvedTimeline.snapshot(),
+			new FrozenActivationContext(
+				GAME_INSTANCE,
+				READY,
+				approvedTimeline.instanceId(),
+				approvedTimeline.currentTask().orElseThrow().taskInstanceId(),
+				121L,
+				approval.frozenParticipants()
+			)
+		);
+		check(
+			delayedLaunch.successful(),
+			"an approved countdown must launch after a continue-policy disconnect without rechecking readiness: "
+				+ delayedLaunch.code()
+				+ " "
+				+ delayedLaunch.message()
+		);
+		check(
+			delayedLaunch.nextState().orElseThrow().timeline().orElseThrow()
+				.currentTask().orElseThrow().participants().equals(approval.frozenParticipants()),
+			"delayed launch must use the exact participant list accepted before the countdown"
 		);
 
 		var reconnected = ReadinessAuthority.setOnline(

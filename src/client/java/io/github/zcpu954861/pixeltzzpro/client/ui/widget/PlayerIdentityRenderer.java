@@ -119,9 +119,23 @@ public final class PlayerIdentityRenderer {
 		final int size,
 		final boolean showStatus
 	) {
+		drawHead(graphics, playerId, online, x, y, size, showStatus, true);
+	}
+
+	/** Draws the base face and optionally the skin hat layer and online-status marker. */
+	public static void drawHead(
+		final GuiGraphicsExtractor graphics,
+		final UUID playerId,
+		final boolean online,
+		final int x,
+		final int y,
+		final int size,
+		final boolean showStatus,
+		final boolean showHat
+	) {
 		var profile = ResolvableProfile.createUnresolved(playerId);
 		var renderInfo = Minecraft.getInstance().playerSkinRenderCache().getOrDefault(profile);
-		if (online) {
+		if (online && showHat) {
 			PlayerFaceExtractor.extractRenderState(
 				graphics,
 				renderInfo.playerSkin(),
@@ -129,13 +143,24 @@ public final class PlayerIdentityRenderer {
 				y,
 				size
 			);
+		} else if (online) {
+			drawSkinHead(
+				graphics,
+				renderInfo.playerSkin().body().texturePath(),
+				x,
+				y,
+				size,
+				false,
+				false
+			);
 		} else {
 			drawOfflineHead(
 				graphics,
 				renderInfo.playerSkin().body().texturePath(),
 				x,
 				y,
-				size
+				size,
+				showHat
 			);
 		}
 		if (!showStatus) {
@@ -153,10 +178,25 @@ public final class PlayerIdentityRenderer {
 		final Identifier texture,
 		final int x,
 		final int y,
-		final int size
+		final int size,
+		final boolean showHat
+	) {
+		drawSkinHead(graphics, texture, x, y, size, true, showHat);
+	}
+
+	private static void drawSkinHead(
+		final GuiGraphicsExtractor graphics,
+		final Identifier texture,
+		final int x,
+		final int y,
+		final int size,
+		final boolean grayscale,
+		final boolean showHat
 	) {
 		graphics.blit(
-			io.github.zcpu954861.pixeltzzpro.client.ui.PixelTzzRenderPipelines.GUI_TEXTURED_GRAYSCALE,
+			grayscale
+				? io.github.zcpu954861.pixeltzzpro.client.ui.PixelTzzRenderPipelines.GUI_TEXTURED_GRAYSCALE
+				: net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
 			texture,
 			x,
 			y,
@@ -168,10 +208,15 @@ public final class PlayerIdentityRenderer {
 			8,
 			64,
 			64,
-			0xFFD0D0D0
+			grayscale ? 0xFFD0D0D0 : 0xFFFFFFFF
 		);
+		if (!showHat) {
+			return;
+		}
 		graphics.blit(
-			io.github.zcpu954861.pixeltzzpro.client.ui.PixelTzzRenderPipelines.GUI_TEXTURED_GRAYSCALE,
+			grayscale
+				? io.github.zcpu954861.pixeltzzpro.client.ui.PixelTzzRenderPipelines.GUI_TEXTURED_GRAYSCALE
+				: net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
 			texture,
 			x,
 			y,
@@ -183,7 +228,7 @@ public final class PlayerIdentityRenderer {
 			8,
 			64,
 			64,
-			0xFFD0D0D0
+			grayscale ? 0xFFD0D0D0 : 0xFFFFFFFF
 		);
 	}
 

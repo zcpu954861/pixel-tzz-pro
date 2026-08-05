@@ -97,8 +97,8 @@ public final class ProtocolV12SelfCheck {
 
 	public static void main(final String[] args) {
 		check(
-			NetworkProtocol.CURRENT_VERSION == 12,
-			"dynamic message wire requires protocol v12"
+			NetworkProtocol.CURRENT_VERSION >= 12,
+			"dynamic message wire requires protocol v12 or newer"
 		);
 		checkAllPayloadRoundTrips();
 		checkStrictDocumentDecoding();

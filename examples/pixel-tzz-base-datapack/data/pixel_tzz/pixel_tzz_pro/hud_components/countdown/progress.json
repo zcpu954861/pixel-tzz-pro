@@ -1,0 +1,44 @@
+{
+  "format_version": 1,
+  "type": "progress",
+  "priority": "primary",
+  "bindings": {
+    "elapsed": {
+      "value_type": "decimal",
+      "source": {
+        "type": "game_fact",
+        "value": "countdown.elapsed_ticks"
+      },
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    },
+    "total": {
+      "value_type": "decimal",
+      "source": {
+        "type": "game_fact",
+        "value": "countdown.total_ticks"
+      },
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "current": {
+    "field": "elapsed"
+  },
+  "maximum": {
+    "field": "total"
+  },
+  "orientation": "horizontal",
+  "segments": 10,
+  "label": "none",
+  "interpolation": "smooth",
+  "style": {
+    "track_color": "#354553",
+    "fill_color": "#55D7E6",
+    "marker_color": "#F2C14E",
+    "height": 4
+  }
+}

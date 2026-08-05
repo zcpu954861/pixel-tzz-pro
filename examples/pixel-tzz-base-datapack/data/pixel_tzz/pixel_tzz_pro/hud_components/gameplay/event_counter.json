@@ -1,0 +1,35 @@
+{
+  "format_version": 1,
+  "type": "counter",
+  "priority": "secondary",
+  "bindings": {
+    "value": {
+      "value_type": "integer",
+      "source": {
+        "type": "score",
+        "objective": "pixel_tzz_3c",
+        "holder": "#hud_events"
+      },
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "label": {
+    "text": "公开节点"
+  },
+  "value": {
+    "field": "value"
+  },
+  "suffix": {
+    "text": " 项"
+  },
+  "style": {
+    "text_color": "#AAB4BE"
+  },
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "status"
+  }
+}

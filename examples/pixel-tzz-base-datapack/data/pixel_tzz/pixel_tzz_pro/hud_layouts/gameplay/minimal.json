@@ -1,0 +1,22 @@
+{
+  "format_version": 1,
+  "surface": "dock",
+  "audience": {
+    "participants": true,
+    "exclude_host": true,
+    "online_only": true
+  },
+  "root": "pixel_tzz:gameplay/summary_root",
+  "size": {
+    "minimum_width": 132,
+    "preferred_width": 176,
+    "maximum_width": 212,
+    "maximum_height": 48,
+    "growth": "up"
+  },
+  "transition": {
+    "enter": "fade",
+    "change": "crossfade_values",
+    "exit": "fade"
+  }
+}

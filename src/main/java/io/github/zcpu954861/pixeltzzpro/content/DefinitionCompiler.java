@@ -44,6 +44,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.HostBossBar;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.LifeStateDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.NodeScope;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.OpeningCountdownReference;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelOperation;
@@ -314,7 +315,11 @@ public final class DefinitionCompiler {
 		PAGE("pages"),
 		THEME("themes"),
 		TEXT_EFFECT("text_effects"),
-		MESSAGE_CUE("message_cues");
+		MESSAGE_CUE("message_cues"),
+		HUD_COMPONENT("hud_components"),
+		HUD_LAYOUT("hud_layouts"),
+		HUD_PROFILE("hud_profiles"),
+		COUNTDOWN("countdowns");
 
 		private final String directory;
 
@@ -434,8 +439,38 @@ public final class DefinitionCompiler {
 		final Set<Identifier> functions,
 		final Set<Identifier> predicates
 	) {
+		List<Source> coreSources = new ArrayList<>();
+		List<Source> hudSources = new ArrayList<>();
+		for (Source source : sources) {
+			if (isHudDefinition(source.type())) {
+				hudSources.add(source);
+			} else {
+				coreSources.add(source);
+			}
+		}
 		Compiler compiler = new Compiler(functions, predicates);
-		return compiler.compile(sources);
+		Compilation core = compiler.compile(coreSources);
+		if (core.snapshot().isEmpty()) {
+			return core;
+		}
+		DefinitionSnapshot snapshot = core.snapshot().orElseThrow();
+		HudCatalogCompiler.Result hud = HudCatalogCompiler.compile(
+			hudSources,
+			snapshot,
+			functions
+		);
+		return new Compilation(
+			Optional.of(snapshot.withHudCatalog(hud.catalog(), hud.sourceDocuments())),
+			core.problems(),
+			core.totalProblemCount()
+		);
+	}
+
+	private static boolean isHudDefinition(final DefinitionType type) {
+		return type == DefinitionType.HUD_COMPONENT
+			|| type == DefinitionType.HUD_LAYOUT
+			|| type == DefinitionType.HUD_PROFILE
+			|| type == DefinitionType.COUNTDOWN;
 	}
 
 	private static final class Compiler {
@@ -657,6 +692,9 @@ public final class DefinitionCompiler {
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
 				case TEXT_EFFECT, MESSAGE_CUE -> throw new IllegalStateException(
 					"message definitions use the shared message parser"
+				);
+				case HUD_COMPONENT, HUD_LAYOUT, HUD_PROFILE, COUNTDOWN -> throw new IllegalStateException(
+					"HUD definitions use the isolated HUD catalog compiler"
 				);
 			}
 			reader.finish();
@@ -3218,6 +3256,8 @@ public final class DefinitionCompiler {
 			Optional<TaskTimeline> taskTimeline = parseTaskTimeline(reader);
 			Optional<ReadinessDefinition> readiness = parseReadiness(reader);
 			Optional<PlayerTerminalConfig> playerTerminal = parsePlayerTerminalConfig(reader);
+			Optional<Identifier> hudProfile = reader.optionalIdentifier("hud_profile");
+			Optional<OpeningCountdownReference> openingCountdown = parseOpeningCountdownReference(reader);
 			MessageHookSet messageHooks = parseMessageHooks(reader, GAME_MESSAGE_HOOKS);
 			if (
 				apiVersion != null
@@ -3262,6 +3302,18 @@ public final class DefinitionCompiler {
 					"player_terminal requires api_version 3"
 				);
 			}
+			if (
+				apiVersion != null
+					&& apiVersion < 4
+					&& (hudProfile.isPresent() || openingCountdown.isPresent())
+			) {
+				add(
+					source,
+					"UNSUPPORTED_API",
+					hudProfile.isPresent() ? "/hud_profile" : "/opening_countdown",
+					"HUD and opening_countdown require api_version 4"
+				);
+			}
 			if (contentVersion != null && contentVersion < 1) {
 				add(source, "OUT_OF_RANGE", "/content_version", "content version must be positive");
 			}
@@ -3289,10 +3341,28 @@ public final class DefinitionCompiler {
 						taskTimeline,
 						readiness,
 						playerTerminal,
-						messageHooks
+						messageHooks,
+						hudProfile,
+						openingCountdown
 					)
 				);
 			}
+		}
+
+		private Optional<OpeningCountdownReference> parseOpeningCountdownReference(
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("opening_countdown");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("opening_countdown", object);
+			Identifier definition = reader.requiredIdentifier("definition");
+			boolean required = reader.optionalBoolean("required", true);
+			reader.finish();
+			return definition == null
+				? Optional.empty()
+				: Optional.of(new OpeningCountdownReference(definition, required));
 		}
 
 		private Optional<PlayerTerminalConfig> parsePlayerTerminalConfig(

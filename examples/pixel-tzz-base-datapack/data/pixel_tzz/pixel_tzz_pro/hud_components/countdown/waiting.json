@@ -1,0 +1,37 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "primary",
+  "bindings": {
+    "reason": {
+      "value_type": "string",
+      "source": {
+        "type": "game_fact",
+        "value": "countdown.waiting_reason"
+      },
+      "sensitive": false,
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "text": {
+    "parts": [
+      {
+        "field": {
+          "scope": "component",
+          "id": "reason"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "center",
+    "max_lines": 2,
+    "overflow": "wrap"
+  },
+  "style": {
+    "text_color": "#F2C14E"
+  }
+}

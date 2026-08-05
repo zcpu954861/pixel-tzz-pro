@@ -1,0 +1,71 @@
+{
+  "format_version": 1,
+  "default_layout": "pixel_tzz:gameplay/context",
+  "routes": [
+    {
+      "id": "active_task",
+      "tier": "task",
+      "priority": 100,
+      "when": {
+        "task_statuses": [
+          "starting",
+          "running",
+          "paused",
+          "settling",
+          "interval"
+        ]
+      },
+      "layout": "pixel_tzz:gameplay/task",
+      "audience": {
+        "participants": true,
+        "exclude_host": true
+      }
+    },
+    {
+      "id": "hunter_waiting",
+      "tier": "context",
+      "priority": 50,
+      "when": {
+        "phases": [
+          "pixel_tzz:setup",
+          "pixel_tzz:initializing",
+          "pixel_tzz:ready"
+        ],
+        "roles": [
+          "pixel_tzz:hunter"
+        ]
+      },
+      "layout": "pixel_tzz:gameplay/hunter_waiting",
+      "audience": {
+        "roles": [
+          "pixel_tzz:hunter"
+        ],
+        "exclude_host": true
+      }
+    }
+  ],
+  "client_policy": {
+    "allow_hide": true,
+    "default_anchor": "bottom_right",
+    "allowed_anchors": [
+      "bottom_right",
+      "bottom_left"
+    ],
+    "offset": {
+      "max_x": 96,
+      "max_y": 96
+    },
+    "scale": {
+      "minimum": 0.75,
+      "default": 1.0,
+      "maximum": 1.25
+    },
+    "opacity": {
+      "minimum": 0.55,
+      "default": 0.92,
+      "maximum": 1.0
+    },
+    "allow_component_management": true,
+    "tab_collision": "dim"
+  }
+}

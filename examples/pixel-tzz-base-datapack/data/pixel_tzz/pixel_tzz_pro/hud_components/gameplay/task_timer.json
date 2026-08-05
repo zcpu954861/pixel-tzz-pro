@@ -1,0 +1,35 @@
+{
+  "format_version": 1,
+  "type": "timer",
+  "priority": "primary",
+  "bindings": {
+    "clock": {
+      "value_type": "clock",
+      "source": {
+        "type": "clock",
+        "value": "task"
+      },
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "clock": {
+    "field": "clock"
+  },
+  "direction": "elapsed",
+  "format": "m:ss",
+  "paused_marker": {
+    "text": "暂停",
+    "color": "yellow"
+  },
+  "style": {
+    "text_color": "#F1F5F7",
+    "secondary_text_color": "#8FA2B1"
+  },
+  "client_control": {
+    "visibility": "locked_shown",
+    "compact": "locked"
+  }
+}

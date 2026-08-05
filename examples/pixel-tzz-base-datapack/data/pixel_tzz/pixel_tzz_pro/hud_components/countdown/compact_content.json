@@ -1,0 +1,12 @@
+{
+  "format_version": 1,
+  "type": "column",
+  "priority": "critical",
+  "children": [
+    "pixel_tzz:countdown/title",
+    "pixel_tzz:countdown/timer",
+    "pixel_tzz:countdown/waiting"
+  ],
+  "gap": 3,
+  "alignment": "stretch"
+}

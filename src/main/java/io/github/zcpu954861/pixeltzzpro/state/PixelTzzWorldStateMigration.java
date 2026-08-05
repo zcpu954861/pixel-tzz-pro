@@ -28,7 +28,7 @@ import java.util.UUID;
 import net.minecraft.server.MinecraftServer;
 
 /**
- * Startup-only migration into the current schema-v4 envelope.
+ * Startup-only migration into the current schema-v5 envelope.
  *
  * <p>The original compressed SavedData file is copied and verified before the in-memory wrapper is
  * atomically changed. Schema v2 and v3 migration are purely additive and
@@ -68,15 +68,16 @@ public final class PixelTzzWorldStateMigration {
 		if (nowEpochMillis < 0L) {
 			return failed(state, "migration time cannot be negative");
 		}
-		if (state.loadKind() == PixelTzzWorldState.LoadKind.CURRENT_V4) {
+		if (state.loadKind() == PixelTzzWorldState.LoadKind.CURRENT_V5) {
 			return new MigrationResult(
 				MigrationStatus.NOT_NEEDED,
-				"world state already uses schema v4",
+				"world state already uses schema v5",
 				Optional.empty()
 			);
 		}
 		if (
-			state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V1
+			state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V4
+				&& state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V1
 				&& state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V2
 				&& state.loadKind() != PixelTzzWorldState.LoadKind.LEGACY_V3
 		) {
@@ -87,16 +88,18 @@ public final class PixelTzzWorldStateMigration {
 			);
 		}
 
+		WorldStateV4 legacyV4 = state.legacyV4().orElse(null);
 		LegacyWorldStateV1 legacyV1 = state.legacyV1().orElse(null);
 		WorldStateV2 legacyV2 = state.legacyV2().orElse(null);
 		WorldStateV3 legacyV3 = state.legacyV3().orElse(null);
 		if (
-			legacyV3 != null
-				&& legacyV3.timeline()
+			(legacyV4 != null
+				? legacyV4.core().timeline()
+				: legacyV3 == null ? Optional.<WorldStateV3.TimelineInstance>empty() : legacyV3.timeline())
 					.map(timeline -> timeline.snapshot().hasMissingContent())
 					.orElse(false)
 		) {
-			return blocked(state, "schema v3 timeline snapshot must be repaired before migration");
+			return blocked(state, "timeline snapshot must be repaired before schema v5 migration");
 		}
 		GameDefinition game = null;
 		if (legacyV1 != null) {
@@ -120,7 +123,9 @@ public final class PixelTzzWorldStateMigration {
 		final long nextRevision;
 		try {
 			nextRevision = Math.incrementExact(
-				legacyV3 != null
+				legacyV4 != null
+					? legacyV4.stateRevision()
+					: legacyV3 != null
 					? legacyV3.stateRevision()
 					: legacyV2 == null ? legacyV1.stateRevision() : legacyV2.stateRevision()
 			);
@@ -131,12 +136,14 @@ public final class PixelTzzWorldStateMigration {
 			return failed(state, "legacy source file is missing");
 		}
 
-		int sourceSchema = legacyV3 != null
-			? WorldStateV3.SCHEMA_VERSION
+		int sourceSchema = legacyV4 != null
+			? WorldStateV4.SCHEMA_VERSION
+			: legacyV3 != null
+				? WorldStateV3.SCHEMA_VERSION
 			: legacyV2 == null
 				? LegacyWorldStateV1.SCHEMA_VERSION
 				: WorldStateV2.SCHEMA_VERSION;
-		String backupFileName = "world_state-v" + sourceSchema + "-to-v4-" + nowEpochMillis + ".dat";
+		String backupFileName = "world_state-v" + sourceSchema + "-to-v5-" + nowEpochMillis + ".dat";
 		Path backupFile = recoveryDirectory.resolve(backupFileName);
 		final long sourceSize;
 		final String sourceSha256;
@@ -154,20 +161,30 @@ public final class PixelTzzWorldStateMigration {
 			sourceSize,
 			sourceSha256
 		);
-		WorldStateV3 candidateCore = legacyV3 != null
-			? candidate(legacyV3, metadata, nextRevision)
-			: legacyV2 == null
-				? candidate(legacyV1, game, metadata, nextRevision, nowEpochMillis)
-				: candidate(legacyV2, metadata, nextRevision);
-		WorldStateV4 candidate = new WorldStateV4(
-			WorldStateV4.SCHEMA_VERSION,
-			candidateCore,
-			List.of(),
-			List.of()
+		WorldStateV4 candidateV4;
+		if (legacyV4 != null) {
+			candidateV4 = legacyV4.withCore(candidate(legacyV4.core(), metadata, nextRevision));
+		} else {
+			WorldStateV3 candidateCore = legacyV3 != null
+				? candidate(legacyV3, metadata, nextRevision)
+				: legacyV2 == null
+					? candidate(legacyV1, game, metadata, nextRevision, nowEpochMillis)
+					: candidate(legacyV2, metadata, nextRevision);
+			candidateV4 = new WorldStateV4(
+				WorldStateV4.SCHEMA_VERSION,
+				candidateCore,
+				List.of(),
+				List.of()
+			);
+		}
+		WorldStateV5 candidate = new WorldStateV5(
+			WorldStateV5.SCHEMA_VERSION,
+			candidateV4,
+			Optional.empty()
 		);
 		String candidateError = roundTripError(candidate);
 		if (candidateError != null) {
-			return failed(state, "schema v4 migration candidate is invalid: " + candidateError);
+			return failed(state, "schema v5 migration candidate is invalid: " + candidateError);
 		}
 
 		try {
@@ -180,17 +197,19 @@ public final class PixelTzzWorldStateMigration {
 			return failed(state, "could not create verified recovery copy: " + safeMessage(error));
 		}
 
-		PixelTzzWorldState.MigrationCommitResult committed = legacyV3 != null
-			? state.commitLegacyV3Migration(legacyV3, candidate)
-			: legacyV2 == null
-				? state.commitLegacyV1Migration(legacyV1, candidate)
-				: state.commitLegacyV2Migration(legacyV2, candidate);
+		PixelTzzWorldState.MigrationCommitResult committed = legacyV4 != null
+			? state.commitLegacyV4Migration(legacyV4, candidate)
+			: legacyV3 != null
+				? state.commitLegacyV3Migration(legacyV3, candidate)
+				: legacyV2 == null
+					? state.commitLegacyV1Migration(legacyV1, candidate)
+					: state.commitLegacyV2Migration(legacyV2, candidate);
 		if (!committed.committed()) {
 			return failed(state, "migration commit rejected: " + committed.reason());
 		}
 		return new MigrationResult(
 			MigrationStatus.MIGRATED,
-			"schema v" + sourceSchema + " migrated to v4",
+			"schema v" + sourceSchema + " migrated to v5",
 			Optional.of(metadata)
 		);
 	}
@@ -240,7 +259,7 @@ public final class PixelTzzWorldStateMigration {
 					Optional.empty(),
 					Optional.empty(),
 					Optional.empty(),
-					"Migrated world state from schema v1 to v4"
+					"Migrated world state from schema v1 to v5"
 				)
 			)
 		);
@@ -313,20 +332,20 @@ public final class PixelTzzWorldStateMigration {
 		return List.copyOf(recoverySnapshots);
 	}
 
-	private static String roundTripError(final WorldStateV4 candidate) {
-		DataResult<WorldStateV4> validated = candidate.validated();
+	private static String roundTripError(final WorldStateV5 candidate) {
+		DataResult<WorldStateV5> validated = candidate.validated();
 		if (validated.error().isPresent()) {
 			return validated.error().orElseThrow().message();
 		}
-		DataResult<com.google.gson.JsonElement> encoded = WorldStateV4.CODEC.encodeStart(
+		DataResult<com.google.gson.JsonElement> encoded = WorldStateV5.CODEC.encodeStart(
 			JsonOps.INSTANCE,
 			candidate
 		);
 		if (encoded.error().isPresent()) {
 			return encoded.error().orElseThrow().message();
 		}
-		DataResult<WorldStateV4> decoded = encoded.flatMap(
-			value -> WorldStateV4.CODEC.parse(JsonOps.INSTANCE, value)
+		DataResult<WorldStateV5> decoded = encoded.flatMap(
+			value -> WorldStateV5.CODEC.parse(JsonOps.INSTANCE, value)
 		);
 		if (decoded.error().isPresent()) {
 			return decoded.error().orElseThrow().message();

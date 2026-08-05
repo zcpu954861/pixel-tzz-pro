@@ -1,6 +1,7 @@
 package io.github.zcpu954861.pixeltzzpro.mixin;
 
 import net.minecraft.client.gui.Hud;
+import net.minecraft.client.gui.components.SubtitleOverlay;
 import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
@@ -24,4 +25,7 @@ public interface HudAccessor {
 
 	@Accessor("titleTime")
 	int pixelTzzPro$getTitleTime();
+
+	@Accessor("subtitleOverlay")
+	SubtitleOverlay pixelTzzPro$getSubtitleOverlay();
 }

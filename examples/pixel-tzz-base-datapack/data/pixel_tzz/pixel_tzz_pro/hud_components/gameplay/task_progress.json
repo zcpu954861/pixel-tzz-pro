@@ -1,0 +1,51 @@
+{
+  "format_version": 1,
+  "type": "progress",
+  "priority": "primary",
+  "bindings": {
+    "current": {
+      "value_type": "integer",
+      "source": {
+        "type": "score",
+        "objective": "pixel_tzz_3c",
+        "holder": "#hud_current"
+      },
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    },
+    "maximum": {
+      "value_type": "integer",
+      "source": {
+        "type": "score",
+        "objective": "pixel_tzz_3c",
+        "holder": "#hud_maximum"
+      },
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "current": {
+    "field": "current"
+  },
+  "maximum": {
+    "field": "maximum"
+  },
+  "orientation": "horizontal",
+  "segments": 8,
+  "label": "current_over_max",
+  "interpolation": "smooth",
+  "style": {
+    "track_color": "#354553",
+    "fill_color": "#55D7E6",
+    "marker_color": "#F2C14E",
+    "height": 8
+  },
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "status"
+  }
+}

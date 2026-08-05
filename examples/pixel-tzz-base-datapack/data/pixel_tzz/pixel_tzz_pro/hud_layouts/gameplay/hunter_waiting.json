@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "surface": "dock",
+  "audience": {
+    "roles": [
+      "pixel_tzz:hunter"
+    ],
+    "exclude_host": true,
+    "online_only": true
+  },
+  "root": "pixel_tzz:gameplay/hunter_root",
+  "compact_root": "pixel_tzz:gameplay/hunter_root",
+  "summary_root": "pixel_tzz:gameplay/hunter_title",
+  "degradation_layout": "pixel_tzz:gameplay/minimal",
+  "size": {
+    "minimum_width": 136,
+    "preferred_width": 204,
+    "maximum_width": 232,
+    "maximum_height": 88,
+    "growth": "up"
+  },
+  "transition": {
+    "enter": "rise_fade",
+    "change": "crossfade_values",
+    "exit": "fade"
+  }
+}

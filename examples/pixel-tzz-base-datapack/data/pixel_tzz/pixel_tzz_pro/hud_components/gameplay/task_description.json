@@ -1,0 +1,40 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "primary",
+  "bindings": {
+    "description": {
+      "value_type": "component",
+      "source": {
+        "type": "player_data",
+        "field": "pixel_tzz:current_task_description"
+      },
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "text": {
+    "parts": [
+      {
+        "field": {
+          "scope": "component",
+          "id": "description"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 3,
+    "overflow": "wrap"
+  },
+  "style": {
+    "text_color": "#D7DFE5"
+  },
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "details"
+  }
+}

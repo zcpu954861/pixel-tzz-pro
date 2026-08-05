@@ -5,7 +5,8 @@
     "type": "task_description"
   },
   "surfaces": [
-    "terminal"
+    "terminal",
+    "hud"
   ],
   "audience": {
     "role_tags": [

@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "type": "timer",
+  "priority": "critical",
+  "bindings": {
+    "clock": {
+      "value_type": "clock",
+      "source": {
+        "type": "clock",
+        "value": "countdown"
+      },
+      "critical": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "clock": {
+    "field": "clock"
+  },
+  "direction": "remaining",
+  "format": "m:ss",
+  "paused_marker": {
+    "text": "等待玩家返回",
+    "color": "yellow"
+  },
+  "style": {
+    "text_color": "#55D7E6",
+    "font_weight": "bold"
+  }
+}

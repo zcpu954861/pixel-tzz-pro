@@ -2,7 +2,7 @@
 
 `全员逃走中-扩展` 是面向 Minecraft 26.2 的 Fabric 客户端与服务端模组。
 
-第一个基础里程碑已于 2026-07-26 通过用户实机验收：协议握手、世界持久化、数据包重载提示，以及可从 ESC 打开的玩家/主持人控制台外壳均已形成基础闭环。第二里程碑 2A～2D 也已完成并通过用户逐项 Minecraft 多客户端实机验收。正式地图、任务内容和剧情继续留在数据包内容层；V3A 玩家终端已完成，V3B 动态文本正在收口，自定义 HUD、通用运镜和捕获权威状态机属于后续 V3 能力，具体规则、页面和演出仍由数据包注册。
+第一个基础里程碑已于 2026-07-26 通过用户实机验收：协议握手、世界持久化、数据包重载提示，以及可从 ESC 打开的玩家/主持人控制台外壳均已形成基础闭环。第二里程碑 2A～2D 也已完成并通过用户逐项 Minecraft 多客户端实机验收。正式地图、任务内容和剧情继续留在数据包内容层；V3A 玩家终端与 V3B 动态文本均已完成，V3C 自定义 HUD 与正式开局倒计时已进入代码实现和自动验证，尚未进行五客户端实机验收。通用运镜和捕获权威状态机属于后续 V3 能力，具体规则、页面和演出仍由数据包注册。
 
 完整产品要求见 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)。
 第一里程碑的验收证据与收口边界见 [`docs/MILESTONE-1-CLOSEOUT.md`](docs/MILESTONE-1-CLOSEOUT.md)。
@@ -29,14 +29,22 @@
 
 V3 转向玩家持续可见的体验：玩家终端、动态文本、自定义 HUD、通用运镜、捕获与复活。V3 不建设多 Game Profile 选择或切换；一套实际运行的正式数据包只注册一个 Game Profile。V3A 玩家终端的 Schema、协议 v11、世界状态 Schema v4、服务端权威执行、客户端页面桥接、示例数据包和实机验收脚本已经落地，并于 2026-07-30 通过完整自动检查与用户逐项 Minecraft 多客户端实机验收。非主持人 OP 始终使用普通玩家终端：世界没有主持人时只追加“认领主持人”，已有主持人时只追加“接管主持人”，服务端也不会向其下发完整主持人快照或主持人页面预览文档。历史详情使用专门的 `history_detail` 动作：客户端只提交当前投影的不透明记录键，只接收 Boolean `detail_available`，服务端从活动局冻结定义重新解析授权和目标页；事件配置的 `detail_page` 不会下发，详情只读取裁剪后的 `detail.*`。`personal_meta/<完整 player_data ID>/name` 与 `/value_name` 允许页面复用数据包声明的中文字段名和选择项显示名，但只会随同对应的已授权、已成功投影 personal 值出现，显示名缺席时也不会回退暴露机器键。普通玩家终端使用固定 `620×340` 参考构图；其余模组自有页面使用固定 `640×360` 参考画布。两者都精确复用 `2560×1440 + GUI Scale 4` 下已经验收的逻辑尺寸与控件比例：大屏不无限放大，小屏把页面、文字、动画、裁剪、滚动条与点击命中一起等比缩放，背景遮罩仍覆盖实际全屏；只有数据包明确声明的正文、数据和历史区域独立滚动。玩家历史的任意事件参数保留给后续版本，V3A 仅允许省略 `player_history.parameters` 或声明空数组，避免无效配置静默通过。总体分段与质量基线见 [`docs/MILESTONE-3-PLAN.md`](docs/MILESTONE-3-PLAN.md)，数据包格式见 [`docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md`](docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md)，逐项验收入口见 [`docs/MILESTONE-3A-TESTING.md`](docs/MILESTONE-3A-TESTING.md)。
 
-V3B 动态文本与统一文字演出的产品要求、默认行为、权限边界、恢复语义和实施顺序已于
-2026-07-31 逐项确认。资源、协议、多通道播放、动态字段、服务端权威实例、生命周期、恢复、
-命令、偏好和示例已经接线，当前正在完成恢复契约检查、文档一致性与逐项多客户端实机验收。
-一个稳定演出 ID 可以打包 Chat、Title、Subtitle、ActionBar、声音和服务端回调；数据包仍负责
-注册正式内容，客户端只接收服务端授权后的最小演出包。完整计划见
+V3B 动态文本与统一文字演出已于 2026-08-04 完成完整自动门和用户逐项五客户端实机验收，
+功能提交 `ffb1309` 已通过 PR #5 合并到主线，合并提交为 `d371dff`。一个稳定演出 ID 可以
+打包 Chat、Title、Subtitle、ActionBar、声音和服务端回调；数据包仍负责注册正式内容，
+客户端只接收服务端授权后的最小演出包。完整计划见
 [`docs/MILESTONE-3B-PLAN.md`](docs/MILESTONE-3B-PLAN.md)，数据包契约见
 [`docs/DATA-PACK-MESSAGE-API-3B.md`](docs/DATA-PACK-MESSAGE-API-3B.md)，逐项五客户端验收脚本见
 [`docs/MILESTONE-3B-TESTING.md`](docs/MILESTONE-3B-TESTING.md)。
+
+V3C 将建立一个数据驱动、服务端权威的玩家 HUD 信息坞，以及位于开局审批与赛前热身之间的
+正式倒计时。常驻 HUD 默认位于右下角安全区域，整局只保留一个信息位置；数据包决定组件、
+内容、受众、路由和玩家可调整权限，客户端负责安全避让、等比布局、动画与本地偏好。倒计时
+完成后才进入热身，热身与倒计时均不计入全局游戏时长。当前实现与自动验证正在收口，尚未
+完成五客户端实机验收，因此不能宣称 V3C 已完成。
+实施计划见 [`docs/MILESTONE-3C-PLAN.md`](docs/MILESTONE-3C-PLAN.md)，目标数据包契约见
+[`docs/DATA-PACK-HUD-COUNTDOWN-API-3C.md`](docs/DATA-PACK-HUD-COUNTDOWN-API-3C.md)，逐项验收
+入口见 [`docs/MILESTONE-3C-TESTING.md`](docs/MILESTONE-3C-TESTING.md)。
 
 ## 开发环境
 

@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "secondary",
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "任务开始后，这里会原位切换为当前任务与公开进度。",
+          "color": "#AAB4BE"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 2,
+    "overflow": "wrap"
+  },
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "details"
+  }
+}

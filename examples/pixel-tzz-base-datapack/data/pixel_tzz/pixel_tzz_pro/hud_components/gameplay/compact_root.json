@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "type": "background",
+  "priority": "critical",
+  "child": "pixel_tzz:gameplay/compact_content",
+  "fill": "#E61A232E",
+  "border": {
+    "color": "#40505F",
+    "width": 1
+  },
+  "padding": {
+    "left": 7,
+    "top": 5,
+    "right": 7,
+    "bottom": 5
+  }
+}

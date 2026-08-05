@@ -6,7 +6,8 @@
   },
   "surfaces": [
     "terminal",
-    "dynamic_message"
+    "dynamic_message",
+    "hud"
   ],
   "audience": {
     "role_tags": [

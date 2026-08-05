@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "type": "row",
+  "priority": "critical",
+  "children": [
+    "pixel_tzz:gameplay/player_head",
+    "pixel_tzz:gameplay/task_title"
+  ],
+  "gap": 6,
+  "alignment": "center"
+}

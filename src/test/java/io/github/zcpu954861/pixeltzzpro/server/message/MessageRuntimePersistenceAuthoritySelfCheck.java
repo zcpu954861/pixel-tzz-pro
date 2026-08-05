@@ -30,6 +30,7 @@ import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDocument;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV5;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -438,15 +439,20 @@ public final class MessageRuntimePersistenceAuthoritySelfCheck {
 	}
 
 	private static void checkNarrowWorldCheckpoint() {
-		WorldStateV4 root = new WorldStateV4(
+		WorldStateV4 v4Core = new WorldStateV4(
 			WorldStateV4.SCHEMA_VERSION,
 			activeCore(GAME_INSTANCE),
 			List.of(),
 			List.of()
 		);
+		WorldStateV5 root = new WorldStateV5(
+			WorldStateV5.SCHEMA_VERSION,
+			v4Core,
+			Optional.empty()
+		);
 		PixelTzzWorldState state = PixelTzzWorldState.CODEC.parse(
 			JsonOps.INSTANCE,
-			WorldStateV4.CODEC.encodeStart(JsonOps.INSTANCE, root).getOrThrow()
+			WorldStateV5.CODEC.encodeStart(JsonOps.INSTANCE, root).getOrThrow()
 		).getOrThrow();
 		long globalRevision = state.currentV4().orElseThrow().stateRevision();
 		Instance continuing = instance("narrow-checkpoint", RestartMode.CONTINUE, 20L);
@@ -461,7 +467,7 @@ public final class MessageRuntimePersistenceAuthoritySelfCheck {
 			initial.committed()
 				&& state.currentV4().orElseThrow().messageRuntime().equals(Optional.of(first))
 				&& state.currentV4().orElseThrow().stateRevision() == globalRevision
-				&& state.currentV4().orElseThrow().core().equals(root.core()),
+				&& state.currentV4().orElseThrow().core().equals(v4Core.core()),
 			"message checkpoint must replace only the optional runtime without global revision churn"
 		);
 		check(

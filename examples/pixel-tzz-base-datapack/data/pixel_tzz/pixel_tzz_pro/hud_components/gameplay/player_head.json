@@ -1,0 +1,31 @@
+{
+  "format_version": 1,
+  "type": "player_head",
+  "priority": "secondary",
+  "bindings": {
+    "player": {
+      "value_type": "player",
+      "source": {
+        "type": "player_fact",
+        "value": "self"
+      },
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "player": {
+    "field": "player"
+  },
+  "size": 18,
+  "layers": [
+    "base",
+    "hat"
+  ],
+  "offline_style": "grayscale",
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "identity"
+  }
+}

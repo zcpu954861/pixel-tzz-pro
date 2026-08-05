@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "type": "column",
+  "priority": "primary",
+  "children": [
+    "pixel_tzz:gameplay/context_title",
+    "pixel_tzz:gameplay/spine",
+    "pixel_tzz:gameplay/context_body",
+    "pixel_tzz:gameplay/role_badge"
+  ],
+  "gap": 4,
+  "alignment": "stretch"
+}

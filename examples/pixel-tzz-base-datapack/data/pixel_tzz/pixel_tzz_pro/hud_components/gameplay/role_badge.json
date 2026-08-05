@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "type": "badge",
+  "priority": "primary",
+  "bindings": {
+    "role": {
+      "value_type": "identifier",
+      "source": {
+        "type": "player_data",
+        "field": "pixel_tzz:player_role"
+      },
+      "sensitive": true,
+      "on_missing": {
+        "mode": "hide_component"
+      }
+    }
+  },
+  "value": {
+    "field": "role"
+  },
+  "variants": {
+    "pixel_tzz:runner": {
+      "label": {
+        "text": "逃走者"
+      },
+      "color": "#55D7E6"
+    },
+    "pixel_tzz:hunter": {
+      "label": {
+        "text": "猎人"
+      },
+      "color": "#E94F64"
+    },
+    "pixel_tzz:spectator": {
+      "label": {
+        "text": "旁观者"
+      },
+      "color": "#8FA2B1"
+    }
+  },
+  "unknown": {
+    "mode": "hide_component"
+  },
+  "client_control": {
+    "visibility": "locked_shown",
+    "compact": "locked"
+  }
+}

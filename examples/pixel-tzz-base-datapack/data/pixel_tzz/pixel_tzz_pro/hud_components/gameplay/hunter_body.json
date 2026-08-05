@@ -1,0 +1,26 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "primary",
+  "audience": {
+    "roles": [
+      "pixel_tzz:hunter"
+    ],
+    "exclude_host": true
+  },
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "出生点已由服务端锁定；正式任务开始前保持等待。",
+          "color": "#D7DFE5"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 2,
+    "overflow": "wrap"
+  }
+}

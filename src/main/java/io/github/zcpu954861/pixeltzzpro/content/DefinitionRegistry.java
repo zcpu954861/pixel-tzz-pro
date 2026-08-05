@@ -177,7 +177,12 @@ public final class DefinitionRegistry {
 			.stream()
 			.sorted(Map.Entry.comparingByKey())
 			.toList();
-		if (entries.size() > DefinitionCompiler.MAX_DEFINITIONS) {
+		int maximumDefinitions = DefinitionCompiler.MAX_DEFINITIONS
+			+ HudDefinitions.MAX_COMPONENTS
+			+ HudDefinitions.MAX_LAYOUTS
+			+ HudDefinitions.MAX_PROFILES
+			+ HudDefinitions.MAX_COUNTDOWNS;
+		if (entries.size() > maximumDefinitions) {
 			Map.Entry<Identifier, Resource> first = entries.getFirst();
 			return new Compilation(
 				java.util.Optional.empty(),
@@ -189,7 +194,7 @@ public final class DefinitionRegistry {
 						first.getKey(),
 						first.getValue().sourcePackId(),
 						"",
-						"definition count " + entries.size() + " exceeds " + DefinitionCompiler.MAX_DEFINITIONS
+						"definition count " + entries.size() + " exceeds " + maximumDefinitions
 					)
 				)
 			);
@@ -436,13 +441,17 @@ public final class DefinitionRegistry {
 		final Reader reader,
 		final DefinitionType type
 	) throws IOException {
-		if (!isMessageDefinition(type)) {
+		if (!isMessageDefinition(type) && !isHudDefinition(type)) {
 			return new ReadDefinition(readBounded(reader), Optional.empty());
 		}
 		CapturingReader capturing = new CapturingReader(
 			reader,
 			DefinitionCompiler.MAX_DEFINITION_CHARACTERS + 1
 		);
+		if (isHudDefinition(type)) {
+			capturing.drain();
+			return new ReadDefinition(capturing.retained(), Optional.empty());
+		}
 		Optional<MessageEnvelopeHint> envelopeHint = Optional.empty();
 		try {
 			envelopeHint = readMessageEnvelope(capturing);
@@ -574,6 +583,13 @@ public final class DefinitionRegistry {
 
 	private static boolean isMessageDefinition(final DefinitionType type) {
 		return type == DefinitionType.TEXT_EFFECT || type == DefinitionType.MESSAGE_CUE;
+	}
+
+	private static boolean isHudDefinition(final DefinitionType type) {
+		return type == DefinitionType.HUD_COMPONENT
+			|| type == DefinitionType.HUD_LAYOUT
+			|| type == DefinitionType.HUD_PROFILE
+			|| type == DefinitionType.COUNTDOWN;
 	}
 
 	private static String readBounded(final Reader reader) throws IOException {

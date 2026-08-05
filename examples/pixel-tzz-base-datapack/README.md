@@ -1,4 +1,4 @@
-# Pixel TZZ Pro 2A–3B 示例与验收夹具
+# Pixel TZZ Pro 2A–3C 示例与验收夹具
 
 此数据包只用于模组开发验收，同时保留：
 
@@ -7,6 +7,7 @@
 - 2D 的逐玩家准备、最小任务时间线、独占选择、事件、统计和回调夹具。
 - 3A 的普通玩家终端、身份专属任务页、个人数据裁剪、玩家历史与注册函数夹具；
 - 3B 的文字效果、完整演出、动态字段、服务端播放与控制验收夹具。
+- 3C 的数据驱动信息坞、语义降级、客户端策略和正式开局倒计时夹具。
 
 它不是正式的全员逃走中玩法数据包。所有“北门”“中央站”“南侧场地”“终端”等名称均是无地图坐标、无玩法含义的显式占位，不应复制为正式任务。
 
@@ -72,7 +73,7 @@
 
 ## 2D 最小任务时间线
 
-游戏定义使用 `api_version: 2`。主持人可用 `pixel_tzz:enter_initializing` 从设置进入初始化，再用既有 `pixel_tzz:enter_ready` 进入准备；所有准备参与者逐人确认后才开放批准，批准阶段为 `pixel_tzz:ready`，批准后进入 `pixel_tzz:warmup`。
+任务时间线能力从 `api_version: 2` 引入；当前完整夹具已提升到 `api_version: 4`。主持人可用 `pixel_tzz:enter_initializing` 从设置进入初始化，再用既有 `pixel_tzz:enter_ready` 进入准备；所有准备参与者逐人确认后才开放批准，批准阶段为 `pixel_tzz:ready`，批准后先进入 3C 正式倒计时，倒计时完成后才进入 `pixel_tzz:warmup`。
 
 时间线严格无环且同时只有一个任务：
 
@@ -109,7 +110,7 @@ acceptance/warmup
 
 ## 3A 玩家终端
 
-游戏定义使用 `api_version: 3`，默认玩家页为 `pixel_tzz:player/home`，并启用玩家历史总开关。
+玩家终端能力从 `api_version: 3` 引入；当前完整夹具使用 `api_version: 4`，默认玩家页为 `pixel_tzz:player/home`，并启用玩家历史总开关。
 
 当前正式示例页：
 
@@ -407,6 +408,61 @@ Chat 仍只消费富文本帧，不套用 HUD 位移和缩放。
 并以 64 个动态字段验证合法上限；策略矩阵覆盖还证明高优先级资源不会继承低优先级的参数、
 历史、静态降级或资源声明。不能把覆盖包文案当成正式玩法内容。
 
+## 3C HUD 与正式开局倒计时
+
+Game 使用 `api_version: 4`，注册 `pixel_tzz:main` HUD Profile，并默认引用
+`pixel_tzz:opening/pause`。常驻 HUD 只有一个右下角信息坞；活动任务的 task tier 覆盖猎人等待
+context 和默认等待布局。正常、紧凑、摘要、最小降级根均由数据包组件树声明，客户端不会收到
+Score holder、Storage 路径或 Player Data 来源定义。
+
+基础夹具注册三个同构的 10 秒 Countdown：
+
+- `pixel_tzz:opening/pause`：必需玩家掉线暂停，Game 默认引用；
+- `pixel_tzz:opening/cancel`：必需玩家掉线正式取消；
+- `pixel_tzz:opening/continue`：其他玩家继续，冻结名单不删人。
+
+三者都在 5、3、2、1、0 秒注册声音检查点，主持人掉线默认继续；移动、攻击、交互、物品和伤害
+由权威限制处理，镜头、聊天与 ESC 保持允许。生命周期回调只写入
+`storage pixel_tzz:acceptance_3c countdown.callbacks`，不产生额外 Subtitle、Chat 或 Title。
+
+先执行：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/setup
+```
+
+HUD 可观测入口：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/hud/default
+/function pixel_tzz:acceptance_3c/hud/long_text
+/function pixel_tzz:acceptance_3c/hud/route_task
+/function pixel_tzz:acceptance_3c/hud/route_context
+/function pixel_tzz:acceptance_3c/hud/revoke
+/function pixel_tzz:acceptance_3c/hud/clock
+```
+
+路由、撤权和 Countdown 函数只记录预期或提示使用正式主持人入口，不伪造任务、身份或 HUD 网络
+帧。要验收 `cancel` / `continue`，在新一轮批准前把 `games/main.json` 的
+`opening_countdown.definition` 分别替换为对应 ID，再 `/reload`；活动中的 Countdown 继续使用批准
+时冻结的旧定义。
+
+回调失败夹具：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/countdown/callback_fault
+# 下一轮完成后应停在 completing
+/function pixel_tzz:acceptance_3c/countdown/callback_fault_clear
+# 随后从主持人控制台重试失败回调
+/data get storage pixel_tzz:acceptance_3c countdown.callbacks
+```
+
+验收结束只清临时观察数据，不触碰权威游戏状态：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/clear
+```
+
 ## 易用验收函数
 
 任务 `on_start` 宏回调会把当前权威上下文写入：
@@ -479,7 +535,7 @@ storage pixel_tzz:acceptance_2d session.current
 
 ## 内容规模
 
-基础数据包当前共包含 `181` 个文件和 `97` 项 Pixel TZZ 定义，其中有：
+基础数据包当前共包含 `245` 个文件和 `141` 项 Pixel TZZ 定义，其中有：
 
 - `24` 个页面；
 - `2` 个字段；
@@ -491,6 +547,8 @@ storage pixel_tzz:acceptance_2d session.current
 - `12` 项玩家注册操作；
 - `2` 个文字效果；
 - `9` 条完整文字演出。
+- `35` 个 HUD Component、`5` 个 HUD Layout、`1` 个 HUD Profile；
+- `3` 个正式开局 Countdown。
 
-回调和包装函数共 `81` 个：既有 2C 无副作用函数 `6` 个、2D 宏回调与验收入口 `20` 个、
-3A 注册函数验收入口 `1` 个，以及 3B 播放、控制、动态值、无障碍、布局、外部 HUD、重启和回调验收函数 `54` 个。
+回调和包装函数共 `101` 个：既有 2C 无副作用函数 `6` 个、2D 宏回调与验收入口 `20` 个、
+3A 注册函数验收入口 `1` 个、3B 播放与回调验收函数 `54` 个，以及 3C HUD、Countdown 与回调审计函数 `20` 个。

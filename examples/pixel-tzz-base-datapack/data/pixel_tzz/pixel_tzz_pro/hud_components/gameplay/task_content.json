@@ -1,0 +1,15 @@
+{
+  "format_version": 1,
+  "type": "column",
+  "priority": "primary",
+  "children": [
+    "pixel_tzz:gameplay/header_row",
+    "pixel_tzz:gameplay/spine",
+    "pixel_tzz:gameplay/task_description",
+    "pixel_tzz:gameplay/long_text",
+    "pixel_tzz:gameplay/task_progress",
+    "pixel_tzz:gameplay/meta_row"
+  ],
+  "gap": 4,
+  "alignment": "stretch"
+}

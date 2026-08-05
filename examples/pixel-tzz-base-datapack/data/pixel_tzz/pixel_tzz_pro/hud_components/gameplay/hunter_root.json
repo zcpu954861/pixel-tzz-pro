@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "type": "background",
+  "priority": "primary",
+  "child": "pixel_tzz:gameplay/hunter_content",
+  "fill": "#E61A232E",
+  "border": {
+    "color": "#9A3948",
+    "width": 1
+  },
+  "padding": {
+    "left": 8,
+    "top": 7,
+    "right": 8,
+    "bottom": 7
+  }
+}

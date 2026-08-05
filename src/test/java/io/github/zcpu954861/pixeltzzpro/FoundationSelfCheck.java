@@ -2429,7 +2429,7 @@ public final class FoundationSelfCheck {
 		long fileCount;
 		try (var paths = Files.walk(packRoot)) {
 			fileCount = paths.filter(Files::isRegularFile).count();
-			check(fileCount == 181, "3B example data pack file count changed unexpectedly");
+			check(fileCount == 245, "3C example data pack file count changed unexpectedly");
 		} catch (IOException error) {
 			throw new AssertionError("failed to count the base example data pack", error);
 		}
@@ -2552,7 +2552,7 @@ public final class FoundationSelfCheck {
 		);
 
 		Compilation example = DefinitionCompiler.compile(sources, functions, predicates);
-		check(example.valid(), "3A example data pack must compile: " + example.problems());
+		check(example.valid(), "3C example data pack must compile: " + example.problems());
 		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
 		check(snapshot.games().size() == 1, "example must register one game");
 		check(snapshot.fields().size() == 2, "example must register two fields");
@@ -2574,8 +2574,17 @@ public final class FoundationSelfCheck {
 			snapshot.messageCatalog().disabled().isEmpty(),
 			"release-facing V3B example resources must not be disabled"
 		);
-		check(snapshot.definitionCount() == 97, "example definition count changed unexpectedly");
-		check(functions.size() == 81, "example callback and wrapper function count changed unexpectedly");
+		check(snapshot.hudCatalog().components().size() == 35, "example must register thirty-five HUD components");
+		check(snapshot.hudCatalog().layouts().size() == 5, "example must register five HUD layouts");
+		check(snapshot.hudCatalog().profiles().size() == 1, "example must register one HUD profile");
+		check(snapshot.hudCatalog().countdowns().size() == 3, "example must register three countdown policies");
+		check(snapshot.hudCatalog().disabled().isEmpty(), "release-facing V3C resources must not be disabled");
+		check(
+			snapshot.hudCatalog().requiredCountdownFailures().isEmpty(),
+			"release-facing V3C countdown closure must be usable"
+		);
+		check(snapshot.definitionCount() == 141, "example definition count changed unexpectedly");
+		check(functions.size() == 101, "example callback and wrapper function count changed unexpectedly");
 		Identifier gameId = Identifier.fromNamespaceAndPath("pixel_tzz", "main");
 		Identifier warmupTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/warmup");
 		Identifier timeoutTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/timeout_only");
@@ -2584,17 +2593,24 @@ public final class FoundationSelfCheck {
 		Identifier endedPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "ended");
 		var game = snapshot.games().get(gameId);
 		check(
-			game.apiVersion() == 3
+			game.apiVersion() == 4
 				&& game.taskTimeline().isPresent()
 				&& game.readiness().isPresent()
 				&& game.playerTerminal().isPresent()
+				&& game.hudProfile().orElseThrow().equals(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "main")
+				)
+				&& game.openingCountdown().orElseThrow().definition().equals(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "opening/pause")
+				)
+				&& game.openingCountdown().orElseThrow().required()
 				&& game.playerTerminal()
 					.orElseThrow()
 					.defaultPage()
 					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/home"))
 				&& game.playerTerminal().orElseThrow().historyEnabled()
 				&& game.playerTerminal().orElseThrow().historySource() == HistorySource.TASKS,
-			"3A example must opt into player readiness, tasks, terminal, and player history"
+			"3C example must opt into readiness, tasks, terminal, HUD, countdown, and player history"
 		);
 		var timeline = game.taskTimeline().orElseThrow();
 		check(

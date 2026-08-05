@@ -1,0 +1,17 @@
+{
+  "format_version": 1,
+  "type": "background",
+  "priority": "critical",
+  "child": "pixel_tzz:countdown/compact_content",
+  "fill": "#EE101820",
+  "border": {
+    "color": "#55D7E6",
+    "width": 1
+  },
+  "padding": {
+    "left": 8,
+    "top": 6,
+    "right": 8,
+    "bottom": 6
+  }
+}

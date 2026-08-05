@@ -1,0 +1,29 @@
+{
+  "format_version": 1,
+  "surface": "countdown",
+  "root": "pixel_tzz:countdown/root",
+  "compact_root": "pixel_tzz:countdown/compact_root",
+  "summary_root": "pixel_tzz:countdown/compact_root",
+  "size": {
+    "minimum_width": 144,
+    "preferred_width": 188,
+    "maximum_width": 224,
+    "maximum_height": 112,
+    "growth": "center"
+  },
+  "transition": {
+    "enter": "focus_fade",
+    "change": "crossfade_values",
+    "exit": "fade",
+    "enter_sound": {
+      "event": "minecraft:block.note_block.pling",
+      "volume": 0.6,
+      "pitch": 1.2
+    },
+    "change_sound": {
+      "event": "minecraft:block.note_block.hat",
+      "volume": 0.24,
+      "pitch": 1.0
+    }
+  }
+}

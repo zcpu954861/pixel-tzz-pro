@@ -1,0 +1,27 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "critical",
+  "audience": {
+    "roles": [
+      "pixel_tzz:hunter"
+    ],
+    "exclude_host": true
+  },
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "猎人待命",
+          "color": "#E94F64",
+          "bold": true
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "left",
+    "max_lines": 1,
+    "overflow": "ellipsis"
+  }
+}

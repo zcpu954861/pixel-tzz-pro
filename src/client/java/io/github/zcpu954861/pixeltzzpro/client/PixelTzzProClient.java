@@ -8,6 +8,10 @@ import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePlayback;
 import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePreferences;
 import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessageWireState;
 import io.github.zcpu954861.pixeltzzpro.client.message.MessageHudOverlay;
+import io.github.zcpu954861.pixeltzzpro.client.hud.ClientHudPreferences;
+import io.github.zcpu954861.pixeltzzpro.client.hud.ClientHudRuntime;
+import io.github.zcpu954861.pixeltzzpro.client.hud.ClientHudRuntime.FrameAcceptance;
+import io.github.zcpu954861.pixeltzzpro.client.hud.InformationDockOverlay;
 import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState.ConnectionStatus;
 import io.github.zcpu954861.pixeltzzpro.client.screen.DataDrivenPageScreen;
 import io.github.zcpu954861.pixeltzzpro.client.screen.ForcedFlowPauseScreen;
@@ -38,6 +42,18 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload
 import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownCheckpointSoundS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPreviewClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudPreviewReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudResyncRequestC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.HudResyncRequestC2SPayload.Surface;
+import java.util.UUID;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -50,6 +66,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.client.Minecraft;
 
 /**
  * Client bootstrap. Rendering and animation remain client-side; state authority remains server-side.
@@ -67,8 +84,10 @@ public final class PixelTzzProClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		ClientMessagePreferences.initialize();
+		ClientHudPreferences.initialize();
 		PixelTzzRenderPipelines.register();
 		MessageHudOverlay.register();
+		InformationDockOverlay.register();
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			SystemToast.forceHide(
 				client.gui.toastManager(),
@@ -81,6 +100,8 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			LivePageSupervisor.reset();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			ClientHudRuntime.clearAll();
+			InformationDockOverlay.clearTransientState();
 			if (!messagePhysicalConnectionActive) {
 				messagePhysicalConnectionActive = true;
 				ClientMessageAssetReporter.beginConnection();
@@ -97,6 +118,8 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			ClientSessionState.disconnect();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			ClientHudRuntime.clearAll();
+			InformationDockOverlay.clearTransientState();
 			ClientMessageAssetReporter.disconnect();
 			ClientMessageWireState.disconnect();
 			ClientMessagePlayback.reset(client);
@@ -198,6 +221,154 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			MessageControlS2CPayload.TYPE,
 			(payload, context) -> ClientMessageWireState.accept(payload)
 		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HudReplaceS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientHudRuntime.acceptReplace(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.sequence(),
+					payload.snapshotJson(),
+					receivedAtNanos
+				);
+				handleFrameResult(
+					Surface.HUD,
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HudPatchS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientHudRuntime.acceptPatch(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.baseSequence(),
+					payload.sequence(),
+					payload.patchJson(),
+					receivedAtNanos
+				);
+				handleFrameResult(
+					Surface.HUD,
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HudClearS2CPayload.TYPE,
+			(payload, context) -> ClientHudRuntime.acceptClear(
+				payload.gameInstanceId(),
+				payload.definitionGeneration(),
+				payload.epoch(),
+				payload.contextVersion(),
+				payload.sequence()
+			)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HudPreviewReplaceS2CPayload.TYPE,
+			(payload, context) -> ClientHudRuntime.acceptPreviewReplace(
+				payload.surface(),
+				payload.previewId(),
+				payload.epoch(),
+				payload.sequence(),
+				payload.snapshotJson()
+			)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			HudPreviewClearS2CPayload.TYPE,
+			(payload, context) -> ClientHudRuntime.acceptPreviewClear(
+				payload.surface(),
+				payload.previewId(),
+				payload.epoch(),
+				payload.sequence()
+			)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownReplaceS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientHudRuntime.acceptCountdownReplace(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.sequence(),
+					payload.snapshotJson(),
+					receivedAtNanos
+				);
+				handleFrameResult(
+					Surface.COUNTDOWN,
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownPatchS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientHudRuntime.acceptCountdownPatch(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.baseSequence(),
+					payload.sequence(),
+					payload.patchJson(),
+					receivedAtNanos
+				);
+				handleFrameResult(
+					Surface.COUNTDOWN,
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownClearS2CPayload.TYPE,
+			(payload, context) -> ClientHudRuntime.acceptCountdownClear(
+				payload.gameInstanceId(),
+				payload.definitionGeneration(),
+				payload.epoch(),
+				payload.contextVersion(),
+				payload.sequence()
+			)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownCheckpointSoundS2CPayload.TYPE,
+			(payload, context) -> ClientHudRuntime.playCountdownCheckpoint(
+				payload.countdownInstanceId(),
+				payload.stateVersion(),
+				payload.checkpointId(),
+				payload.soundId(),
+				payload.volume(),
+				payload.pitch()
+			)
+		);
 
 		// Announce resource-reload start before the fresh asset report emitted in the same tick, so
 		// the server invalidates the old observation first and cannot leave the new one pending.
@@ -248,5 +419,68 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientMessageKeyBindings.register(ClientMessagePlayback::manualComplete);
 		PauseMenuEntry.register();
 		OptionsMenuEntry.register();
+	}
+
+	private static void handleFrameResult(
+		final Surface surface,
+		final UUID game,
+		final long generation,
+		final long epoch,
+		final long context,
+		final FrameAcceptance result,
+		final long receivedAtNanos
+	) {
+		if (result.accepted()) {
+			ClientHudRuntime.observeAcceptedServerTick(
+				surface,
+				receivedAtNanos,
+				estimatedOneWayDelayNanos()
+			);
+		} else if (result.requiresResync()) {
+			requestResync(surface, game, generation, epoch, context);
+		}
+	}
+
+	private static long estimatedOneWayDelayNanos() {
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() != null && client.player != null) {
+			var playerInfo = client.getConnection().getPlayerInfo(client.player.getUUID());
+			if (playerInfo != null) {
+				long latencyMillis = Math.clamp((long)playerInfo.getLatency(), 0L, 1_000L);
+				return latencyMillis * 500_000L;
+			}
+		}
+		return 25_000_000L;
+	}
+
+	private static void requestResync(
+		final Surface surface,
+		final UUID game,
+		final long generation,
+		final long epoch,
+		final long context
+	) {
+		if (!ClientPlayNetworking.canSend(HudResyncRequestC2SPayload.TYPE)) {
+			return;
+		}
+		var applied = ClientHudRuntime.prepareResync(
+			surface,
+			game,
+			generation,
+			epoch,
+			context,
+			System.nanoTime()
+		);
+		if (applied.isEmpty()) {
+			return;
+		}
+		ClientPlayNetworking.send(new HudResyncRequestC2SPayload(
+			game,
+			surface,
+			generation,
+			epoch,
+			context,
+			applied.orElseThrow()
+		));
 	}
 }

@@ -26,13 +26,13 @@ import net.minecraft.world.level.saveddata.SavedDataType;
  * The single world-level source of truth owned by the server mod.
  *
  * <p>The wrapper keeps its object identity for the lifetime of the loaded world. Successful changes
- * replace one immutable {@link WorldStateV4} payload and mark this wrapper dirty; this prevents
+ * replace one immutable {@link WorldStateV5} payload and mark this wrapper dirty; this prevents
  * partial state mutations and keeps the unreadable-file guard from mistaking a legitimate
  * replacement object for a failed load. Existing 2C and 2D callers transact through the schema-v2
  * and schema-v3 core adapters.
  */
 public final class PixelTzzWorldState extends SavedData {
-	public static final int CURRENT_SCHEMA_VERSION = WorldStateV4.SCHEMA_VERSION;
+	public static final int CURRENT_SCHEMA_VERSION = WorldStateV5.SCHEMA_VERSION;
 	public static final Codec<PixelTzzWorldState> CODEC = Codec.PASSTHROUGH.flatXmap(
 		PixelTzzWorldState::decode,
 		PixelTzzWorldState::encode
@@ -45,7 +45,9 @@ public final class PixelTzzWorldState extends SavedData {
 	);
 
 	private LoadKind loadKind;
+	private WorldStateV5 currentV5;
 	private WorldStateV4 currentV4;
+	private WorldStateV4 legacyV4;
 	private WorldStateV3 legacyV3;
 	private WorldStateV2 legacyV2;
 	private LegacyWorldStateV1 legacyV1;
@@ -56,7 +58,8 @@ public final class PixelTzzWorldState extends SavedData {
 
 	private PixelTzzWorldState(
 		final LoadKind loadKind,
-		final WorldStateV4 currentV4,
+		final WorldStateV5 currentV5,
+		final WorldStateV4 legacyV4,
 		final WorldStateV3 legacyV3,
 		final WorldStateV2 legacyV2,
 		final LegacyWorldStateV1 legacyV1,
@@ -65,7 +68,9 @@ public final class PixelTzzWorldState extends SavedData {
 		final String incompatibilityReason
 	) {
 		this.loadKind = Objects.requireNonNull(loadKind, "loadKind");
-		this.currentV4 = currentV4;
+		this.currentV5 = currentV5;
+		this.currentV4 = currentV5 == null ? null : currentV5.core();
+		this.legacyV4 = legacyV4;
 		this.legacyV3 = legacyV3;
 		this.legacyV2 = legacyV2;
 		this.legacyV1 = legacyV1;
@@ -76,7 +81,7 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	public static PixelTzzWorldState initial() {
-		return current(WorldStateV4.initial());
+		return current(WorldStateV5.initial());
 	}
 
 	public static PixelTzzWorldState get(final MinecraftServer server) {
@@ -99,11 +104,11 @@ public final class PixelTzzWorldState extends SavedData {
 
 	private static DataResult<PixelTzzWorldState> decode(final Dynamic<?> data) {
 		int schemaVersion = data.get("schema_version").asInt(0);
-		if (schemaVersion == WorldStateV4.SCHEMA_VERSION) {
-			DataResult<WorldStateV4> decoded = WorldStateV4.CODEC.parse(data);
+		if (schemaVersion == WorldStateV5.SCHEMA_VERSION) {
+			DataResult<WorldStateV5> decoded = WorldStateV5.CODEC.parse(data);
 			return decoded.result()
 				.map(value -> DataResult.success(
-					value.core().timeline()
+					value.core().core().timeline()
 						.filter(timeline -> timeline.snapshot().hasMissingContent())
 						.map(ignored -> repairableCurrent(
 							value,
@@ -111,6 +116,18 @@ public final class PixelTzzWorldState extends SavedData {
 						))
 						.orElseGet(() -> current(value))
 				))
+				.orElseGet(() -> DataResult.success(
+					opaque(
+						schemaVersion,
+						data,
+						decoded.error().map(DataResult.Error::message).orElse("invalid schema v5 world state")
+					)
+				));
+		}
+		if (schemaVersion == WorldStateV4.SCHEMA_VERSION) {
+			DataResult<WorldStateV4> decoded = WorldStateV4.CODEC.parse(data);
+			return decoded.result()
+				.map(value -> DataResult.success(legacy(value, data)))
 				.orElseGet(() -> DataResult.success(
 					opaque(
 						schemaVersion,
@@ -214,10 +231,11 @@ public final class PixelTzzWorldState extends SavedData {
 		}
 	}
 
-	private static PixelTzzWorldState current(final WorldStateV4 value) {
+	private static PixelTzzWorldState current(final WorldStateV5 value) {
 		return new PixelTzzWorldState(
-			LoadKind.CURRENT_V4,
+			LoadKind.CURRENT_V5,
 			value,
+			null,
 			null,
 			null,
 			null,
@@ -228,12 +246,13 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	private static PixelTzzWorldState repairableCurrent(
-		final WorldStateV4 value,
+		final WorldStateV5 value,
 		final String reason
 	) {
 		return new PixelTzzWorldState(
-			LoadKind.CURRENT_V4,
+			LoadKind.CURRENT_V5,
 			value,
+			null,
 			null,
 			null,
 			null,
@@ -243,9 +262,27 @@ public final class PixelTzzWorldState extends SavedData {
 		);
 	}
 
+	private static PixelTzzWorldState legacy(
+		final WorldStateV4 value,
+		final Dynamic<?> preservedData
+	) {
+		return new PixelTzzWorldState(
+			LoadKind.LEGACY_V4,
+			null,
+			value,
+			null,
+			null,
+			null,
+			preservedData,
+			false,
+			"schema v4 requires an additive startup migration"
+		);
+	}
+
 	private static PixelTzzWorldState legacy(final WorldStateV3 value, final Dynamic<?> preservedData) {
 		return new PixelTzzWorldState(
 			LoadKind.LEGACY_V3,
+			null,
 			null,
 			value,
 			null,
@@ -261,6 +298,7 @@ public final class PixelTzzWorldState extends SavedData {
 			LoadKind.LEGACY_V2,
 			null,
 			null,
+			null,
 			value,
 			null,
 			preservedData,
@@ -272,6 +310,7 @@ public final class PixelTzzWorldState extends SavedData {
 	private static PixelTzzWorldState legacy(final LegacyWorldStateV1 value, final Dynamic<?> preservedData) {
 		return new PixelTzzWorldState(
 			LoadKind.LEGACY_V1,
+			null,
 			null,
 			null,
 			null,
@@ -293,6 +332,7 @@ public final class PixelTzzWorldState extends SavedData {
 			null,
 			null,
 			null,
+			null,
 			data,
 			false,
 			(schemaVersion == 0 ? "missing or invalid schema; " : "") + reason
@@ -300,8 +340,8 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	private static DataResult<Dynamic<?>> encode(final PixelTzzWorldState state) {
-		if (state.currentV4 != null) {
-			return WorldStateV4.CODEC.encodeStart(JsonOps.INSTANCE, state.currentV4)
+		if (state.currentV5 != null) {
+			return WorldStateV5.CODEC.encodeStart(JsonOps.INSTANCE, state.currentV5)
 				.map(value -> new Dynamic<>(JsonOps.INSTANCE, value));
 		}
 		if (state.preservedData != null) {
@@ -379,7 +419,7 @@ public final class PixelTzzWorldState extends SavedData {
 		if (rootValidation.error().isPresent()) {
 			return CommitResult.rejected(rootValidation.error().orElseThrow().message());
 		}
-		this.currentV4 = next;
+		setCurrentCore(next);
 		this.setDirty();
 		return CommitResult.committed(candidate);
 	}
@@ -420,7 +460,7 @@ public final class PixelTzzWorldState extends SavedData {
 		if (validated.error().isPresent()) {
 			return CommitV3Result.rejected(validated.error().orElseThrow().message());
 		}
-		this.currentV4 = this.currentV4.withCore(candidate);
+		setCurrentCore(this.currentV4.withCore(candidate));
 		this.setDirty();
 		return CommitV3Result.committed(candidate);
 	}
@@ -460,9 +500,254 @@ public final class PixelTzzWorldState extends SavedData {
 		if (validated.error().isPresent()) {
 			return CommitV4Result.rejected(validated.error().orElseThrow().message());
 		}
-		this.currentV4 = candidate;
+		setCurrentCore(candidate);
 		this.setDirty();
 		return CommitV4Result.committed(candidate);
+	}
+
+	/** Native schema-v5 transaction used for atomic approval/lifecycle changes. */
+	public synchronized CommitV5Result commitV5(
+		final long expectedRevision,
+		final UnaryOperator<WorldStateV5> mutation
+	) {
+		Objects.requireNonNull(mutation, "mutation");
+		if (!isSchemaCompatible()) {
+			return CommitV5Result.rejected("world state is not writable: " + this.incompatibilityReason);
+		}
+		if (this.currentV5.stateRevision() != expectedRevision) {
+			return CommitV5Result.rejected(
+				"state revision mismatch: expected " + expectedRevision + ", current " + this.currentV5.stateRevision()
+			);
+		}
+		final long nextRevision;
+		try {
+			nextRevision = Math.incrementExact(expectedRevision);
+		} catch (ArithmeticException error) {
+			return CommitV5Result.rejected("state revision overflow");
+		}
+		final WorldStateV5 candidate;
+		try {
+			WorldStateV5 mutated = Objects.requireNonNull(mutation.apply(this.currentV5), "mutation result");
+			WorldStateV3 revisedV3 = mutated.core().core()
+				.withCore(mutated.core().core().core().withStateRevision(nextRevision));
+			WorldStateV4 revisedV4 = mutated.core().withCore(revisedV3);
+			candidate = mutated.withCore(revisedV4);
+		} catch (RuntimeException error) {
+			return CommitV5Result.rejected("state mutation failed validation: " + safeMessage(error));
+		}
+		DataResult<WorldStateV5> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return CommitV5Result.rejected(validated.error().orElseThrow().message());
+		}
+		this.currentV5 = candidate;
+		this.currentV4 = candidate.core();
+		this.setDirty();
+		return CommitV5Result.committed(candidate);
+	}
+
+	/**
+	 * Narrow countdown checkpoint that leaves the global revision unchanged. Routine remaining-time
+	 * and callback-ledger progress must not invalidate unrelated host confirmations or terminals.
+	 */
+	public synchronized CountdownCheckpointResult countdownCheckpoint(
+		final UUID expectedGameInstanceId,
+		final UUID expectedCountdownInstanceId,
+		final long expectedStateVersion,
+		final long expectedRemainingTicks,
+		final long expectedServerTickAnchor,
+		final Optional<PersistedCountdown.Instance> replacement
+	) {
+		Objects.requireNonNull(expectedGameInstanceId, "expectedGameInstanceId");
+		Objects.requireNonNull(expectedCountdownInstanceId, "expectedCountdownInstanceId");
+		Objects.requireNonNull(replacement, "replacement");
+		if (!isSchemaCompatible()) {
+			return CountdownCheckpointResult.rejected(
+				"world state is not writable: " + this.incompatibilityReason
+			);
+		}
+		PersistedCountdown.Instance current = this.currentV5.countdown().orElse(null);
+		if (current == null) {
+			return CountdownCheckpointResult.rejected("countdown checkpoint has no active instance");
+		}
+		if (
+			!current.gameInstanceId().equals(expectedGameInstanceId)
+				|| !current.countdownInstanceId().equals(expectedCountdownInstanceId)
+		) {
+			return CountdownCheckpointResult.rejected("countdown instance changed before checkpoint");
+		}
+		if (
+			current.lifecycle().stateVersion() != expectedStateVersion
+				|| current.lifecycle().remainingTicks() != expectedRemainingTicks
+				|| current.lifecycle().lastServerTickAnchor() != expectedServerTickAnchor
+		) {
+			return CountdownCheckpointResult.rejected("countdown lifecycle changed before checkpoint");
+		}
+		if (replacement.isPresent()) {
+			PersistedCountdown.Instance next = replacement.orElseThrow();
+			if (
+				!next.gameInstanceId().equals(expectedGameInstanceId)
+					|| !next.countdownInstanceId().equals(expectedCountdownInstanceId)
+			) {
+				return CountdownCheckpointResult.rejected("replacement belongs to another countdown");
+			}
+			if (!sameFrozenCountdown(current, next)) {
+				return CountdownCheckpointResult.rejected("narrow checkpoint cannot replace frozen countdown content");
+			}
+			String monotonicError = countdownMonotonicError(current, next);
+			if (monotonicError != null) {
+				return CountdownCheckpointResult.rejected(monotonicError);
+			}
+		} else if (!current.lifecycle().state().terminal()) {
+			return CountdownCheckpointResult.rejected("only a terminal countdown may be retired");
+		}
+		WorldStateV5 candidate = this.currentV5.withCountdown(replacement);
+		DataResult<WorldStateV5> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return CountdownCheckpointResult.rejected(validated.error().orElseThrow().message());
+		}
+		if (!candidate.equals(this.currentV5)) {
+			this.currentV5 = candidate;
+			this.currentV4 = candidate.core();
+			this.setDirty();
+		}
+		return CountdownCheckpointResult.committed(replacement);
+	}
+
+	private static boolean sameFrozenCountdown(
+		final PersistedCountdown.Instance current,
+		final PersistedCountdown.Instance replacement
+	) {
+		return current.definition().equals(replacement.definition())
+			&& current.totalTicks() == replacement.totalTicks()
+			&& current.participants().equals(replacement.participants())
+			&& current.hostId().equals(replacement.hostId())
+			&& current.disconnectPolicies().equals(replacement.disconnectPolicies())
+			&& current.restrictions().equals(replacement.restrictions())
+			&& current.checkpoints().equals(replacement.checkpoints())
+			&& current.callbackDefinitions().equals(replacement.callbackDefinitions());
+	}
+
+	private static String countdownMonotonicError(
+		final PersistedCountdown.Instance current,
+		final PersistedCountdown.Instance replacement
+	) {
+		boolean recoveryAnchorReset = recoveryAnchorReset(current, replacement);
+		if (
+			replacement.lifecycle().stateVersion() < current.lifecycle().stateVersion()
+				|| replacement.lifecycle().remainingTicks() > current.lifecycle().remainingTicks()
+				|| (
+					replacement.lifecycle().lastServerTickAnchor()
+						< current.lifecycle().lastServerTickAnchor()
+						&& !recoveryAnchorReset
+				)
+		) {
+			return "countdown checkpoint moved backwards";
+		}
+		if (
+			!replacement.lifecycle().state().equals(current.lifecycle().state())
+				&& replacement.lifecycle().stateVersion() == current.lifecycle().stateVersion()
+		) {
+			return "countdown state changed without incrementing its version";
+		}
+		if (
+			current.lifecycle().state().terminal()
+				&& replacement.lifecycle().state() != current.lifecycle().state()
+		) {
+			return "terminal countdown cannot return to an active state";
+		}
+		if (
+			(current.lifecycle().state() == PersistedCountdown.CountdownState.COMPLETING
+				&& (replacement.lifecycle().state() == PersistedCountdown.CountdownState.CANCELING
+					|| replacement.lifecycle().state() == PersistedCountdown.CountdownState.CANCELED))
+				|| (current.lifecycle().state() == PersistedCountdown.CountdownState.CANCELING
+					&& (replacement.lifecycle().state() == PersistedCountdown.CountdownState.COMPLETING
+						|| replacement.lifecycle().state() == PersistedCountdown.CountdownState.COMPLETED))
+		) {
+			return "countdown completion and cancellation paths are mutually exclusive";
+		}
+		if (!replacement.emittedCheckpointIds().containsAll(current.emittedCheckpointIds())) {
+			return "countdown checkpoint cannot forget an emitted presentation checkpoint";
+		}
+		for (PersistedCountdown.RestrictionMarker marker : current.restrictionMarkers()) {
+			PersistedCountdown.RestrictionMarker next = replacement.restrictionMarkers().stream()
+				.filter(value -> value.participantId().equals(marker.participantId()))
+				.findFirst()
+				.orElseThrow();
+			if (!marker.active() && next.active()) {
+				return "countdown checkpoint cannot reactivate a released restriction marker";
+			}
+		}
+		for (PersistedCountdown.CallbackEntry entry : current.callbackLedger().entries()) {
+			PersistedCountdown.CallbackEntry next = replacement.callbackLedger().entries().stream()
+				.filter(value -> value.key().equals(entry.key()))
+				.findFirst()
+				.orElse(null);
+			if (next == null) {
+				return "countdown checkpoint cannot discard callback replay evidence";
+			}
+			if (entry.status() == PersistedCountdown.CallbackStatus.SUCCEEDED && !next.equals(entry)) {
+				return "successful countdown callback evidence is immutable";
+			}
+			if (next.attemptCount() < entry.attemptCount()) {
+				return "countdown callback attempt count moved backwards";
+			}
+			switch (entry.status()) {
+				case PENDING -> {
+					if (
+						next.attemptCount() > 1
+							|| next.attemptCount() == 1
+								&& next.status() != PersistedCountdown.CallbackStatus.PREPARED
+					) {
+						return "pending countdown callback advanced without a durable prepare";
+					}
+				}
+				case PREPARED -> {
+					if (next.attemptCount() != entry.attemptCount()) {
+						return "prepared countdown callback cannot start another attempt";
+					}
+				}
+				case SUCCEEDED -> {
+					// Exact immutability was checked above.
+				}
+				case FAILED, OUTCOME_UNKNOWN -> {
+					long nextAllowedAttempt = (long) entry.attemptCount() + 1L;
+					if (
+						(long) next.attemptCount() > nextAllowedAttempt
+							|| (long) next.attemptCount() == nextAllowedAttempt
+								&& next.status() != PersistedCountdown.CallbackStatus.PREPARED
+					) {
+						return "countdown callback retry skipped its durable prepare boundary";
+					}
+				}
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * A normal process restart resets {@code MinecraftServer#getTickCount()} to zero. The only
+	 * legal backwards anchor is therefore the versioned transition into {@code recovery_wait}; it
+	 * must preserve both the remaining time and the original nonterminal recovery target.
+	 */
+	private static boolean recoveryAnchorReset(
+		final PersistedCountdown.Instance current,
+		final PersistedCountdown.Instance replacement
+	) {
+		if (
+			replacement.lifecycle().state() != PersistedCountdown.CountdownState.RECOVERY_WAIT
+				|| replacement.lifecycle().stateVersion() <= current.lifecycle().stateVersion()
+				|| replacement.lifecycle().remainingTicks() != current.lifecycle().remainingTicks()
+		) {
+			return false;
+		}
+		PersistedCountdown.CountdownState expectedTarget =
+			current.lifecycle().state() == PersistedCountdown.CountdownState.RECOVERY_WAIT
+				? current.lifecycle().recoveryTarget().orElse(null)
+				: current.lifecycle().state();
+		return expectedTarget != null
+			&& !expectedTarget.terminal()
+			&& expectedTarget != PersistedCountdown.CountdownState.RECOVERY_WAIT
+			&& replacement.lifecycle().recoveryTarget().filter(expectedTarget::equals).isPresent();
 	}
 
 	/**
@@ -539,7 +824,7 @@ public final class PixelTzzWorldState extends SavedData {
 			);
 		}
 		if (!candidate.equals(this.currentV4)) {
-			this.currentV4 = candidate;
+			setCurrentCore(candidate);
 			this.setDirty();
 		}
 		return MessageRuntimeCheckpointResult.committed(replacement);
@@ -602,7 +887,7 @@ public final class PixelTzzWorldState extends SavedData {
 		if (validated.error().isPresent()) {
 			return TimelineCheckpointResult.rejected(validated.error().orElseThrow().message());
 		}
-		this.currentV4 = next;
+		setCurrentCore(next);
 		this.setDirty();
 		return TimelineCheckpointResult.committed(candidate);
 	}
@@ -616,6 +901,29 @@ public final class PixelTzzWorldState extends SavedData {
 		final FrozenDocument replacement
 	) {
 		Objects.requireNonNull(replacement, "replacement");
+		if (
+			this.loadKind == LoadKind.LEGACY_V4
+				&& this.legacyV4 != null
+				&& this.legacyV4.core().timeline()
+					.map(timeline -> timeline.snapshot().hasMissingContent())
+					.orElse(false)
+		) {
+			TimelineInstance timeline = this.legacyV4.core().timeline().orElseThrow();
+			String replacementError = snapshotReplacementError(timeline.snapshot(), replacement);
+			if (replacementError != null) {
+				return TimelineSnapshotRepairResult.rejected(replacementError);
+			}
+			WorldStateV3 candidateCore = this.legacyV4.core().withTimeline(
+				Optional.of(timeline.withSnapshot(replacement))
+			);
+			WorldStateV4 candidate = this.legacyV4.withCore(candidateCore);
+			DataResult<WorldStateV4> validated = candidate.validated();
+			if (validated.error().isPresent()) {
+				return TimelineSnapshotRepairResult.rejected(validated.error().orElseThrow().message());
+			}
+			this.legacyV4 = candidate;
+			return TimelineSnapshotRepairResult.committed(candidateCore);
+		}
 		if (
 			this.loadKind == LoadKind.LEGACY_V3
 				&& this.legacyV3 != null
@@ -643,7 +951,7 @@ public final class PixelTzzWorldState extends SavedData {
 			return TimelineSnapshotRepairResult.committed(candidate);
 		}
 		if (
-			this.loadKind != LoadKind.CURRENT_V4
+			this.loadKind != LoadKind.CURRENT_V5
 				|| !this.loadFailureProtected
 				|| this.currentV4 == null
 				|| this.currentV4.core().timeline().isEmpty()
@@ -670,7 +978,7 @@ public final class PixelTzzWorldState extends SavedData {
 		if (validated.error().isPresent()) {
 			return TimelineSnapshotRepairResult.rejected(validated.error().orElseThrow().message());
 		}
-		this.currentV4 = candidate;
+		setCurrentCore(candidate);
 		this.loadFailureProtected = false;
 		this.incompatibilityReason = "";
 		this.setDirty();
@@ -696,9 +1004,17 @@ public final class PixelTzzWorldState extends SavedData {
 			: "replacement timeline snapshot SHA-256 does not match the protected save";
 	}
 
+	private void setCurrentCore(final WorldStateV4 value) {
+		if (this.currentV5 == null) {
+			throw new IllegalStateException("schema-v5 world-state payload is missing");
+		}
+		this.currentV5 = this.currentV5.withCore(Objects.requireNonNull(value, "value"));
+		this.currentV4 = this.currentV5.core();
+	}
+
 	synchronized MigrationCommitResult commitLegacyV1Migration(
 		final LegacyWorldStateV1 expectedLegacy,
-		final WorldStateV4 candidate
+		final WorldStateV5 candidate
 	) {
 		Objects.requireNonNull(expectedLegacy, "expectedLegacy");
 		Objects.requireNonNull(candidate, "candidate");
@@ -709,7 +1025,7 @@ public final class PixelTzzWorldState extends SavedData {
 		) {
 			return MigrationCommitResult.rejected("legacy state changed before migration commit");
 		}
-		DataResult<WorldStateV4> validated = candidate.validated();
+		DataResult<WorldStateV5> validated = candidate.validated();
 		if (validated.error().isPresent()) {
 			return MigrationCommitResult.rejected(validated.error().orElseThrow().message());
 		}
@@ -729,7 +1045,7 @@ public final class PixelTzzWorldState extends SavedData {
 
 	synchronized MigrationCommitResult commitLegacyV2Migration(
 		final WorldStateV2 expectedLegacy,
-		final WorldStateV4 candidate
+		final WorldStateV5 candidate
 	) {
 		Objects.requireNonNull(expectedLegacy, "expectedLegacy");
 		Objects.requireNonNull(candidate, "candidate");
@@ -740,7 +1056,7 @@ public final class PixelTzzWorldState extends SavedData {
 		) {
 			return MigrationCommitResult.rejected("legacy state changed before migration commit");
 		}
-		DataResult<WorldStateV4> validated = candidate.validated();
+		DataResult<WorldStateV5> validated = candidate.validated();
 		if (validated.error().isPresent()) {
 			return MigrationCommitResult.rejected(validated.error().orElseThrow().message());
 		}
@@ -759,7 +1075,7 @@ public final class PixelTzzWorldState extends SavedData {
 
 	synchronized MigrationCommitResult commitLegacyV3Migration(
 		final WorldStateV3 expectedLegacy,
-		final WorldStateV4 candidate
+		final WorldStateV5 candidate
 	) {
 		Objects.requireNonNull(expectedLegacy, "expectedLegacy");
 		Objects.requireNonNull(candidate, "candidate");
@@ -770,7 +1086,7 @@ public final class PixelTzzWorldState extends SavedData {
 		) {
 			return MigrationCommitResult.rejected("legacy state changed before migration commit");
 		}
-		DataResult<WorldStateV4> validated = candidate.validated();
+		DataResult<WorldStateV5> validated = candidate.validated();
 		if (validated.error().isPresent()) {
 			return MigrationCommitResult.rejected(validated.error().orElseThrow().message());
 		}
@@ -787,9 +1103,41 @@ public final class PixelTzzWorldState extends SavedData {
 		return MigrationCommitResult.committed(candidate);
 	}
 
-	private void publishMigrated(final WorldStateV4 candidate) {
-		this.loadKind = LoadKind.CURRENT_V4;
-		this.currentV4 = candidate;
+	synchronized MigrationCommitResult commitLegacyV4Migration(
+		final WorldStateV4 expectedLegacy,
+		final WorldStateV5 candidate
+	) {
+		Objects.requireNonNull(expectedLegacy, "expectedLegacy");
+		Objects.requireNonNull(candidate, "candidate");
+		if (
+			this.loadFailureProtected
+				|| this.loadKind != LoadKind.LEGACY_V4
+				|| !expectedLegacy.equals(this.legacyV4)
+		) {
+			return MigrationCommitResult.rejected("legacy state changed before migration commit");
+		}
+		DataResult<WorldStateV5> validated = candidate.validated();
+		if (validated.error().isPresent()) {
+			return MigrationCommitResult.rejected(validated.error().orElseThrow().message());
+		}
+		final long expectedRevision;
+		try {
+			expectedRevision = Math.incrementExact(expectedLegacy.stateRevision());
+		} catch (ArithmeticException error) {
+			return MigrationCommitResult.rejected("legacy state revision overflow");
+		}
+		if (candidate.stateRevision() != expectedRevision) {
+			return MigrationCommitResult.rejected("migration candidate revision is not legacy revision + 1");
+		}
+		publishMigrated(candidate);
+		return MigrationCommitResult.committed(candidate);
+	}
+
+	private void publishMigrated(final WorldStateV5 candidate) {
+		this.loadKind = LoadKind.CURRENT_V5;
+		this.currentV5 = candidate;
+		this.currentV4 = candidate.core();
+		this.legacyV4 = null;
 		this.legacyV3 = null;
 		this.legacyV2 = null;
 		this.legacyV1 = null;
@@ -802,7 +1150,8 @@ public final class PixelTzzWorldState extends SavedData {
 	synchronized void setMigrationDiagnostic(final String diagnostic) {
 		if (
 			(
-				this.loadKind == LoadKind.LEGACY_V1
+				this.loadKind == LoadKind.LEGACY_V4
+					|| this.loadKind == LoadKind.LEGACY_V1
 					|| this.loadKind == LoadKind.LEGACY_V2
 					|| this.loadKind == LoadKind.LEGACY_V3
 			)
@@ -817,8 +1166,11 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	public int schemaVersion() {
-		if (this.currentV4 != null) {
-			return this.currentV4.schemaVersion();
+		if (this.currentV5 != null) {
+			return this.currentV5.schemaVersion();
+		}
+		if (this.legacyV4 != null) {
+			return this.legacyV4.schemaVersion();
 		}
 		if (this.legacyV3 != null) {
 			return this.legacyV3.schemaVersion();
@@ -832,8 +1184,16 @@ public final class PixelTzzWorldState extends SavedData {
 		return this.preservedData == null ? 0 : this.preservedData.get("schema_version").asInt(0);
 	}
 
+	public Optional<WorldStateV5> currentV5() {
+		return Optional.ofNullable(this.currentV5);
+	}
+
 	public Optional<WorldStateV4> currentV4() {
 		return Optional.ofNullable(this.currentV4);
+	}
+
+	public Optional<WorldStateV4> legacyV4() {
+		return Optional.ofNullable(this.legacyV4);
 	}
 
 	/**
@@ -905,6 +1265,9 @@ public final class PixelTzzWorldState extends SavedData {
 		if (this.currentV4 != null) {
 			return this.currentV4.stateRevision();
 		}
+		if (this.legacyV4 != null) {
+			return this.legacyV4.stateRevision();
+		}
 		if (this.legacyV3 != null) {
 			return this.legacyV3.stateRevision();
 		}
@@ -915,16 +1278,21 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	public boolean isSchemaCompatible() {
-		return !this.loadFailureProtected && this.loadKind == LoadKind.CURRENT_V4;
+		return !this.loadFailureProtected && this.loadKind == LoadKind.CURRENT_V5;
 	}
 
 	public boolean needsTimelineSnapshotRepair() {
 		if (
-			this.loadKind == LoadKind.CURRENT_V4
+			this.loadKind == LoadKind.CURRENT_V5
 				&& this.loadFailureProtected
 				&& this.currentV4 != null
 		) {
 			return this.currentV4.core().timeline()
+				.map(timeline -> timeline.snapshot().hasMissingContent())
+				.orElse(false);
+		}
+		if (this.loadKind == LoadKind.LEGACY_V4 && this.legacyV4 != null) {
+			return this.legacyV4.core().timeline()
 				.map(timeline -> timeline.snapshot().hasMissingContent())
 				.orElse(false);
 		}
@@ -941,32 +1309,51 @@ public final class PixelTzzWorldState extends SavedData {
 
 	private void requirePayloadInvariant() {
 		boolean valid = switch (this.loadKind) {
-			case CURRENT_V4 ->
-				this.currentV4 != null
+			case CURRENT_V5 ->
+				this.currentV5 != null
+					&& this.currentV4 != null
+					&& this.currentV4.equals(this.currentV5.core())
+					&& this.legacyV4 == null
 					&& this.legacyV3 == null
 					&& this.legacyV2 == null
 					&& this.legacyV1 == null
 					&& this.preservedData == null;
+			case LEGACY_V4 ->
+				this.currentV5 == null
+					&& this.currentV4 == null
+					&& this.legacyV4 != null
+					&& this.legacyV3 == null
+					&& this.legacyV2 == null
+					&& this.legacyV1 == null
+					&& this.preservedData != null;
 			case LEGACY_V3 ->
-				this.currentV4 == null
+				this.currentV5 == null
+					&& this.currentV4 == null
+					&& this.legacyV4 == null
 					&& this.legacyV3 != null
 					&& this.legacyV2 == null
 					&& this.legacyV1 == null
 					&& this.preservedData != null;
 			case LEGACY_V2 ->
-				this.currentV4 == null
+				this.currentV5 == null
+					&& this.currentV4 == null
+					&& this.legacyV4 == null
 					&& this.legacyV3 == null
 					&& this.legacyV2 != null
 					&& this.legacyV1 == null
 					&& this.preservedData != null;
 			case LEGACY_V1 ->
-				this.currentV4 == null
+				this.currentV5 == null
+					&& this.currentV4 == null
+					&& this.legacyV4 == null
 					&& this.legacyV3 == null
 					&& this.legacyV2 == null
 					&& this.legacyV1 != null
 					&& this.preservedData != null;
 			case OPAQUE ->
-				this.currentV4 == null
+				this.currentV5 == null
+					&& this.currentV4 == null
+					&& this.legacyV4 == null
 					&& this.legacyV3 == null
 					&& this.legacyV2 == null
 					&& this.legacyV1 == null
@@ -982,7 +1369,8 @@ public final class PixelTzzWorldState extends SavedData {
 	}
 
 	public enum LoadKind {
-		CURRENT_V4,
+		CURRENT_V5,
+		LEGACY_V4,
 		LEGACY_V3,
 		LEGACY_V2,
 		LEGACY_V1,
@@ -1031,6 +1419,42 @@ public final class PixelTzzWorldState extends SavedData {
 
 		private static CommitV4Result rejected(final String reason) {
 			return new CommitV4Result(false, reason, Optional.empty());
+		}
+	}
+
+	public record CommitV5Result(boolean committed, String reason, Optional<WorldStateV5> state) {
+		public CommitV5Result {
+			Objects.requireNonNull(reason, "reason");
+			state = Objects.requireNonNull(state, "state");
+		}
+
+		private static CommitV5Result committed(final WorldStateV5 state) {
+			return new CommitV5Result(true, "", Optional.of(state));
+		}
+
+		private static CommitV5Result rejected(final String reason) {
+			return new CommitV5Result(false, reason, Optional.empty());
+		}
+	}
+
+	public record CountdownCheckpointResult(
+		boolean committed,
+		String reason,
+		Optional<PersistedCountdown.Instance> countdown
+	) {
+		public CountdownCheckpointResult {
+			Objects.requireNonNull(reason, "reason");
+			countdown = Objects.requireNonNull(countdown, "countdown");
+		}
+
+		private static CountdownCheckpointResult committed(
+			final Optional<PersistedCountdown.Instance> countdown
+		) {
+			return new CountdownCheckpointResult(true, "", countdown);
+		}
+
+		private static CountdownCheckpointResult rejected(final String reason) {
+			return new CountdownCheckpointResult(false, reason, Optional.empty());
 		}
 	}
 
@@ -1095,8 +1519,8 @@ public final class PixelTzzWorldState extends SavedData {
 		}
 	}
 
-	record MigrationCommitResult(boolean committed, String reason, Optional<WorldStateV4> state) {
-		private static MigrationCommitResult committed(final WorldStateV4 state) {
+	record MigrationCommitResult(boolean committed, String reason, Optional<WorldStateV5> state) {
+		private static MigrationCommitResult committed(final WorldStateV5 state) {
 			return new MigrationCommitResult(true, "", Optional.of(state));
 		}
 

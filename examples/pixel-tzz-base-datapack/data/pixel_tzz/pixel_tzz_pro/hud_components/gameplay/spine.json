@@ -1,0 +1,13 @@
+{
+  "format_version": 1,
+  "type": "separator",
+  "priority": "decorative",
+  "orientation": "horizontal",
+  "thickness": 1,
+  "color": "#40505F",
+  "client_control": {
+    "visibility": "allow_hide",
+    "compact": "allow",
+    "reorder_group": "decoration"
+  }
+}

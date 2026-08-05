@@ -137,9 +137,9 @@ public final class StatePersistenceSelfCheck {
 
 	private static void checkInitialAndCommit() {
 		PixelTzzWorldState state = PixelTzzWorldState.initial();
-		check(state.loadKind() == LoadKind.CURRENT_V4, "new worlds must use schema v4");
-		check(state.schemaVersion() == WorldStateV4.SCHEMA_VERSION, "new world schema");
-		check(state.isSchemaCompatible(), "new schema-v4 state must be writable");
+		check(state.loadKind() == LoadKind.CURRENT_V5, "new worlds must use schema v5");
+		check(state.schemaVersion() == WorldStateV5.SCHEMA_VERSION, "new world schema");
+		check(state.isSchemaCompatible(), "new schema-v5 state must be writable");
 		check(state.stateRevision() == 0L, "new state revision must be zero");
 		check(state.activeGameId().isEmpty() && state.activePhaseId().isEmpty(), "new worlds must not invent an activity");
 
@@ -340,10 +340,8 @@ public final class StatePersistenceSelfCheck {
 			List.of(),
 			List.of()
 		);
-		PixelTzzWorldState wrapper = decode(
-			WorldStateV4.CODEC.encodeStart(JsonOps.INSTANCE, root).getOrThrow()
-		);
-		check(wrapper.loadKind() == LoadKind.CURRENT_V4, "schema v4 must be current");
+		PixelTzzWorldState wrapper = decode(currentV5Json(root));
+		check(wrapper.loadKind() == LoadKind.CURRENT_V5, "schema v5 must be current");
 		var encodedNbt = PixelTzzWorldState.CODEC
 			.encodeStart(NbtOps.INSTANCE, wrapper)
 			.getOrThrow();
@@ -458,7 +456,7 @@ public final class StatePersistenceSelfCheck {
 			"a persisted PREPARED invocation must remain outcome-unknown after reload"
 		);
 
-		PixelTzzWorldState wrapper = decode(encoded);
+		PixelTzzWorldState wrapper = decode(currentV5Json(value));
 		CommitV4Result terminalCommit = wrapper.commitV4(
 			0L,
 			current -> current
@@ -601,7 +599,7 @@ public final class StatePersistenceSelfCheck {
 		JsonElement encoded = WorldStateV4.CODEC.encodeStart(JsonOps.INSTANCE, value).getOrThrow();
 		WorldStateV4 decoded = WorldStateV4.CODEC.parse(JsonOps.INSTANCE, encoded).getOrThrow();
 		check(decoded.equals(value), "resolved per-viewer message history must round-trip exactly");
-		PixelTzzWorldState persisted = decode(encoded);
+		PixelTzzWorldState persisted = decode(currentV5Json(value));
 		Tag encodedNbt = PixelTzzWorldState.CODEC
 			.encodeStart(NbtOps.INSTANCE, persisted)
 			.getOrThrow();
@@ -659,10 +657,9 @@ public final class StatePersistenceSelfCheck {
 		);
 		WorldStateV3 value = timelineFixture(oversized);
 		PixelTzzWorldState wrapper = decode(
-			WorldStateV4.CODEC.encodeStart(
-				JsonOps.INSTANCE,
+			currentV5Json(
 				new WorldStateV4(WorldStateV4.SCHEMA_VERSION, value, List.of(), List.of())
-			).getOrThrow()
+			)
 		);
 		Tag encoded = PixelTzzWorldState.CODEC
 			.encodeStart(NbtOps.INSTANCE, wrapper)
@@ -713,7 +710,7 @@ public final class StatePersistenceSelfCheck {
 
 		PixelTzzWorldState protectedState = decode(damaged);
 		check(
-			protectedState.loadKind() == LoadKind.CURRENT_V4,
+			protectedState.loadKind() == LoadKind.LEGACY_V4,
 			"legacy oversized-string damage must retain the complete schema-v4 envelope"
 		);
 		check(
@@ -738,15 +735,16 @@ public final class StatePersistenceSelfCheck {
 
 		var repaired = protectedState.repairMissingTimelineSnapshot(original);
 		check(repaired.committed(), "exact snapshot SHA-256 must repair legacy NBT damage");
-		check(protectedState.isSchemaCompatible(), "successful exact repair must restore writability");
+		check(!protectedState.isSchemaCompatible(), "legacy v4 remains read-only until verified v5 migration");
 		check(!protectedState.needsTimelineSnapshotRepair(), "successful exact repair must clear repair mode");
 		check(
-			protectedState.stateRevision() == protectedRevision + 1L,
-			"successful exact repair must increment the state revision exactly once"
+			protectedState.stateRevision() == protectedRevision,
+			"startup-only snapshot repair must not revise the source before its verified backup"
 		);
 		check(
-			protectedState.currentV3()
+			protectedState.legacyV4()
 				.orElseThrow()
+				.core()
 				.timeline()
 				.orElseThrow()
 				.snapshot()
@@ -1130,7 +1128,7 @@ public final class StatePersistenceSelfCheck {
 				2_000L
 			);
 			check(migrated.status() == MigrationStatus.MIGRATED, "unambiguous v1 migration must succeed: " + migrated.reason());
-			check(legacy.loadKind() == LoadKind.CURRENT_V4 && legacy.isDirty(), "migration must atomically publish dirty v4");
+			check(legacy.loadKind() == LoadKind.CURRENT_V5 && legacy.isDirty(), "migration must atomically publish dirty v5");
 			WorldStateV3 migratedRoot = legacy.currentV3().orElseThrow();
 			WorldStateV2 migratedState = legacy.currentV2().orElseThrow();
 			check(migratedState.stateRevision() == 5L, "migration must preserve and increment revision");
@@ -1235,7 +1233,7 @@ public final class StatePersistenceSelfCheck {
 				v3Migrated.status() == MigrationStatus.MIGRATED,
 				"schema v3 migration must not depend on current definitions: " + v3Migrated.reason()
 			);
-			check(v3Legacy.loadKind() == LoadKind.CURRENT_V4, "v3 migration must publish schema v4");
+			check(v3Legacy.loadKind() == LoadKind.CURRENT_V5, "v3 migration must publish schema v5");
 			WorldStateV4 v4FromV3 = v3Legacy.currentV4().orElseThrow();
 			check(
 				v4FromV3.core().core()
@@ -1303,7 +1301,7 @@ public final class StatePersistenceSelfCheck {
 
 			Path collisionDirectory = recoveryDirectory.resolve("collision");
 			Files.createDirectories(collisionDirectory);
-			Files.write(collisionDirectory.resolve("world_state-v1-to-v4-2005.dat"), new byte[] { 1, 2, 3 });
+			Files.write(collisionDirectory.resolve("world_state-v1-to-v5-2005.dat"), new byte[] { 1, 2, 3 });
 			PixelTzzWorldState collisionState = decode(legacyJson("idle", 2L));
 			JsonElement beforeCollision = encode(collisionState);
 			MigrationResult collision = PixelTzzWorldStateMigration.migrate(
@@ -1427,6 +1425,13 @@ public final class StatePersistenceSelfCheck {
 
 	private static PixelTzzWorldState decode(final JsonElement value) {
 		return PixelTzzWorldState.CODEC.parse(JsonOps.INSTANCE, value).getOrThrow();
+	}
+
+	private static JsonElement currentV5Json(final WorldStateV4 core) {
+		return WorldStateV5.CODEC.encodeStart(
+			JsonOps.INSTANCE,
+			new WorldStateV5(WorldStateV5.SCHEMA_VERSION, core, Optional.empty())
+		).getOrThrow();
 	}
 
 	private static JsonElement encode(final PixelTzzWorldState value) {

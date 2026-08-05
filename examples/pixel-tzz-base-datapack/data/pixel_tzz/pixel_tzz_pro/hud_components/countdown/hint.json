@@ -1,0 +1,20 @@
+{
+  "format_version": 1,
+  "type": "text",
+  "priority": "secondary",
+  "text": {
+    "parts": [
+      {
+        "component": {
+          "text": "倒计时结束后进入赛前环节",
+          "color": "#AAB4BE"
+        }
+      }
+    ]
+  },
+  "layout": {
+    "alignment": "center",
+    "max_lines": 1,
+    "overflow": "ellipsis"
+  }
+}
