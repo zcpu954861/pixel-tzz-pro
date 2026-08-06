@@ -332,6 +332,35 @@ public final class ReadinessAuthority {
 		final UUID nextPageInstanceId,
 		final long occurredAtEpochMillis
 	) {
+		return setOnline(
+			state,
+			playerId,
+			currentName,
+			online,
+			nextPageInstanceId,
+			occurredAtEpochMillis,
+			false
+		);
+	}
+
+	/**
+	 * Applies join/disconnect semantics while optionally retaining a completed readiness lock.
+	 *
+	 * <p>Once an opening countdown has frozen its participants, the countdown owns temporary
+	 * connectivity and pause/resume behavior. Reverting an already-completed readiness member at
+	 * that point would mutate the approved launch facts and route the same UUID back into a page it
+	 * can no longer submit. The ordinary pre-approval path continues to honor
+	 * {@code disconnect_invalidates} through the overload above.</p>
+	 */
+	public static MutationResult setOnline(
+		final WorldStateV3 state,
+		final UUID playerId,
+		final String currentName,
+		final boolean online,
+		final UUID nextPageInstanceId,
+		final long occurredAtEpochMillis,
+		final boolean retainCompletedLock
+	) {
 		Objects.requireNonNull(state, "state");
 		Objects.requireNonNull(playerId, "playerId");
 		Objects.requireNonNull(currentName, "currentName");
@@ -346,7 +375,7 @@ public final class ReadinessAuthority {
 			return MutationResult.unchanged(state);
 		}
 		boolean wasReady = completed(member);
-		if (online && wasReady) {
+		if (wasReady && (online || retainCompletedLock)) {
 			return MutationResult.unchanged(state);
 		}
 		if (

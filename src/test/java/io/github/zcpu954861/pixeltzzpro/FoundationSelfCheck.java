@@ -2429,7 +2429,7 @@ public final class FoundationSelfCheck {
 		long fileCount;
 		try (var paths = Files.walk(packRoot)) {
 			fileCount = paths.filter(Files::isRegularFile).count();
-			check(fileCount == 181, "3B example data pack file count changed unexpectedly");
+			check(fileCount == 197, "3C example data pack file count changed unexpectedly");
 		} catch (IOException error) {
 			throw new AssertionError("failed to count the base example data pack", error);
 		}
@@ -2552,7 +2552,7 @@ public final class FoundationSelfCheck {
 		);
 
 		Compilation example = DefinitionCompiler.compile(sources, functions, predicates);
-		check(example.valid(), "3A example data pack must compile: " + example.problems());
+		check(example.valid(), "3C example data pack must compile: " + example.problems());
 		DefinitionSnapshot snapshot = example.snapshot().orElseThrow();
 		check(snapshot.games().size() == 1, "example must register one game");
 		check(snapshot.fields().size() == 2, "example must register two fields");
@@ -2574,9 +2574,29 @@ public final class FoundationSelfCheck {
 			snapshot.messageCatalog().disabled().isEmpty(),
 			"release-facing V3B example resources must not be disabled"
 		);
-		check(snapshot.definitionCount() == 97, "example definition count changed unexpectedly");
-		check(functions.size() == 81, "example callback and wrapper function count changed unexpectedly");
+		check(snapshot.countdownCatalog().countdowns().size() == 3, "example must register three countdown definitions");
+		check(snapshot.countdownCatalog().disabled().isEmpty(), "release-facing V3C resources must not be disabled");
+		check(
+			snapshot.countdownCatalog().requiredCountdownFailures().isEmpty(),
+			"release-facing V3C countdown closure must be usable"
+		);
+		check(snapshot.definitionCount() == 100, "example definition count changed unexpectedly");
+		check(functions.size() == 94, "example callback and wrapper function count changed unexpectedly");
 		Identifier gameId = Identifier.fromNamespaceAndPath("pixel_tzz", "main");
+		var openingCountdown = snapshot.countdownCatalog().countdowns().get(
+			Identifier.fromNamespaceAndPath("pixel_tzz", "opening/pause")
+		);
+		check(
+			openingCountdown.checkpoints().stream().allMatch(checkpoint ->
+				checkpoint.sound().stream().allMatch(sound ->
+					!sound.event().equals(Identifier.parse("minecraft:block.note_block.hat"))
+				)
+			)
+				&& openingCountdown.checkpoints().stream().filter(checkpoint -> checkpoint.id().equals("start"))
+					.findFirst().orElseThrow().sound().orElseThrow().event()
+					.equals(Identifier.parse("minecraft:block.note_block.chime")),
+			"release countdown checkpoints must use the softer registered vanilla cue sequence"
+		);
 		Identifier warmupTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/warmup");
 		Identifier timeoutTaskId = Identifier.fromNamespaceAndPath("pixel_tzz", "acceptance/timeout_only");
 		Identifier warmupPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "warmup");
@@ -2584,17 +2604,21 @@ public final class FoundationSelfCheck {
 		Identifier endedPhaseId = Identifier.fromNamespaceAndPath("pixel_tzz", "ended");
 		var game = snapshot.games().get(gameId);
 		check(
-			game.apiVersion() == 3
+			game.apiVersion() == 4
 				&& game.taskTimeline().isPresent()
 				&& game.readiness().isPresent()
 				&& game.playerTerminal().isPresent()
+				&& game.openingCountdown().orElseThrow().definition().equals(
+					Identifier.fromNamespaceAndPath("pixel_tzz", "opening/pause")
+				)
+				&& game.openingCountdown().orElseThrow().required()
 				&& game.playerTerminal()
 					.orElseThrow()
 					.defaultPage()
 					.equals(Identifier.fromNamespaceAndPath("pixel_tzz", "player/home"))
 				&& game.playerTerminal().orElseThrow().historyEnabled()
 				&& game.playerTerminal().orElseThrow().historySource() == HistorySource.TASKS,
-			"3A example must opt into player readiness, tasks, terminal, and player history"
+			"3C example must opt into readiness, tasks, terminal, opening countdown, and player history"
 		);
 		var timeline = game.taskTimeline().orElseThrow();
 		check(

@@ -9,8 +9,10 @@ import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.DefinitionTyp
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionCompiler.Source;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionSnapshot;
 import io.github.zcpu954861.pixeltzzpro.content.ExecutionSnapshotCompiler;
+import io.github.zcpu954861.pixeltzzpro.content.TimelineSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookEvent;
 import io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContract;
+import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.FrozenActivationContext;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditLog;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.CompletionSummary;
@@ -22,6 +24,11 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PersistentFieldValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.StoredValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.CountdownState;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.FrozenParticipant;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.Instance;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.LaunchPlan;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.RestrictionMarker;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -86,6 +93,17 @@ public final class ReadinessAuthoritySelfCheck {
 			.orElseThrow();
 		ready = WorldStateV3.CODEC.parse(JsonOps.INSTANCE, encoded).result().orElseThrow();
 		check(ready.readiness().isPresent(), "readiness must survive schema-v3 persistence");
+		check(
+			PixelTzzServerRuntime.controlFlowContextMatches(
+				Optional.of(READINESS_INSTANCE),
+				ready
+			),
+			"host controls must accept the readiness flow instance projected by the console"
+		);
+		check(
+			!PixelTzzServerRuntime.controlFlowContextMatches(Optional.of(uuid(999)), ready),
+			"host controls must still reject an unrelated flow instance"
+		);
 		var runtime = ready.readiness().orElseThrow().flow().runtime();
 		check(runtime.totalCount() == 2, "all non-host ready_participant members must enter the denominator");
 		check(runtime.members().containsKey(PLAYER), "runner must enter readiness");
@@ -124,6 +142,81 @@ public final class ReadinessAuthoritySelfCheck {
 			completed.readiness().orElseThrow().flow().runtime().executionSnapshot().pages().size() == 1,
 			"completed readiness must retain its frozen page for later invalidation"
 		);
+		Instance frozenCountdown = countdownForReadiness();
+		check(
+			PixelTzzServerRuntime.countdownRetainsReadinessLock(
+				completed,
+				frozenCountdown,
+				PLAYER
+			),
+			"runtime must retain readiness only for a player frozen into the same game countdown"
+		);
+		Instance hostExcludedCountdown = withoutCountdownParticipant(frozenCountdown, PLAYER);
+		check(
+			PixelTzzServerRuntime.countdownRetainsReadinessLock(
+				completed,
+				hostExcludedCountdown,
+				PLAYER
+			),
+			"a completed readiness member who became host must stay locked even when excluded from the first task audience"
+		);
+		check(
+			!PixelTzzServerRuntime.countdownRetainsReadinessLock(
+				completed,
+				CountdownSelfCheckFixtures.start(),
+				PLAYER
+			),
+			"a countdown from another game instance must not retain this readiness lock"
+		);
+		boolean retainedBeforeCountdownRetirement =
+			PixelTzzServerRuntime.countdownRetainsReadinessLock(
+				completed,
+				frozenCountdown,
+				PLAYER
+			);
+		check(
+			!PixelTzzServerRuntime.countdownRetainsReadinessLock(completed, null, PLAYER),
+			"a retired countdown can no longer provide a live readiness-lock lookup"
+		);
+		var countdownDisconnect = ReadinessAuthority.setOnline(
+			completed,
+			PLAYER,
+			"PlayerB",
+			false,
+			uuid(199),
+			119L,
+			retainedBeforeCountdownRetirement
+		);
+		check(
+			countdownDisconnect.successful()
+				&& !countdownDisconnect.changed()
+				&& !countdownDisconnect.invalidated(),
+			"a pre-transition snapshot must retain completed readiness after countdown retirement"
+		);
+		check(
+			ReadinessAuthority.complete(countdownDisconnect.state()),
+			"countdown connectivity must not reduce the approved readiness denominator"
+		);
+		Instance pausedCountdown = CountdownAuthority.requiredParticipantDisconnected(
+			frozenCountdown,
+			PLAYER,
+			1_020L
+		).instance().orElseThrow();
+		check(
+			pausedCountdown.lifecycle().state() == CountdownState.WAITING_FOR_PLAYERS,
+			"the same required UUID must pause its frozen countdown while readiness stays locked"
+		);
+		long pausedRemaining = pausedCountdown.lifecycle().remainingTicks();
+		Instance resumedCountdown = CountdownAuthority.reconcileConnections(
+			pausedCountdown,
+			Set.of(HOST, PLAYER, HUNTER_PLAYER),
+			1_100L
+		).instance().orElseThrow();
+		check(
+			resumedCountdown.lifecycle().state() == CountdownState.RUNNING
+				&& resumedCountdown.lifecycle().remainingTicks() == pausedRemaining,
+			"same-UUID reconnect must resume the frozen countdown without reopening readiness or losing time"
+		);
 
 		var disconnected = ReadinessAuthority.setOnline(
 			completed,
@@ -140,6 +233,38 @@ public final class ReadinessAuthoritySelfCheck {
 			offline.readiness().orElseThrow().flow().runtime().members().get(PLAYER).status()
 				== FlowMemberStatus.OFFLINE,
 			"disconnected readiness member must be classified offline"
+		);
+		var approvedTimeline = approval.nextState().orElseThrow().timeline().orElseThrow();
+		var frozenTimeline = TimelineSnapshotCompiler.restore(GAME, approvedTimeline.snapshot());
+		check(frozenTimeline.success(), "approved timeline snapshot must restore for delayed launch");
+		var delayedLaunch = TimelineApprovalAuthority.activateFrozen(
+			offline,
+			frozenTimeline.snapshot().orElseThrow(),
+			approvedTimeline.snapshot(),
+			new FrozenActivationContext(
+				GAME_INSTANCE,
+				READY,
+				approvedTimeline.instanceId(),
+				approvedTimeline.currentTask().orElseThrow().taskInstanceId(),
+				121L,
+				approval.frozenParticipants()
+			)
+		);
+		check(
+			delayedLaunch.successful(),
+			"an approved countdown must launch after a continue-policy disconnect without rechecking readiness: "
+				+ delayedLaunch.code()
+				+ " "
+				+ delayedLaunch.message()
+		);
+		check(
+			delayedLaunch.nextState().orElseThrow().timeline().orElseThrow()
+				.currentTask().orElseThrow().participants().equals(approval.frozenParticipants()),
+			"delayed launch must use the exact participant list accepted before the countdown"
+		);
+		check(
+			delayedLaunch.nextState().orElseThrow().readiness().isEmpty(),
+			"frozen countdown handoff must retire readiness instead of reopening it after launch"
 		);
 
 		var reconnected = ReadinessAuthority.setOnline(
@@ -400,6 +525,84 @@ public final class ReadinessAuthoritySelfCheck {
 			1L,
 			10L
 		);
+	}
+
+	private static Instance countdownForReadiness() {
+		Instance source = CountdownSelfCheckFixtures.start();
+		List<FrozenParticipant> participants = List.of(
+			new FrozenParticipant(PLAYER, "PlayerB", true),
+			new FrozenParticipant(HUNTER_PLAYER, "PlayerC", true)
+		);
+		LaunchPlan sourcePlan = source.launchPlan().orElseThrow();
+		LaunchPlan launchPlan = new LaunchPlan(
+			sourcePlan.approvalPhaseId(),
+			sourcePlan.timelineInstanceId(),
+			sourcePlan.firstTaskInstanceId(),
+			List.of(PLAYER, HUNTER_PLAYER),
+			sourcePlan.approvedCandidate()
+		);
+		Instance aligned = new Instance(
+			GAME_INSTANCE,
+			source.countdownInstanceId(),
+			source.purpose(),
+			source.definition(),
+			Optional.of(launchPlan),
+			source.lifecycle(),
+			source.totalTicks(),
+			participants,
+			Optional.of(HOST),
+			source.disconnectPolicies(),
+			source.restrictions(),
+			List.of(
+				new RestrictionMarker(PLAYER, source.lifecycle().stateVersion(), true),
+				new RestrictionMarker(HUNTER_PLAYER, source.lifecycle().stateVersion(), true)
+			),
+			source.checkpoints(),
+			source.emittedCheckpointIds(),
+			source.callbackDefinitions(),
+			source.callbackLedger()
+		);
+		check(aligned.validated().error().isEmpty(), "aligned countdown fixture must validate");
+		return aligned;
+	}
+
+	private static Instance withoutCountdownParticipant(
+		final Instance source,
+		final UUID excluded
+	) {
+		List<FrozenParticipant> participants = source.participants().stream()
+			.filter(value -> !value.playerId().equals(excluded))
+			.toList();
+		LaunchPlan sourcePlan = source.launchPlan().orElseThrow();
+		LaunchPlan launchPlan = new LaunchPlan(
+			sourcePlan.approvalPhaseId(),
+			sourcePlan.timelineInstanceId(),
+			sourcePlan.firstTaskInstanceId(),
+			sourcePlan.participantIds().stream().filter(id -> !id.equals(excluded)).toList(),
+			sourcePlan.approvedCandidate()
+		);
+		Instance result = new Instance(
+			source.gameInstanceId(),
+			source.countdownInstanceId(),
+			source.purpose(),
+			source.definition(),
+			Optional.of(launchPlan),
+			source.lifecycle(),
+			source.totalTicks(),
+			participants,
+			source.hostId(),
+			source.disconnectPolicies(),
+			source.restrictions(),
+			source.restrictionMarkers().stream()
+				.filter(value -> !value.participantId().equals(excluded))
+				.toList(),
+			source.checkpoints(),
+			source.emittedCheckpointIds(),
+			source.callbackDefinitions(),
+			source.callbackLedger()
+		);
+		check(result.validated().error().isEmpty(), "host-excluded countdown fixture must validate");
+		return result;
 	}
 
 	private static TimelineApprovalAuthority.ApprovalContext approvalContext(

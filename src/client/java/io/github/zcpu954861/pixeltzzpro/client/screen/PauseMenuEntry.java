@@ -88,10 +88,10 @@ public final class PauseMenuEntry {
 				label(state.labelKey()),
 				button -> {
 					EntryState current = entryState();
-					if (current.forcedFlow()) {
-						LivePageSupervisor.openCurrentForcedPage(client, parent);
-					} else if (current.currentPlayerHost()) {
+					if (current.currentPlayerHost()) {
 						client.gui.setScreen(new ControlConsoleScreen(parent));
+					} else if (current.forcedFlow()) {
+						LivePageSupervisor.openCurrentForcedPage(client, parent);
 					} else if (current.recapAvailable()) {
 						client.gui.setScreen(new RecapScreen(parent));
 					} else {
@@ -120,13 +120,13 @@ public final class PauseMenuEntry {
 
 	private static EntryState entryState() {
 		ClientSessionState.Snapshot snapshot = ClientSessionState.snapshot();
-		boolean forcedFlow = io.github.zcpu954861.pixeltzzpro.client.ClientPageState
-			.forcedPageActive();
+		boolean forcedFlow = !snapshot.currentPlayerHost()
+			&& io.github.zcpu954861.pixeltzzpro.client.ClientPageState.forcedPageActive();
 		boolean recapAvailable = ClientTimelineState.recapAvailable();
-		String labelKey = forcedFlow
-			? "pixel_tzz_pro.menu.forced"
-			: snapshot.currentPlayerHost()
-				? "pixel_tzz_pro.menu.host"
+		String labelKey = snapshot.currentPlayerHost()
+			? "pixel_tzz_pro.menu.host"
+			: forcedFlow
+				? "pixel_tzz_pro.menu.forced"
 				: recapAvailable
 					? "pixel_tzz_pro.menu.recap"
 					: "pixel_tzz_pro.menu.terminal";

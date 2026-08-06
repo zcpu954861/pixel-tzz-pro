@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import io.github.zcpu954861.pixeltzzpro.PixelTzzPro;
 import io.github.zcpu954861.pixeltzzpro.content.BuiltInUiResources;
+import io.github.zcpu954861.pixeltzzpro.content.CountdownSnapshotCompiler;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry.ReloadOutcome;
 import io.github.zcpu954861.pixeltzzpro.content.DefinitionRegistry.View;
@@ -51,6 +52,7 @@ import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.RepeatContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.SingleChildContent;
 import io.github.zcpu954861.pixeltzzpro.content.UiDefinitions.ThemeDefinition;
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
+import io.github.zcpu954861.pixeltzzpro.network.CountdownControlContract;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
@@ -70,6 +72,7 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.ForcedPageReleaseS2CPayl
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HandshakeS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.HostUiStateC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownResyncRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageBundleS2CPayload.ExclusiveOptionState;
 import io.github.zcpu954861.pixeltzzpro.network.payload.PageCloseC2SPayload;
@@ -99,6 +102,7 @@ import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.OperationKey;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Prompt;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Rejected;
 import io.github.zcpu954861.pixeltzzpro.server.ConfirmationTokens.Rejection;
+import io.github.zcpu954861.pixeltzzpro.server.CountdownCancellationConfirmation.Challenge;
 import io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthority.OutcomeResult;
 import io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthority.PrepareResult;
 import io.github.zcpu954861.pixeltzzpro.server.FlowCallbackAuthority.PreparedInvocation;
@@ -124,6 +128,10 @@ import io.github.zcpu954861.pixeltzzpro.server.TimelineApprovalAuthority.Approva
 import io.github.zcpu954861.pixeltzzpro.server.message.MessageHookDispatchContract;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldState;
 import io.github.zcpu954861.pixeltzzpro.state.PixelTzzWorldStateMigration;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.CallbackEntry;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.CallbackStatus;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.CountdownState;
+import io.github.zcpu954861.pixeltzzpro.state.PersistedCountdown.Instance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditEvent;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.AuditEventType;
@@ -143,6 +151,7 @@ import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ExclusiveReservation;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReadinessInstance;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV3.ReservationStatus;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV5;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV4.MessageHistoryRecord;
 import io.github.zcpu954861.pixeltzzpro.ui.runtime.BindingContextDocument;
 import java.nio.ByteBuffer;
@@ -201,6 +210,10 @@ public final class PixelTzzServerRuntime {
 		PLAYER_ACTION_CONFIRMATIONS = new HashMap<>();
 	private static final Map<UUID, PendingTerminalHostConfirmation>
 		TERMINAL_HOST_CONFIRMATIONS = new HashMap<>();
+	private static final Map<UUID, PendingCountdownCancellation>
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS = new HashMap<>();
+	private static final Map<UUID, PendingCountdownCallbackRetry>
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS = new HashMap<>();
 	private static final ConfirmationTokens CONFIRMATIONS = new ConfirmationTokens();
 	private static final ControlRequestGate CONTROL_REQUEST_GATE = new ControlRequestGate();
 	private static final FlowActionRequestGate FLOW_ACTION_REQUEST_GATE =
@@ -222,10 +235,22 @@ public final class PixelTzzServerRuntime {
 	private static final Identifier CANCEL_FLOW_OPERATION = PixelTzzPro.id("flow/cancel");
 	private static final Identifier APPROVE_TIMELINE_OPERATION =
 		PixelTzzPro.id("timeline/approve");
+	private static final Identifier APPROVE_DEGRADED_TIMELINE_OPERATION =
+		PixelTzzPro.id("timeline/approve_without_optional_countdown");
+	private static final Identifier CANCEL_COUNTDOWN_OPERATION =
+		CountdownControlContract.CANCEL_OPERATION_ID;
+	private static final Identifier RETRY_COUNTDOWN_CALLBACKS_OPERATION =
+		CountdownControlContract.RETRY_CALLBACKS_OPERATION_ID;
+	private static final Identifier RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_OPERATION =
+		CountdownControlContract.RETRY_UNKNOWN_CALLBACKS_OPERATION_ID;
+	private static final Identifier RETRY_COUNTDOWN_HANDOFF_OPERATION =
+		CountdownControlContract.RETRY_HANDOFF_OPERATION_ID;
+	private static final Identifier ABANDON_COUNTDOWN_HANDOFF_OPERATION =
+		CountdownControlContract.ABANDON_HANDOFF_OPERATION_ID;
 	private static final Identifier RESET_GAME_PROGRESS_OPERATION =
 		PixelTzzPro.id("reset/game_progress");
 	private static final Identifier CLEAR_ALL_STATE_OPERATION =
-		PixelTzzPro.id("reset/all");
+		CountdownControlContract.CLEAR_ALL_STATE_OPERATION_ID;
 	private static final Identifier PAUSE_TIMELINE_OPERATION =
 		PixelTzzPro.id("timeline/pause");
 	private static final Identifier RESUME_TIMELINE_OPERATION =
@@ -240,8 +265,21 @@ public final class PixelTzzServerRuntime {
 	private static final String REMOVE_FLOW_MEMBERS = "remove_flow_members";
 	private static final String CANCEL_FLOW = "cancel_flow";
 	private static final String APPROVE_TIMELINE = "approve_timeline";
+	private static final String APPROVE_DEGRADED_TIMELINE =
+		"approve_timeline_without_optional_countdown";
+	private static final String CANCEL_COUNTDOWN =
+		CountdownControlContract.CANCEL_OPERATION_TYPE;
+	private static final String RETRY_COUNTDOWN_CALLBACKS =
+		CountdownControlContract.RETRY_CALLBACKS_OPERATION_TYPE;
+	private static final String RETRY_UNKNOWN_COUNTDOWN_CALLBACKS =
+		CountdownControlContract.RETRY_UNKNOWN_CALLBACKS_OPERATION_TYPE;
+	private static final String RETRY_COUNTDOWN_HANDOFF =
+		CountdownControlContract.RETRY_HANDOFF_OPERATION_TYPE;
+	private static final String ABANDON_COUNTDOWN_HANDOFF =
+		CountdownControlContract.ABANDON_HANDOFF_OPERATION_TYPE;
 	private static final String RESET_GAME_PROGRESS = "reset_game_progress";
-	private static final String CLEAR_ALL_STATE = "clear_all_state";
+	private static final String CLEAR_ALL_STATE =
+		CountdownControlContract.CLEAR_ALL_STATE_OPERATION_TYPE;
 	private static final String PAUSE_TIMELINE = "pause_timeline";
 	private static final String RESUME_TIMELINE = "resume_timeline";
 	private static final String EXTEND_INTERMISSION = "extend_intermission";
@@ -275,9 +313,12 @@ public final class PixelTzzServerRuntime {
 	}
 
 	public static void register() {
+		CountdownRestrictionEvents.register();
 		ServerLifecycleEvents.SERVER_STARTED.register(PixelTzzServerRuntime::onServerStarted);
 		ServerLifecycleEvents.SERVER_STOPPING.register(server -> serverStopping = true);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
+			CountdownRestrictionEvents.clear();
+			CountdownProjectionRuntime.clearForServer();
 			clearConnections();
 			CONFIRMATIONS.clear();
 			HOST_FLOW_BOSS_BAR.reset();
@@ -287,9 +328,21 @@ public final class PixelTzzServerRuntime {
 		ServerLifecycleEvents.END_DATA_PACK_RELOAD.register(PixelTzzServerRuntime::onDataPackReloaded);
 		ServerPlayConnectionEvents.JOIN.register(PixelTzzServerRuntime::onPlayerJoined);
 		ServerPlayConnectionEvents.DISCONNECT.register(
-			(listener, server) -> onPlayerDisconnected(server, listener.player)
+			(listener, server) -> onPlayerDisconnected(
+				server,
+				listener.player.getUUID(),
+				listener.player.getPlainTextName()
+			)
 		);
 		ServerPlayNetworking.registerGlobalReceiver(HandshakeC2SPayload.TYPE, PixelTzzServerRuntime::onHandshakeResponse);
+		ServerPlayNetworking.registerGlobalReceiver(
+			CountdownResyncRequestC2SPayload.TYPE,
+			(payload, context) -> {
+				if (verified(context.player())) {
+					CountdownProjectionRuntime.onResyncRequest(payload, context);
+				}
+			}
+		);
 		ServerPlayNetworking.registerGlobalReceiver(
 			PreviewCatalogRequestC2SPayload.TYPE,
 			PixelTzzServerRuntime::onPreviewCatalogRequest
@@ -365,6 +418,7 @@ public final class PixelTzzServerRuntime {
 		HOST_FLOW_BOSS_BAR.reset();
 		loadSequence = 0L;
 		MessageServerRuntime.initializeForServer(server);
+		CountdownProjectionRuntime.initializeForServer(server);
 		ReloadOutcome definitionLoad = DefinitionRegistry.INSTANCE.reload(server.getResourceManager());
 		MessageServerRuntime.rebuildAssetAuthority(
 			server,
@@ -381,6 +435,7 @@ public final class PixelTzzServerRuntime {
 			server,
 			DefinitionRegistry.INSTANCE.view()
 		);
+		CountdownServerRuntime.enterRecoveryWait(server);
 		initializeNewWorldActivity(server);
 		MessageServerRuntime.recoverPersistedRuntime(
 			server,
@@ -422,7 +477,9 @@ public final class PixelTzzServerRuntime {
 		if (!state.needsTimelineSnapshotRepair()) {
 			return;
 		}
-		WorldStateV3 root = state.currentV3().orElseThrow();
+		WorldStateV3 root = state.currentV3()
+			.or(() -> state.legacyV4().map(WorldStateV4::core))
+			.orElseThrow();
 		WorldStateV3.TimelineInstance timeline = root.timeline().orElseThrow();
 		GameDefinitions.GameDefinition game = definitions.active().games().get(timeline.gameId());
 		if (!definitions.healthy() || game == null) {
@@ -510,6 +567,8 @@ public final class PixelTzzServerRuntime {
 		restoreMemberOnline(context.server(), context.player());
 		resumePendingCallbacks(context.server());
 		MessageServerRuntime.playerAuthorityReady(context.player());
+		CountdownServerRuntime.tick(context.server(), Set.copyOf(VERIFIED_PLAYERS));
+		CountdownProjectionRuntime.playerAuthorityReady(context.server(), context.player());
 		WorldStateV2 currentState = PixelTzzWorldState.get(context.server())
 			.currentV2()
 			.orElse(null);
@@ -850,7 +909,19 @@ public final class PixelTzzServerRuntime {
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
 		View definitions = DefinitionRegistry.INSTANCE.view();
-		OperationCode contextCode = validateControlRequest(payload.request(), wrapper, definitions);
+		OperationKey operation = new OperationKey(
+			payload.operationType(),
+			payload.operationId()
+		);
+		OperationCode contextCode = validateControlRequest(
+			payload.request(),
+			wrapper,
+			definitions,
+			CountdownControlContract.isRevisionStableHostOperation(
+				operation.type(),
+				operation.id()
+			)
+		);
 		if (contextCode != OperationCode.SUCCESS) {
 			sendOperationResult(
 				player,
@@ -863,10 +934,6 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
-		OperationKey operation = new OperationKey(
-			payload.operationType(),
-			payload.operationId()
-		);
 		if (immediateTimelineOperation(operation)) {
 			executeImmediateTimelineOperation(
 				context.server(),
@@ -952,11 +1019,83 @@ public final class PixelTzzServerRuntime {
 		}
 		clearPendingPlayerActionConfirmations(player.getUUID());
 		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		clearPendingCountdownCancellationMetadata(player.getUUID());
+		clearPendingCountdownCallbackRetryMetadata(player.getUUID());
+		Challenge countdownCancellationChallenge = null;
+		CountdownCallbackRetryConfirmation.Challenge countdownCallbackRetryChallenge = null;
+		if (
+			CountdownControlContract.isCancelOperation(
+				audited.binding().orElseThrow().operation().type(),
+				audited.binding().orElseThrow().operation().id()
+			)
+		) {
+			var challenge = CountdownCancellationConfirmation.issue(
+				activeCountdown(wrapper).orElse(null),
+				context.server().getTickCount()
+			);
+			if (!challenge.successful()) {
+				CONFIRMATIONS.cancelOperator(player.getUUID());
+				sendOperationResult(
+					player,
+					payload.request().requestSequence(),
+					challenge.code(),
+					challenge.message(),
+					wrapper.stateRevision(),
+					definitions.active().generation(),
+					true
+				);
+				return;
+			}
+			countdownCancellationChallenge = challenge.challenge().orElseThrow();
+		}
+		if (
+			CountdownControlContract.isRetryCallbacksOperation(
+				audited.binding().orElseThrow().operation().type(),
+				audited.binding().orElseThrow().operation().id()
+			)
+		) {
+			var challenge = CountdownCallbackRetryConfirmation.issue(
+				activeCountdown(wrapper).orElse(null),
+				context.server().getTickCount()
+			);
+			if (!challenge.successful()) {
+				CONFIRMATIONS.cancelOperator(player.getUUID());
+				sendOperationResult(
+					player,
+					payload.request().requestSequence(),
+					challenge.code(),
+					challenge.message(),
+					wrapper.stateRevision(),
+					definitions.active().generation(),
+					true
+				);
+				return;
+			}
+			countdownCallbackRetryChallenge = challenge.challenge().orElseThrow();
+		}
 		IssuedConfirmation issued = CONFIRMATIONS.issue(
 			player.getUUID(),
 			audited.binding().orElseThrow(),
 			audited.prompt().orElseThrow()
 		);
+		if (countdownCancellationChallenge != null) {
+			COUNTDOWN_CANCELLATION_CONFIRMATIONS.put(
+				issued.tokenId(),
+				new PendingCountdownCancellation(
+					player.getUUID(),
+					countdownCancellationChallenge
+				)
+			);
+		}
+		if (countdownCallbackRetryChallenge != null) {
+			COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.put(
+				issued.tokenId(),
+				new PendingCountdownCallbackRetry(
+					player.getUUID(),
+					countdownCallbackRetryChallenge
+				)
+			);
+		}
 		Binding binding = audited.binding().orElseThrow();
 		ServerPlayNetworking.send(
 			player,
@@ -1106,6 +1245,34 @@ public final class PixelTzzServerRuntime {
 			);
 			return;
 		}
+		if (
+			CountdownControlContract.isRetryCallbacksOperation(
+				pending.operation().type(),
+				pending.operation().id()
+			)
+		) {
+			commitCountdownCallbackRetryConfirmation(
+				context.server(),
+				player,
+				payload,
+				pending
+			);
+			return;
+		}
+		if (
+			CountdownControlContract.isCancelOperation(
+				pending.operation().type(),
+				pending.operation().id()
+			)
+		) {
+			commitCountdownCancellationConfirmation(
+				context.server(),
+				player,
+				payload,
+				pending
+			);
+			return;
+		}
 		PreparedOperation current = prepareOperation(
 			context.server(),
 			player,
@@ -1170,6 +1337,300 @@ public final class PixelTzzServerRuntime {
 		);
 	}
 
+	private static void commitCountdownCancellationConfirmation(
+		final MinecraftServer server,
+		final ServerPlayer actor,
+		final CommitConfirmationC2SPayload payload,
+		final Binding pendingBinding
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		View definitions = DefinitionRegistry.INSTANCE.view();
+		PendingCountdownCancellation pending = COUNTDOWN_CANCELLATION_CONFIRMATIONS.get(
+			payload.tokenId()
+		);
+		if (pending == null || !pending.playerId().equals(actor.getUUID())) {
+			CONFIRMATIONS.cancel(actor.getUUID(), payload.tokenId());
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_MISSING,
+				"取消倒计时的确认上下文已失效，请重新审阅。",
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		Instance countdown = activeCountdown(wrapper).orElse(null);
+		var validation = CountdownCancellationConfirmation.validate(
+			countdown,
+			pending.challenge(),
+			server.getTickCount()
+		);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		boolean requestMatches = root != null
+			&& payload.request().stateRevision() == pending.challenge().lifecycleStateVersion()
+			&& payload.request().definitionGeneration() == pendingBinding.definitionGeneration()
+			&& payload.request().gameId().equals(root.core().activeGameId())
+			&& payload.request().pageInstanceId().isEmpty();
+		if (!validation.successful() || !requestMatches) {
+			CONFIRMATIONS.cancel(actor.getUUID(), payload.tokenId());
+			COUNTDOWN_CANCELLATION_CONFIRMATIONS.remove(payload.tokenId());
+			OperationCode code = validation.successful()
+				? OperationCode.CONFIRMATION_CONTEXT_CHANGED
+				: validation.code();
+			String message = validation.successful()
+				? "提交的倒计时确认与服务端审阅上下文不一致，请重新审阅。"
+				: validation.message();
+			persistConfirmationAudit(
+				wrapper,
+				code == OperationCode.CONFIRMATION_EXPIRED
+					? AuditEventType.CONFIRMATION_EXPIRED
+					: AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown cancellation confirmation rejected: " + code.serializedName(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				code,
+				message,
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		Binding currentBinding = countdownCancellationBinding(
+			root,
+			countdown,
+			definitions.active().generation()
+		);
+		ConsumeResult consumed = CONFIRMATIONS.consume(
+			actor.getUUID(),
+			payload.tokenId(),
+			currentBinding
+		);
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS.remove(payload.tokenId());
+		if (consumed instanceof Rejected rejected) {
+			persistConfirmationAudit(
+				wrapper,
+				rejected.reason() == Rejection.EXPIRED
+					? AuditEventType.CONFIRMATION_EXPIRED
+					: AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown cancellation confirmation consume rejected: " + rejected.reason().code(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				confirmationCode(rejected),
+				rejected.reason().message(),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+		if (
+			!persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_CONSUMED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown cancellation confirmation accepted for execution",
+				System.currentTimeMillis()
+			)
+		) {
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				OperationCode.INTERNAL_ERROR,
+				"无法持久化确认消费记录，倒计时未取消。",
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		CountdownServerRuntime.CancelResult result = CountdownServerRuntime.requestCancel(
+			server,
+			actor.getUUID(),
+			pending.challenge().countdownInstanceId(),
+			pending.challenge().lifecycleStateVersion(),
+			"主持人通过高风险二次确认取消正式开局倒计时"
+		);
+		if (!result.successful()) {
+			persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown cancellation execution failed: " + result.code().serializedName(),
+				System.currentTimeMillis()
+			);
+		}
+		sendOperationResult(
+			actor,
+			payload.request().requestSequence(),
+			result.code(),
+			result.message(),
+			wrapper.stateRevision(),
+			definitions.active().generation(),
+			true
+		);
+		sendSnapshots(server, false);
+		pushHostConsoleSnapshot(server);
+	}
+
+	private static void commitCountdownCallbackRetryConfirmation(
+		final MinecraftServer server,
+		final ServerPlayer actor,
+		final CommitConfirmationC2SPayload payload,
+		final Binding pendingBinding
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		View definitions = DefinitionRegistry.INSTANCE.view();
+		PendingCountdownCallbackRetry pending = COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.get(
+			payload.tokenId()
+		);
+		if (pending == null || !pending.playerId().equals(actor.getUUID())) {
+			CONFIRMATIONS.cancel(actor.getUUID(), payload.tokenId());
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				OperationCode.CONFIRMATION_MISSING,
+				"倒计时回调重试的确认上下文已失效，请重新审阅。",
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		Instance countdown = activeCountdown(wrapper).orElse(null);
+		var validation = CountdownCallbackRetryConfirmation.validate(
+			countdown,
+			pending.challenge(),
+			server.getTickCount()
+		);
+		WorldStateV3 root = wrapper.currentV3().orElse(null);
+		boolean requestMatches = root != null
+			&& payload.request().stateRevision() == pending.challenge().lifecycleStateVersion()
+			&& payload.request().definitionGeneration() == pendingBinding.definitionGeneration()
+			&& payload.request().gameId().equals(root.core().activeGameId())
+			&& payload.request().pageInstanceId().isEmpty();
+		if (!validation.successful() || !requestMatches) {
+			CONFIRMATIONS.cancel(actor.getUUID(), payload.tokenId());
+			COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.remove(payload.tokenId());
+			OperationCode code = validation.successful()
+				? OperationCode.CONFIRMATION_CONTEXT_CHANGED
+				: validation.code();
+			String message = validation.successful()
+				? "提交的回调重试确认与服务端审阅上下文不一致，请重新审阅。"
+				: validation.message();
+			persistConfirmationAudit(
+				wrapper,
+				code == OperationCode.CONFIRMATION_EXPIRED
+					? AuditEventType.CONFIRMATION_EXPIRED
+					: AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown callback retry confirmation rejected: " + code.serializedName(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				code,
+				message,
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		Binding currentBinding = countdownCallbackRetryBinding(
+			root,
+			countdown,
+			definitions.active().generation()
+		);
+		ConsumeResult consumed = CONFIRMATIONS.consume(
+			actor.getUUID(),
+			payload.tokenId(),
+			currentBinding
+		);
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.remove(payload.tokenId());
+		if (consumed instanceof Rejected rejected) {
+			persistConfirmationAudit(
+				wrapper,
+				rejected.reason() == Rejection.EXPIRED
+					? AuditEventType.CONFIRMATION_EXPIRED
+					: AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown callback retry consume rejected: " + rejected.reason().code(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				confirmationCode(rejected),
+				rejected.reason().message(),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+		if (
+			!persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_CONSUMED,
+				Optional.of(actor.getUUID()),
+				Optional.of(pendingBinding),
+				"countdown callback retry confirmation accepted for execution",
+				System.currentTimeMillis()
+			)
+		) {
+			sendOperationResult(
+				actor,
+				payload.request().requestSequence(),
+				OperationCode.INTERNAL_ERROR,
+				"无法持久化确认消费记录，回调尚未重试。",
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		CountdownServerRuntime.RetryResult result = CountdownServerRuntime.retryFailedCallbacks(
+			server,
+			actor.getUUID(),
+			pending.challenge()
+		);
+		sendOperationResult(
+			actor,
+			payload.request().requestSequence(),
+			result.code(),
+			result.message(),
+			wrapper.stateRevision(),
+			definitions.active().generation(),
+			true
+		);
+		sendSnapshots(server, false);
+		pushHostConsoleSnapshot(server);
+	}
+
 	private static void onCancelConfirmation(
 		final CancelConfirmationC2SPayload payload,
 		final ServerPlayNetworking.Context context
@@ -1193,6 +1654,8 @@ public final class PixelTzzServerRuntime {
 			== ConfirmationTokens.CancelResult.CANCELED;
 		PLAYER_ACTION_CONFIRMATIONS.remove(payload.tokenId());
 		TERMINAL_HOST_CONFIRMATIONS.remove(payload.tokenId());
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS.remove(payload.tokenId());
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.remove(payload.tokenId());
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
 		persistConfirmationAudit(
 			wrapper,
@@ -1230,6 +1693,18 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
+		if (persistedCountdown(wrapper).isPresent()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"开局候选已经冻结；身份、字段和流程提交不能再更改。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
 		WorldStateV3 root = wrapper.currentV3().orElse(null);
 		WorldStateV2 state = root == null ? null : root.core();
 		if (state == null || root.activeGameInstanceId().isEmpty()) {
@@ -1542,6 +2017,18 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(context.server());
+		if (persistedCountdown(wrapper).isPresent()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"开局候选已经冻结；出生点预约保持批准时的值，不能改选。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
 		WorldStateV3 root = wrapper.currentV3().orElse(null);
 		ForcedFlowInstance instance = root == null
 			? null
@@ -1705,6 +2192,18 @@ public final class PixelTzzServerRuntime {
 	) {
 		ServerPlayer player = context.player();
 		StatefulRequest request = payload.request();
+		if (persistedCountdown(wrapper).isPresent()) {
+			sendOperationResult(
+				player,
+				request.requestSequence(),
+				OperationCode.ACTION_UNAVAILABLE,
+				"开局候选已经冻结；玩家准备与字段提交不能再更改。",
+				wrapper.stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
 		ReadinessInstance readiness = root.readiness().orElse(null);
 		ForcedFlowInstance instance = readiness == null ? null : readiness.flow();
 		if (
@@ -2300,13 +2799,29 @@ public final class PixelTzzServerRuntime {
 		final PixelTzzWorldState state,
 		final View definitions
 	) {
+		return validateControlRequest(request, state, definitions, false);
+	}
+
+	private static OperationCode validateControlRequest(
+		final StatefulRequest request,
+		final PixelTzzWorldState state,
+		final View definitions,
+		final boolean stableCountdownControl
+	) {
 		if (!NetworkProtocol.isCompatible(request.protocolVersion())) {
 			return OperationCode.UNSUPPORTED_OPERATION;
 		}
 		if (!state.isSchemaCompatible()) {
 			return OperationCode.SCHEMA_BLOCKED;
 		}
-		if (request.stateRevision() != state.stateRevision()) {
+		/*
+		 * Countdown controls are re-prepared from the current frozen instance below and bind their
+		 * confirmation to lifecycle stateVersion plus a SHA-256 digest. A readiness connection push
+		 * may advance the unrelated global revision between the visible click and packet handling;
+		 * rejecting that click makes the only recovery action appear inert. Game, generation and flow
+		 * context remain fail-closed here, while the dedicated authority performs the stable binding.
+		 */
+		if (!stableCountdownControl && request.stateRevision() != state.stateRevision()) {
 			return OperationCode.STATE_REVISION_STALE;
 		}
 		if (request.definitionGeneration() != definitions.active().generation()) {
@@ -2328,14 +2843,40 @@ public final class PixelTzzServerRuntime {
 		final Optional<UUID> requestedInstanceId,
 		final PixelTzzWorldState state
 	) {
+		return requestedInstanceId.isEmpty()
+			|| state.currentV3()
+				.map(root -> controlFlowContextMatches(requestedInstanceId, root))
+				.orElse(false);
+	}
+
+	static boolean controlFlowContextMatches(
+		final Optional<UUID> requestedInstanceId,
+		final WorldStateV3 state
+	) {
 		if (requestedInstanceId.isEmpty()) {
 			return true;
 		}
-		return state.currentV2()
-			.flatMap(WorldStateV2::activeForcedFlow)
+		UUID requested = requestedInstanceId.orElseThrow();
+		boolean ordinary = state.core()
+			.activeForcedFlow()
 			.map(ForcedFlowInstance::identity)
 			.map(WorldStateV2.ForcedFlowIdentity::instanceId)
-			.filter(requestedInstanceId.orElseThrow()::equals)
+			.filter(requested::equals)
+			.isPresent();
+		if (ordinary) {
+			return true;
+		}
+		/*
+		 * The host snapshot deliberately projects readiness as its active flow when no ordinary
+		 * forced flow owns the console. Stateful host controls therefore echo the readiness flow
+		 * instance as their visible context. Rejecting that same authoritative instance here makes
+		 * every recovery confirmation look inert while readiness and a frozen countdown coexist.
+		 */
+		return state.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::identity)
+			.map(WorldStateV2.ForcedFlowIdentity::instanceId)
+			.filter(requested::equals)
 			.isPresent();
 	}
 
@@ -2351,6 +2892,18 @@ public final class PixelTzzServerRuntime {
 		View view = DefinitionRegistry.INSTANCE.view();
 		if (state == null) {
 			return PreparedOperation.failed(OperationCode.SCHEMA_BLOCKED, "世界状态当前不可写。");
+		}
+		Instance frozenCountdown = persistedCountdown(wrapper).orElse(null);
+		if (
+			frozenCountdown != null
+				&& !CountdownControlContract.isCountdownControl(operation.type(), operation.id())
+				&& !hostOwnershipOperation(operation)
+				&& !clearAllOperation(operation)
+		) {
+			return PreparedOperation.failed(
+				OperationCode.ACTION_UNAVAILABLE,
+				"正式开局倒计时或其冻结交接仍存在；身份、字段、准备和游戏阶段写操作均已锁定。"
+			);
 		}
 		Optional<CallbackRetryKey> callbackRetry = callbackRetryKey(operation);
 		Optional<TimelineCallbackRetryKey> timelineCallbackRetry =
@@ -2720,8 +3273,164 @@ public final class PixelTzzServerRuntime {
 			);
 			targetLabels = List.of();
 		} else if (
-			operation.type().equals(APPROVE_TIMELINE)
-				&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
+			operation.type().equals(CANCEL_COUNTDOWN)
+				&& operation.id().equals(CANCEL_COUNTDOWN_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"取消正式开局倒计时不接受目标玩家。"
+				);
+			}
+			if (
+				state.host()
+					.filter(host -> host.playerId().equals(actor.getUUID()))
+					.isEmpty()
+			) {
+				return PreparedOperation.failed(
+					OperationCode.NOT_HOST,
+					"只有当前主持人可以取消正式开局倒计时。"
+				);
+			}
+			Instance countdown = activeCountdown(wrapper).orElse(null);
+			var review = CountdownCancellationConfirmation.issue(
+				countdown,
+				server.getTickCount()
+			);
+			if (!review.successful()) {
+				return PreparedOperation.failed(review.code(), review.message());
+			}
+			String countdownName = countdownDisplayName(root, countdown);
+			prompt = new Prompt(
+				richText("确认取消正式开局倒计时"),
+				List.of(
+					richText(
+						"将取消「" + countdownName + "」；实例 "
+							+ countdown.countdownInstanceId()
+							+ "，剩余 "
+							+ formatCountdownTime(countdown.lifecycle().remainingTicks())
+							+ "。"
+					),
+					richText("所有玩家准备状态、身份、出生点与自定义字段都会保留，并返回等待主持人批准。"),
+					richText("取消提交完成后，本次冻结的倒计时与任务候选会被丢弃；不会跳过到正式任务。"),
+					richText("已经执行的外部函数或世界副作用不会自动回滚。"),
+					richText("取消回调失败会阻塞在提交中，必须处理失败后才能完成取消。")
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			operation.type().equals(RETRY_COUNTDOWN_CALLBACKS)
+				&& operation.id().equals(RETRY_COUNTDOWN_CALLBACKS_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(
+					OperationCode.TARGET_COUNT_INVALID,
+					"重试正式倒计时回调不接受目标玩家。"
+				);
+			}
+			if (
+				state.host()
+					.filter(host -> host.playerId().equals(actor.getUUID()))
+					.isEmpty()
+			) {
+				return PreparedOperation.failed(
+					OperationCode.NOT_HOST,
+					"只有当前主持人可以重试正式倒计时回调。"
+				);
+			}
+			Instance countdown = activeCountdown(wrapper).orElse(null);
+			var review = CountdownCallbackRetryConfirmation.issue(
+				countdown,
+				server.getTickCount()
+			);
+			if (!review.successful()) {
+				return PreparedOperation.failed(review.code(), review.message());
+			}
+			var retryable = CountdownCallbackRetryConfirmation.retryableEntries(countdown);
+			long required = retryable.stream().filter(value -> value.required()).count();
+			String functions = retryable.stream()
+				.map(value -> value.functionId().toString())
+				.distinct()
+				.limit(3L)
+				.collect(java.util.stream.Collectors.joining("、"));
+			if (retryable.stream().map(value -> value.functionId()).distinct().count() > 3L) {
+				functions += " 等";
+			}
+			prompt = new Prompt(
+				richText("确认重试倒计时回调"),
+				List.of(
+					richText(
+						"只会重试当前冻结倒计时中 " + retryable.size() + " 项已确认失败的回调。"
+					),
+					richText(
+						"其中必需回调 " + required + " 项；OUTCOME_UNKNOWN 与已成功项均不在本次范围。"
+					),
+					richText("涉及数据包函数：" + functions + "。"),
+					richText("每一项都会先持久化 PREPARED，再执行函数并持久化最终结果。"),
+					richText("若完成或取消所需回调全部成功，终态会立即提交；失败项仍会留在账本中。"),
+					richText("已经发生的外部函数或世界副作用不会自动回滚。")
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			operation.type().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS)
+				&& operation.id().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_OPERATION)
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(OperationCode.TARGET_COUNT_INVALID, "高风险重试未知回调不接受目标玩家。");
+			}
+			Instance countdown = activeCountdown(wrapper).orElse(null);
+			var unknown = CountdownCallbackRetryConfirmation.outcomeUnknownEntries(countdown);
+			if (unknown.isEmpty()) {
+				return PreparedOperation.failed(OperationCode.ACTION_UNAVAILABLE, "当前没有 OUTCOME_UNKNOWN 回调。");
+			}
+			prompt = new Prompt(
+				richText("高风险确认：重试结果未知回调"),
+				List.of(
+					richText("将重试 " + unknown.size() + " 项服务器崩溃前已 PREPARED、但结果无法确认的回调。"),
+					richText("这些函数可能已经执行成功；再次执行可能重复给予物品、传送或产生其他世界副作用。"),
+					richText("该确认与普通失败重试完全分离，普通重试凭证不能用于本操作。"),
+					richText("每项重试仍会先持久化新的 PREPARED 检查点，再执行并记录结果。")
+				)
+			);
+			targetLabels = List.of();
+		} else if (
+			(operation.type().equals(RETRY_COUNTDOWN_HANDOFF)
+				&& operation.id().equals(RETRY_COUNTDOWN_HANDOFF_OPERATION))
+				|| (operation.type().equals(ABANDON_COUNTDOWN_HANDOFF)
+					&& operation.id().equals(ABANDON_COUNTDOWN_HANDOFF_OPERATION))
+		) {
+			if (!targets.isEmpty()) {
+				return PreparedOperation.failed(OperationCode.TARGET_COUNT_INVALID, "冻结交接操作不接受目标玩家。");
+			}
+			Instance countdown = persistedCountdown(wrapper).orElse(null);
+			if (countdown == null || countdown.lifecycle().state() != CountdownState.COMPLETED) {
+				return PreparedOperation.failed(OperationCode.ACTION_UNAVAILABLE, "当前没有等待处理的已完成冻结交接。");
+			}
+			boolean abandon = operation.type().equals(ABANDON_COUNTDOWN_HANDOFF);
+			prompt = new Prompt(
+				richText(abandon ? "高风险确认：放弃失败的冻结交接" : "确认重试冻结任务交接"),
+				abandon
+					? List.of(
+						richText("将永久丢弃本次已完成倒计时冻结的 LaunchPlan，并返回等待主持人批准。"),
+						richText("不会启动任务时间线；已经执行的倒计时回调和世界副作用不会回滚。"),
+						richText("之后必须重新审阅并批准开局；普通批准凭证不能用于本操作。")
+					)
+					: List.of(
+						richText("将再次尝试提交同一个哈希冻结的 LaunchPlan，不重新计算玩家、字段或出生点。"),
+						richText("如果该计划已经成功提交，实例会在原子提交中消失，不会创建第二条时间线。"),
+						richText("失败时仍保持已完成倒计时，不会伪装成普通批准状态。")
+					)
+			);
+			targetLabels = List.of();
+		} else if (
+			(
+				operation.type().equals(APPROVE_TIMELINE)
+					&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
+			) || (
+				operation.type().equals(APPROVE_DEGRADED_TIMELINE)
+					&& operation.id().equals(APPROVE_DEGRADED_TIMELINE_OPERATION)
+			)
 		) {
 			if (!targets.isEmpty()) {
 				return PreparedOperation.failed(
@@ -2735,7 +3444,14 @@ public final class PixelTzzServerRuntime {
 					"当前游戏实例不可用。"
 				);
 			}
-			var approval = TimelineApprovalAuthority.approve(
+			if (activeCountdown(wrapper).isPresent()) {
+				return PreparedOperation.failed(
+					OperationCode.ACTION_UNAVAILABLE,
+					"正式开局倒计时已经启动，不能重复批准。"
+				);
+			}
+			boolean degradedDirect = operation.type().equals(APPROVE_DEGRADED_TIMELINE);
+			var approval = OpeningCountdownApproval.approve(
 				root,
 				view.active(),
 				new ApprovalContext(
@@ -2747,7 +3463,10 @@ public final class PixelTzzServerRuntime {
 					new UUID(0L, 2L),
 					server.getTickCount(),
 					onlinePlayerIds(server)
-				)
+				),
+				new UUID(0L, 3L),
+				playerId -> callbackPlayerName(server, state, playerId),
+				degradedDirect
 			);
 			if (!approval.successful()) {
 				return PreparedOperation.failed(approval.code(), approval.message());
@@ -2784,15 +3503,46 @@ public final class PixelTzzServerRuntime {
 				.map(timeline -> view.active().tasks().get(timeline.initialTask()))
 				.map(task -> task.name().plainText())
 				.orElse("首个任务");
-			prompt = new Prompt(
-				richText("确认批准开局"),
-				List.of(
-					richText("将冻结当前任务计划并创建唯一时间线实例。"),
-					richText("阶段将切换到数据包注册的开局阶段，随后启动「" + firstTask + "」。"),
-					richText("本局参与者共 " + approval.frozenParticipants().size() + " 人；/reload 不会替换本局快照。"),
-					richText("批准后不能跳过任务；若需停止，只能使用紧急终止。")
-				)
-			);
+			if (approval.startsCountdown()) {
+				Instance countdown = approval.countdown().orElseThrow();
+				prompt = new Prompt(
+					richText("确认启动正式开局倒计时"),
+					List.of(
+						richText(
+							"将冻结当前倒计时、任务计划与 "
+								+ approval.frozenParticipants().size()
+								+ " 名参与者。"
+						),
+						richText(
+							"倒计时为 " + formatCountdownTime(countdown.totalTicks())
+								+ "；结束后才进入「" + firstTask + "」。"
+						),
+						richText("倒计时与随后可能进行的热身游戏都不计入正式游戏时长。"),
+						richText("/reload 不会替换本次冻结资源；倒计时不能跳过或快进。"),
+						richText("开始后如需停止，只能使用主持人的高风险取消操作。")
+					)
+				);
+			} else if (degradedDirect) {
+				prompt = new Prompt(
+					richText("高风险确认：无倒计时直接开局"),
+					List.of(
+						richText("可选倒计时资源无效；本操作将明确绕过该可选展示并立即启动冻结任务线。"),
+						richText("普通「批准开局」凭证不能用于此降级路径，修复数据包后应优先重新加载。"),
+						richText("参与者、字段与首个任务候选仍按当前审阅结果冻结。"),
+						richText("执行后不能补播开局倒计时；若需停止只能使用紧急终止。")
+					)
+				);
+			} else {
+				prompt = new Prompt(
+					richText("确认批准开局"),
+					List.of(
+						richText("将冻结当前任务计划并创建唯一时间线实例。"),
+						richText("阶段将切换到数据包注册的开局阶段，随后启动「" + firstTask + "」。"),
+						richText("本局参与者共 " + approval.frozenParticipants().size() + " 人；/reload 不会替换本局快照。"),
+						richText("批准后不能跳过任务；若需停止，只能使用紧急终止。")
+					)
+				);
+			}
 		} else if (
 			operation.type().equals(RESET_GAME_PROGRESS)
 				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
@@ -2858,14 +3608,22 @@ public final class PixelTzzServerRuntime {
 				);
 			}
 			targetLabels = resetTargets(server, state, view.active());
+			List<RichText> consequences = new ArrayList<>(List.of(
+				richText("将清除主持人、活动游戏、全部玩家、流程、任务、回顾、预约和审计状态。"),
+				richText("世界会回到未认领状态；/reload 与重启都不会恢复这些数据。"),
+				richText("不会删除原版物品、地图或世界文件，也不会删除数据包文件。"),
+				richText("这是最高风险操作；执行后当前控制台权限也会立即失效。")
+			));
+			if (frozenCountdown != null) {
+				consequences.add(
+					richText(
+						"当前正式倒计时及其冻结任务候选也会被永久丢弃；已经执行的回调和世界副作用不会回滚。"
+					)
+				);
+			}
 			prompt = new Prompt(
 				richText("确认清空 Pixel TZZ 全部数据"),
-				List.of(
-					richText("将清除主持人、活动游戏、全部玩家、流程、任务、回顾、预约和审计状态。"),
-					richText("世界会回到未认领状态；/reload 与重启都不会恢复这些数据。"),
-					richText("不会删除原版物品、地图或世界文件，也不会删除数据包文件。"),
-					richText("这是最高风险操作；执行后当前控制台权限也会立即失效。")
-				)
+				List.copyOf(consequences)
 			);
 		} else if (addFlowMembersOperation(operation)) {
 			ActiveFlowDefinitions active = activeFlowDefinitions(state).orElse(null);
@@ -3269,14 +4027,29 @@ public final class PixelTzzServerRuntime {
 			}
 			panelAction = Optional.of(action);
 		}
+		Instance countdownControl = CountdownControlContract.isCountdownControl(
+			operation.type(),
+			operation.id()
+		) ? persistedCountdown(wrapper).orElse(null) : null;
+		Instance clearAllCountdown = clearAllOperation(operation) ? frozenCountdown : null;
 		Binding binding = new Binding(
 			operation,
 			targets,
 			state.activeGameId(),
 			state.activePhaseId(),
 			view.active().generation(),
-			state.stateRevision(),
-			relatedStateDigest(server, root, operation, targets)
+			countdownControl != null
+				? countdownControl.lifecycle().stateVersion()
+				: clearAllCountdown != null
+					? clearAllCountdown.lifecycle().stateVersion()
+					: state.stateRevision(),
+			countdownControl != null
+				? CountdownControlContract.isCancelOperation(operation.type(), operation.id())
+					? countdownCancellationDigest(countdownControl)
+					: countdownCallbackRetryDigest(countdownControl)
+				: clearAllCountdown != null
+					? clearAllCountdownDigest(root, clearAllCountdown)
+					: relatedStateDigest(server, root, operation, targets)
 		);
 		String gameName = state.activeGameId()
 			.map(view.active().games()::get)
@@ -3311,7 +4084,11 @@ public final class PixelTzzServerRuntime {
 		View definitions = DefinitionRegistry.INSTANCE.view();
 		Binding binding = prepared.binding().orElseThrow();
 		if (
-			request.stateRevision() != wrapper.stateRevision()
+			!confirmationRequestRevisionMatches(
+				binding.operation(),
+				request.stateRevision(),
+				wrapper.stateRevision()
+			)
 				|| request.definitionGeneration() != definitions.active().generation()
 				|| !request.gameId().equals(wrapper.activeGameId())
 				|| request.pageInstanceId().isPresent()
@@ -3359,6 +4136,50 @@ public final class PixelTzzServerRuntime {
 		}
 		WorldStateV3 root = wrapper.currentV3().orElseThrow();
 		WorldStateV2 state = root.core();
+		if (
+			(binding.operation().type().equals(APPROVE_TIMELINE)
+				&& binding.operation().id().equals(APPROVE_TIMELINE_OPERATION))
+				|| (binding.operation().type().equals(APPROVE_DEGRADED_TIMELINE)
+					&& binding.operation().id().equals(APPROVE_DEGRADED_TIMELINE_OPERATION))
+		) {
+			executeOpeningApproval(
+				server,
+				actor,
+				request.requestSequence(),
+				wrapper,
+				definitions,
+				root,
+				binding
+			);
+			return;
+		}
+		if (
+			binding.operation().type().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS)
+				&& binding.operation().id().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_OPERATION)
+		) {
+			var result = CountdownServerRuntime.retryOutcomeUnknownCallbacks(server, actor.getUUID());
+			sendOperationResult(actor, request.requestSequence(), result.code(), result.message(),
+				wrapper.stateRevision(), definitions.active().generation(), true);
+			pushHostConsoleSnapshot(server);
+			return;
+		}
+		if (
+			(binding.operation().type().equals(RETRY_COUNTDOWN_HANDOFF)
+				&& binding.operation().id().equals(RETRY_COUNTDOWN_HANDOFF_OPERATION))
+				|| (binding.operation().type().equals(ABANDON_COUNTDOWN_HANDOFF)
+					&& binding.operation().id().equals(ABANDON_COUNTDOWN_HANDOFF_OPERATION))
+		) {
+			Instance countdown = persistedCountdown(wrapper).orElse(null);
+			var result = countdown == null
+				? new CountdownServerRuntime.HandoffResult(OperationCode.STATE_REVISION_STALE, "冻结交接实例已经变化")
+				: binding.operation().type().equals(RETRY_COUNTDOWN_HANDOFF)
+					? CountdownServerRuntime.retryFrozenHandoff(server, actor.getUUID(), countdown.countdownInstanceId())
+					: CountdownServerRuntime.abandonFailedHandoff(server, actor.getUUID(), countdown.countdownInstanceId());
+			sendOperationResult(actor, request.requestSequence(), result.code(), result.message(),
+				wrapper.stateRevision(), definitions.active().generation(), true);
+			pushHostConsoleSnapshot(server);
+			return;
+		}
 		Optional<TimelineServerRuntime.RuntimeResult> timelineControl =
 			executeConfirmedTimelineOperation(server, root, binding.operation());
 		if (timelineControl.isPresent()) {
@@ -3428,13 +4249,9 @@ public final class PixelTzzServerRuntime {
 		boolean timelineChanged = false;
 		boolean worldReset = resetOperation(binding.operation());
 		Set<UUID> resetForcedPageMembers = worldReset
-			? state.activeForcedFlow()
-				.map(ForcedFlowInstance::runtime)
-				.map(ForcedFlowRuntime::members)
-				.map(Map::keySet)
-				.map(Set::copyOf)
-				.orElseGet(Set::of)
+			? forcedPageMembers(root)
 			: Set.of();
+		Instance resetCountdown = worldReset ? persistedCountdown(wrapper).orElse(null) : null;
 		ActiveFlowDefinitions activeBeforeCommit = activeFlowDefinitions(state).orElse(null);
 		if (
 			binding.operation().type().equals("claim_host")
@@ -3482,53 +4299,6 @@ public final class PixelTzzServerRuntime {
 			code = result.code();
 			message = hostFailureMessage(code);
 			candidate = result.nextState().map(root::withCore);
-		} else if (
-			binding.operation().type().equals(APPROVE_TIMELINE)
-				&& binding.operation().id().equals(APPROVE_TIMELINE_OPERATION)
-		) {
-			if (root.activeGameInstanceId().isEmpty()) {
-				code = OperationCode.SCHEMA_BLOCKED;
-				message = "当前游戏实例不可用。";
-				candidate = Optional.empty();
-			} else {
-				var result = TimelineApprovalAuthority.approve(
-					root,
-					definitions.active(),
-					new ApprovalContext(
-						actor.getUUID(),
-						root.activeGameInstanceId().orElseThrow(),
-						root.stateRevision(),
-						definitions.active().generation(),
-						UUID.randomUUID(),
-						UUID.randomUUID(),
-						server.getTickCount(),
-						onlinePlayerIds(server)
-					)
-				);
-				if (result.successful()) {
-					var assetGate = MessageServerRuntime.requiredAssetsForGame(
-						server,
-						root.core().activeGameId().orElseThrow(),
-						Set.copyOf(result.frozenParticipants())
-					);
-					if (!assetGate.ready()) {
-						code = OperationCode.RESOURCE_BLOCKED;
-						message = assetGate.message();
-						candidate = Optional.empty();
-						timelineChanged = false;
-					} else {
-						code = result.code();
-						message = result.message();
-						candidate = result.nextState();
-						timelineChanged = true;
-					}
-				} else {
-					code = result.code();
-					message = result.message();
-					candidate = result.nextState();
-					timelineChanged = false;
-				}
-			}
 		} else if (
 			binding.operation().type().equals(RESET_GAME_PROGRESS)
 				&& binding.operation().id().equals(RESET_GAME_PROGRESS_OPERATION)
@@ -3803,42 +4573,82 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		WorldStateV3 confirmedCandidate = candidate.orElseThrow();
-		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
-			root.stateRevision(),
-			ignored -> confirmedCandidate
-		);
-		if (!committed.committed()) {
+		Optional<WorldStateV3> committedRoot;
+		String commitReason;
+		if (clearAllOperation(binding.operation())) {
+			PixelTzzWorldState.CommitV5Result committed = wrapper.commitV5(
+				root.stateRevision(),
+				current -> clearAllEnvelope(current, confirmedCandidate)
+			);
+			committedRoot = committed.state().map(value -> value.core().core());
+			commitReason = committed.reason();
+		} else if (hostOwnershipOperation(binding.operation())) {
+			Optional<UUID> confirmedHostId = confirmedCandidate.core()
+				.host()
+				.map(WorldStateV2.HostRecord::playerId);
+			PixelTzzWorldState.CommitV5Result committed = wrapper.commitV5(
+				root.stateRevision(),
+				current -> current
+					.withCore(current.core().withCore(confirmedCandidate))
+					.withCountdown(current.countdown().map(value -> value.withHostId(confirmedHostId)))
+					.retainCountdownHostAudience(
+						current.countdown().flatMap(Instance::hostId)
+					)
+			);
+			committedRoot = committed.state().map(value -> value.core().core());
+			commitReason = committed.reason();
+		} else {
+			PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+				root.stateRevision(),
+				ignored -> confirmedCandidate
+			);
+			committedRoot = committed.state();
+			commitReason = committed.reason();
+		}
+		if (committedRoot.isEmpty()) {
 			persistConfirmationAudit(
 				wrapper,
 				AuditEventType.CONFIRMATION_REJECTED,
 				Optional.of(actor.getUUID()),
 				Optional.of(binding),
-				"confirmed operation commit failed: " + committed.reason(),
+				"confirmed operation commit failed: " + commitReason,
 				System.currentTimeMillis()
 			);
 			sendOperationResult(
 				actor,
 				request.requestSequence(),
 				OperationCode.STATE_REVISION_STALE,
-				committed.reason(),
+				commitReason,
 				wrapper.stateRevision(),
 				definitions.active().generation(),
 				true
 			);
 			return;
 		}
-		WorldStateV3 confirmedCommittedRoot = committed.state().orElseThrow();
+		WorldStateV3 confirmedCommittedRoot = committedRoot.orElseThrow();
 		MessageCommands.refreshPlayerCommandTreesIfHostChanged(
 			server,
 			root.core().host().map(WorldStateV2.HostRecord::playerId),
 			confirmedCommittedRoot.core().host().map(WorldStateV2.HostRecord::playerId)
 		);
 		WorldStateV2 next = confirmedCommittedRoot.core();
+		Optional<UUID> previousHostId = root.core().host()
+			.map(WorldStateV2.HostRecord::playerId);
+		Optional<UUID> nextHostId = next.host().map(WorldStateV2.HostRecord::playerId);
+		boolean hostAuthorityChanged = !previousHostId.equals(nextHostId);
+		if (hostAuthorityChanged && nextHostId.isPresent()) {
+			releaseForcedPages(
+				server,
+				root,
+				Set.of(nextHostId.orElseThrow()),
+				"host_control_acquired"
+			);
+		}
 		if (readinessChanged) {
 			refreshReadinessPages(
 				server,
 				root,
-				committed.state().orElseThrow(),
+				confirmedCommittedRoot,
 				Set.copyOf(binding.targetIds()),
 				"readiness_changed"
 			);
@@ -3888,9 +4698,12 @@ public final class PixelTzzServerRuntime {
 			);
 		}
 		if (worldReset) {
+			if (resetCountdown != null && clearAllOperation(binding.operation())) {
+				CountdownProjectionRuntime.countdownRetired(server, resetCountdown);
+			}
 			releaseForcedPages(
 				server,
-				state,
+				root,
 				resetForcedPageMembers,
 				binding.operation().type().equals(CLEAR_ALL_STATE)
 					? "all_state_cleared"
@@ -3900,6 +4713,8 @@ public final class PixelTzzServerRuntime {
 			CONFIRMATIONS.clear();
 			PLAYER_ACTION_CONFIRMATIONS.clear();
 			TERMINAL_HOST_CONFIRMATIONS.clear();
+			COUNTDOWN_CANCELLATION_CONFIRMATIONS.clear();
+			COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.clear();
 		}
 		if (removeFlowMembersOperation(binding.operation())) {
 			releaseForcedPages(
@@ -3923,6 +4738,9 @@ public final class PixelTzzServerRuntime {
 		}
 		sendSnapshots(server, false);
 		pushHostConsoleSnapshot(server);
+		if (hostAuthorityChanged) {
+			sendForcedPages(server);
+		}
 		if (timelineChanged) {
 			timelineStateChanged(server);
 		}
@@ -4444,6 +5262,24 @@ public final class PixelTzzServerRuntime {
 			operation.type().equals(APPROVE_TIMELINE)
 				&& operation.id().equals(APPROVE_TIMELINE_OPERATION)
 		) || (
+			operation.type().equals(APPROVE_DEGRADED_TIMELINE)
+				&& operation.id().equals(APPROVE_DEGRADED_TIMELINE_OPERATION)
+		) || (
+			operation.type().equals(CANCEL_COUNTDOWN)
+				&& operation.id().equals(CANCEL_COUNTDOWN_OPERATION)
+		) || (
+			operation.type().equals(RETRY_COUNTDOWN_CALLBACKS)
+				&& operation.id().equals(RETRY_COUNTDOWN_CALLBACKS_OPERATION)
+		) || (
+			operation.type().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS)
+				&& operation.id().equals(RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_OPERATION)
+		) || (
+			operation.type().equals(RETRY_COUNTDOWN_HANDOFF)
+				&& operation.id().equals(RETRY_COUNTDOWN_HANDOFF_OPERATION)
+		) || (
+			operation.type().equals(ABANDON_COUNTDOWN_HANDOFF)
+				&& operation.id().equals(ABANDON_COUNTDOWN_HANDOFF_OPERATION)
+		) || (
 			operation.type().equals(RESET_GAME_PROGRESS)
 				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
 		) || (
@@ -4484,10 +5320,47 @@ public final class PixelTzzServerRuntime {
 		return (
 			operation.type().equals(RESET_GAME_PROGRESS)
 				&& operation.id().equals(RESET_GAME_PROGRESS_OPERATION)
+		) || clearAllOperation(operation);
+	}
+
+	private static boolean hostOwnershipOperation(final OperationKey operation) {
+		return (
+			operation.type().equals("claim_host")
+				&& operation.id().equals(CLAIM_HOST_OPERATION)
 		) || (
-			operation.type().equals(CLEAR_ALL_STATE)
-				&& operation.id().equals(CLEAR_ALL_STATE_OPERATION)
+			operation.type().equals("transfer_host")
+				&& operation.id().equals(TRANSFER_HOST_OPERATION)
+		) || (
+			operation.type().equals("takeover_host")
+				&& operation.id().equals(TAKEOVER_HOST_OPERATION)
 		);
+	}
+
+	static boolean confirmationRequestRevisionMatches(
+		final OperationKey operation,
+		final long requestRevision,
+		final long currentGlobalRevision
+	) {
+		Objects.requireNonNull(operation, "operation");
+		return CountdownControlContract.isRevisionStableHostOperation(
+			operation.type(),
+			operation.id()
+		) || requestRevision == currentGlobalRevision;
+	}
+
+	private static boolean clearAllOperation(final OperationKey operation) {
+		return operation.type().equals(CLEAR_ALL_STATE)
+			&& operation.id().equals(CLEAR_ALL_STATE_OPERATION);
+	}
+
+	static WorldStateV5 clearAllEnvelope(
+		final WorldStateV5 current,
+		final WorldStateV3 clearedCore
+	) {
+		Objects.requireNonNull(current, "current");
+		Objects.requireNonNull(clearedCore, "clearedCore");
+		WorldStateV4 emptyV4 = WorldStateV4.initial().withCore(clearedCore);
+		return current.withCore(emptyV4).withCountdown(Optional.empty());
 	}
 
 	private static Optional<TimelineCallbackRetryKey> timelineCallbackRetryKey(
@@ -4799,6 +5672,316 @@ public final class PixelTzzServerRuntime {
 		} catch (NoSuchAlgorithmException error) {
 			throw new IllegalStateException("SHA-256 is unavailable", error);
 		}
+	}
+
+	private static void executeOpeningApproval(
+		final MinecraftServer server,
+		final ServerPlayer actor,
+		final long requestSequence,
+		final PixelTzzWorldState wrapper,
+		final View definitions,
+		final WorldStateV3 root,
+		final Binding binding
+	) {
+		if (persistedCountdown(wrapper).isPresent() || root.activeGameInstanceId().isEmpty()) {
+			persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(binding),
+				"opening approval rejected because an opening countdown is already active",
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				requestSequence,
+				OperationCode.ACTION_UNAVAILABLE,
+				persistedCountdown(wrapper).isPresent()
+					? "正式开局倒计时已经启动，不能重复批准。"
+					: "当前游戏实例不可用。",
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+		OpeningCountdownApproval.Result approval = OpeningCountdownApproval.approve(
+			root,
+			definitions.active(),
+			new ApprovalContext(
+				actor.getUUID(),
+				root.activeGameInstanceId().orElseThrow(),
+				root.stateRevision(),
+				definitions.active().generation(),
+				UUID.randomUUID(),
+				UUID.randomUUID(),
+				server.getTickCount(),
+				onlinePlayerIds(server)
+			),
+			UUID.randomUUID(),
+			playerId -> callbackPlayerName(server, root.core(), playerId),
+			binding.operation().type().equals(APPROVE_DEGRADED_TIMELINE)
+		);
+		if (approval.successful()) {
+			var assetGate = MessageServerRuntime.requiredAssetsForGame(
+				server,
+				root.core().activeGameId().orElseThrow(),
+				Set.copyOf(approval.frozenParticipants())
+			);
+			if (!assetGate.ready()) {
+				persistConfirmationAudit(
+					wrapper,
+					AuditEventType.CONFIRMATION_REJECTED,
+					Optional.of(actor.getUUID()),
+					Optional.of(binding),
+					"opening approval execution failed: resource_blocked",
+					System.currentTimeMillis()
+				);
+				sendOperationResult(
+					actor,
+					requestSequence,
+					OperationCode.RESOURCE_BLOCKED,
+					assetGate.message(),
+					wrapper.stateRevision(),
+					definitions.active().generation(),
+					true
+				);
+				return;
+			}
+		}
+		if (!approval.successful()) {
+			persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(binding),
+				"opening approval execution failed: " + approval.code().serializedName(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				requestSequence,
+				approval.code(),
+				approval.message(),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+
+		if (approval.startsCountdown()) {
+			CountdownServerRuntime.CommitResult committed =
+				CountdownServerRuntime.commitApprovedCountdown(
+					server,
+					wrapper,
+					root.stateRevision(),
+					approval
+				);
+			if (!committed.successful()) {
+				persistConfirmationAudit(
+					wrapper,
+					AuditEventType.CONFIRMATION_REJECTED,
+					Optional.of(actor.getUUID()),
+					Optional.of(binding),
+					"opening countdown commit failed: " + committed.code().serializedName(),
+					System.currentTimeMillis()
+				);
+			}
+			sendOperationResult(
+				actor,
+				requestSequence,
+				committed.code(),
+				committed.message(),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			sendSnapshots(server, false);
+			pushHostConsoleSnapshot(server);
+			return;
+		}
+
+		WorldStateV3 candidate = approval.directTimelineState().orElseThrow();
+		PixelTzzWorldState.CommitV3Result committed = wrapper.commitV3(
+			root.stateRevision(),
+			ignored -> candidate
+		);
+		if (!committed.committed()) {
+			persistConfirmationAudit(
+				wrapper,
+				AuditEventType.CONFIRMATION_REJECTED,
+				Optional.of(actor.getUUID()),
+				Optional.of(binding),
+				"direct opening approval commit failed: " + committed.reason(),
+				System.currentTimeMillis()
+			);
+			sendOperationResult(
+				actor,
+				requestSequence,
+				OperationCode.STATE_REVISION_STALE,
+				committed.reason(),
+				wrapper.stateRevision(),
+				definitions.active().generation(),
+				true
+			);
+			return;
+		}
+		WorldStateV3 after = committed.state().orElseThrow();
+		dispatchConfirmedOperationMessageHooks(
+			server,
+			root,
+			after,
+			definitions.active(),
+			actor.getUUID(),
+			Set.of(),
+			false,
+			false,
+			false,
+			false,
+			null
+		);
+		sendOperationResult(
+			actor,
+			requestSequence,
+			OperationCode.SUCCESS,
+			"已批准开局，任务时间线开始运行。",
+			wrapper.stateRevision(),
+			definitions.active().generation(),
+			true
+		);
+		timelineActivated(server, root);
+		pushHostConsoleSnapshot(server);
+	}
+
+	private static Optional<Instance> activeCountdown(final PixelTzzWorldState wrapper) {
+		return persistedCountdown(wrapper)
+			.filter(value -> !value.lifecycle().state().terminal());
+	}
+
+	private static Optional<Instance> persistedCountdown(final PixelTzzWorldState wrapper) {
+		return wrapper.currentV5()
+			.flatMap(WorldStateV5::countdown)
+			;
+	}
+
+	private static Binding countdownCancellationBinding(
+		final WorldStateV3 root,
+		final Instance countdown,
+		final long definitionGeneration
+	) {
+		return new Binding(
+			new OperationKey(CANCEL_COUNTDOWN, CANCEL_COUNTDOWN_OPERATION),
+			List.of(),
+			root.core().activeGameId(),
+			root.core().activePhaseId(),
+			definitionGeneration,
+			countdown.lifecycle().stateVersion(),
+			countdownCancellationDigest(countdown)
+		);
+	}
+
+	static String countdownCancellationDigest(final Instance countdown) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			digestPart(digest, CANCEL_COUNTDOWN);
+			digestPart(digest, CANCEL_COUNTDOWN_OPERATION.toString());
+			digestPart(digest, countdown.gameInstanceId().toString());
+			digestPart(digest, countdown.countdownInstanceId().toString());
+			digestPart(digest, Long.toString(countdown.lifecycle().stateVersion()));
+			digestPart(digest, countdown.definition().closure().sha256());
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is unavailable", error);
+		}
+	}
+
+	static String clearAllCountdownDigest(
+		final WorldStateV3 root,
+		final Instance countdown
+	) {
+		Objects.requireNonNull(root, "root");
+		Objects.requireNonNull(countdown, "countdown");
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			digestPart(digest, CLEAR_ALL_STATE);
+			digestPart(digest, CLEAR_ALL_STATE_OPERATION.toString());
+			digestPart(
+				digest,
+				root.core().host().map(host -> host.playerId().toString()).orElse("")
+			);
+			digestPart(
+				digest,
+				root.core().activeGameId().map(Identifier::toString).orElse("")
+			);
+			digestPart(
+				digest,
+				root.activeGameInstanceId().map(UUID::toString).orElse("")
+			);
+			digestPart(digest, countdown.gameInstanceId().toString());
+			digestPart(digest, countdown.countdownInstanceId().toString());
+			digestPart(digest, Long.toString(countdown.lifecycle().stateVersion()));
+			digestPart(digest, countdown.definition().closure().sha256());
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is unavailable", error);
+		}
+	}
+
+	private static Binding countdownCallbackRetryBinding(
+		final WorldStateV3 root,
+		final Instance countdown,
+		final long definitionGeneration
+	) {
+		return new Binding(
+			new OperationKey(RETRY_COUNTDOWN_CALLBACKS, RETRY_COUNTDOWN_CALLBACKS_OPERATION),
+			List.of(),
+			root.core().activeGameId(),
+			root.core().activePhaseId(),
+			definitionGeneration,
+			countdown.lifecycle().stateVersion(),
+			countdownCallbackRetryDigest(countdown)
+		);
+	}
+
+	private static String countdownCallbackRetryDigest(final Instance countdown) {
+		try {
+			MessageDigest digest = MessageDigest.getInstance("SHA-256");
+			digestPart(digest, RETRY_COUNTDOWN_CALLBACKS);
+			digestPart(digest, RETRY_COUNTDOWN_CALLBACKS_OPERATION.toString());
+			digestPart(digest, countdown.gameInstanceId().toString());
+			digestPart(digest, countdown.countdownInstanceId().toString());
+			digestPart(digest, Long.toString(countdown.lifecycle().stateVersion()));
+			digestPart(digest, countdown.definition().closure().sha256());
+			digestPart(digest, CountdownCallbackRetryConfirmation.ledgerDigest(countdown));
+			return HexFormat.of().formatHex(digest.digest());
+		} catch (NoSuchAlgorithmException error) {
+			throw new IllegalStateException("SHA-256 is unavailable", error);
+		}
+	}
+
+	private static String countdownDisplayName(
+		final WorldStateV3 root,
+		final Instance countdown
+	) {
+		Identifier gameId = root.core().activeGameId().orElse(null);
+		if (gameId != null) {
+			var restored = CountdownSnapshotCompiler.restore(
+				gameId,
+				countdown.definition().definitionId(),
+				countdown.definition().closure()
+			);
+			if (restored.success()) {
+				return restored.restored().orElseThrow().countdown().name().plainText();
+			}
+		}
+		return countdown.definition().definitionId().toString();
+	}
+
+	private static String formatCountdownTime(final long ticks) {
+		long bounded = Math.max(0L, ticks);
+		long seconds = bounded / 20L + (bounded % 20L == 0L ? 0L : 1L);
+		return (seconds / 60L) + ":" + String.format(java.util.Locale.ROOT, "%02d", seconds % 60L);
 	}
 
 	private static void digestPart(final MessageDigest digest, final String value) {
@@ -5299,6 +6482,8 @@ public final class PixelTzzServerRuntime {
 			hostName(server, state, record),
 			server.getPlayerList().getPlayer(record.playerId()) != null
 		));
+		Instance countdown = persistedCountdown(wrapper).orElse(null);
+		List<Diagnostic> countdownDiagnostics = countdownDiagnostics(countdown);
 		String status;
 		String message;
 		if (!view.healthy() || !view.active().usable()) {
@@ -5307,6 +6492,9 @@ public final class PixelTzzServerRuntime {
 		} else if (state.host().isEmpty()) {
 			status = "host_unassigned";
 			message = "当前世界尚未认领主持人。";
+		} else if (!countdownDiagnostics.isEmpty()) {
+			status = "countdown_callback_blocked";
+			message = countdownDiagnostics.getFirst().message();
 		} else {
 			status = "ready";
 			message = state.activeForcedFlow()
@@ -5342,6 +6530,7 @@ public final class PixelTzzServerRuntime {
 					)
 				)
 			);
+		diagnostics.addAll(countdownDiagnostics);
 		ServerPlayNetworking.send(
 			player,
 			new ConsoleSnapshotS2CPayload(
@@ -5666,13 +6855,107 @@ public final class PixelTzzServerRuntime {
 		final List<ActionEntry> actions
 	) {
 		WorldStateV3.TimelineInstance timeline = root.timeline().orElse(null);
+		Instance countdown = persistedCountdown(PixelTzzWorldState.get(server)).orElse(null);
+		if (countdown != null) {
+			CountdownState countdownState = countdown.lifecycle().state();
+			if (countdownState == CountdownState.COMPLETED) {
+				actions.add(controlAction(
+					RETRY_COUNTDOWN_HANDOFF,
+					RETRY_COUNTDOWN_HANDOFF_OPERATION,
+					"primary", -960,
+					"重试冻结任务交接",
+					"再次提交同一个冻结 LaunchPlan；不会重新计算字段、参与者或生成第二条时间线。",
+					"#55D7E6", true
+				));
+				actions.add(controlAction(
+					ABANDON_COUNTDOWN_HANDOFF,
+					ABANDON_COUNTDOWN_HANDOFF_OPERATION,
+					"system", -950,
+					"放弃失败交接并返回等待批准",
+					"高风险：永久丢弃本次冻结 LaunchPlan；已执行的外部副作用不会回滚。",
+					"#E94F64", true
+				));
+			} else {
+				boolean cancellable = countdownState != CountdownState.COMPLETING
+					&& countdownState != CountdownState.CANCELING;
+				actions.add(
+					controlAction(
+						CANCEL_COUNTDOWN,
+						CANCEL_COUNTDOWN_OPERATION,
+						"primary",
+						-950,
+						"取消正式开局倒计时",
+						"「" + countdownDisplayName(root, countdown) + "」剩余 "
+							+ formatCountdownTime(countdown.lifecycle().remainingTicks())
+							+ "；保留准备与玩家字段。",
+						"#E94F64",
+						true,
+						cancellable,
+						countdownState == CountdownState.COMPLETING
+							? "倒计时已经进入完成提交，不能再取消。"
+							: "倒计时正在提交取消回调。"
+					)
+				);
+			}
+			var retryableCallbacks = CountdownCallbackRetryConfirmation.retryableEntries(countdown);
+			if (!retryableCallbacks.isEmpty()) {
+				var retryReview = CountdownCallbackRetryConfirmation.issue(
+					countdown,
+					server.getTickCount()
+				);
+				long required = retryableCallbacks.stream().filter(value -> value.required()).count();
+				CallbackEntry firstFailure = retryableCallbacks.getFirst();
+				actions.add(
+					controlAction(
+						RETRY_COUNTDOWN_CALLBACKS,
+						RETRY_COUNTDOWN_CALLBACKS_OPERATION,
+						"primary",
+						-940,
+						"重试失败的倒计时回调",
+						"当前有 " + retryableCallbacks.size() + " 项未解决，其中 " + required
+							+ " 项为必需回调。首项失败："
+							+ truncate(firstFailure.failureReason().orElse("未提供失败原因"), 160)
+							+ "。修复原因后再重试；成功项不会重放。",
+						"#F2B84B",
+						true,
+						retryReview.successful(),
+						retryReview.successful() ? "" : retryReview.message()
+					)
+				);
+			}
+			var unknownCallbacks = CountdownCallbackRetryConfirmation.outcomeUnknownEntries(countdown);
+			if (!unknownCallbacks.isEmpty()) {
+				actions.add(controlAction(
+					RETRY_UNKNOWN_COUNTDOWN_CALLBACKS,
+					RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_OPERATION,
+					"system", -930,
+					"高风险重试结果未知回调",
+					"当前有 " + unknownCallbacks.size()
+						+ " 项 OUTCOME_UNKNOWN；函数可能已执行，再次执行可能重复世界副作用。",
+					"#E94F64", true
+				));
+			}
+			actions.add(
+				controlAction(
+					CLEAR_ALL_STATE,
+					CLEAR_ALL_STATE_OPERATION,
+					"system",
+					1_000,
+					"清空全部数据",
+					"最高风险恢复入口：清除活动倒计时与全部 Pixel TZZ 状态；已发生的外部副作用不会回滚。",
+					"#E94F64",
+					true
+				)
+			);
+		}
 		if (
 			timeline == null
+				&& countdown == null
 				&& view.healthy()
 				&& view.active().usable()
 				&& root.activeGameInstanceId().isPresent()
 		) {
-			var approval = TimelineApprovalAuthority.approve(
+			var approval = OpeningCountdownApproval.approve(
 				root,
 				view.active(),
 				new ApprovalContext(
@@ -5684,17 +6967,30 @@ public final class PixelTzzServerRuntime {
 					new UUID(0L, 12L),
 					server.getTickCount(),
 					onlinePlayerIds(server)
-				)
+				),
+				new UUID(0L, 13L),
+				playerId -> callbackPlayerName(server, root.core(), playerId)
 			);
-			if (approval.successful()) {
+			if (approval.degradedDirect()) {
+				actions.add(controlAction(
+					APPROVE_DEGRADED_TIMELINE,
+					APPROVE_DEGRADED_TIMELINE_OPERATION,
+					"system", -905,
+					"审阅无倒计时开局",
+					approval.message(),
+					"#E94F64", true
+				));
+			} else if (approval.successful()) {
 				actions.add(
 					controlAction(
 						APPROVE_TIMELINE,
 						APPROVE_TIMELINE_OPERATION,
 						"primary",
 						-900,
-						"批准开局",
-						"冻结本局任务计划与参与者，并正式启动首个任务。",
+						approval.startsCountdown() ? "启动正式开局倒计时" : "批准开局",
+						approval.startsCountdown()
+							? "冻结倒计时、任务计划与参与者；倒计时结束后再进入正式任务。"
+							: "冻结本局任务计划与参与者，并正式启动首个任务。",
 						"#D7B45A",
 						true
 					)
@@ -5702,6 +6998,9 @@ public final class PixelTzzServerRuntime {
 			}
 		}
 		if (timeline == null) {
+			if (countdown != null) {
+				return;
+			}
 			actions.add(
 				controlAction(
 					CLEAR_ALL_STATE,
@@ -7020,12 +8319,14 @@ public final class PixelTzzServerRuntime {
 			.map(ForcedFlowRuntime::members)
 			.map(Map::keySet)
 			.ifPresent(members::addAll);
-		root.readiness()
-			.map(ReadinessInstance::flow)
-			.map(ForcedFlowInstance::runtime)
-			.map(ForcedFlowRuntime::members)
-			.map(Map::keySet)
-			.ifPresent(members::addAll);
+		if (root.timeline().isEmpty()) {
+			root.readiness()
+				.map(ReadinessInstance::flow)
+				.map(ForcedFlowInstance::runtime)
+				.map(ForcedFlowRuntime::members)
+				.map(Map::keySet)
+				.ifPresent(members::addAll);
+		}
 		members.forEach(playerId -> {
 			ServerPlayer player = server.getPlayerList().getPlayer(playerId);
 			if (player != null && verified(player)) {
@@ -7040,7 +8341,80 @@ public final class PixelTzzServerRuntime {
 		final Set<UUID> playerIds,
 		final String reason
 	) {
-		ForcedFlowInstance instance = previousState.activeForcedFlow().orElse(null);
+		releaseForcedPages(
+			server,
+			previousState.activeForcedFlow().orElse(null),
+			playerIds,
+			reason
+		);
+	}
+
+	static List<Diagnostic> countdownDiagnostics(final Instance countdown) {
+		if (countdown == null) {
+			return List.of();
+		}
+		return countdown.callbackLedger().entries().stream()
+			.filter(entry ->
+				entry.status() == CallbackStatus.FAILED
+					|| entry.status() == CallbackStatus.OUTCOME_UNKNOWN
+			)
+			.map(entry -> new Diagnostic(
+				entry.status() == CallbackStatus.FAILED
+					? "countdown_callback_failed"
+					: "countdown_callback_outcome_unknown",
+				truncate(
+					countdownCallbackDiagnosticMessage(entry),
+					ConsoleSnapshotS2CPayload.MAX_MESSAGE_LENGTH
+				)
+			))
+			.limit(ConsoleSnapshotS2CPayload.MAX_DIAGNOSTICS)
+			.toList();
+	}
+
+	private static String countdownCallbackDiagnosticMessage(final CallbackEntry entry) {
+		String slot = switch (entry.key().slot()) {
+			case START -> "启动";
+			case PAUSE -> "暂停";
+			case RESUME -> "继续";
+			case CANCEL -> "取消";
+			case COMPLETE -> "完成";
+		};
+		String identity = slot + "回调 " + entry.key().callbackId()
+			+ "（" + entry.functionId() + "）";
+		String reason = entry.failureReason().orElse("未提供失败原因");
+		return entry.status() == CallbackStatus.FAILED
+			? identity + "失败：" + reason
+				+ "。修复后请使用「重试失败的倒计时回调」。"
+			: identity + "的执行结果未知：" + reason
+				+ "。确认外部副作用后，使用「高风险重试结果未知回调」。";
+	}
+
+	private static void releaseForcedPages(
+		final MinecraftServer server,
+		final WorldStateV3 previousState,
+		final Set<UUID> playerIds,
+		final String reason
+	) {
+		releaseForcedPages(
+			server,
+			previousState.core().activeForcedFlow().orElse(null),
+			playerIds,
+			reason
+		);
+		releaseForcedPages(
+			server,
+			previousState.readiness().map(ReadinessInstance::flow).orElse(null),
+			playerIds,
+			reason
+		);
+	}
+
+	private static void releaseForcedPages(
+		final MinecraftServer server,
+		final ForcedFlowInstance instance,
+		final Set<UUID> playerIds,
+		final String reason
+	) {
 		if (instance == null) {
 			return;
 		}
@@ -7068,6 +8442,22 @@ public final class PixelTzzServerRuntime {
 				)
 			);
 		}
+	}
+
+	private static Set<UUID> forcedPageMembers(final WorldStateV3 state) {
+		LinkedHashSet<UUID> members = new LinkedHashSet<>();
+		state.core().activeForcedFlow()
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::members)
+			.map(Map::keySet)
+			.ifPresent(members::addAll);
+		state.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::members)
+			.map(Map::keySet)
+			.ifPresent(members::addAll);
+		return Set.copyOf(members);
 	}
 
 	private static void refreshReadinessPages(
@@ -7352,9 +8742,20 @@ public final class PixelTzzServerRuntime {
 		final WorldStateV3 state,
 		final UUID playerId
 	) {
+		if (
+			state.core().host()
+				.map(WorldStateV2.HostRecord::playerId)
+				.filter(playerId::equals)
+				.isPresent()
+		) {
+			return Optional.empty();
+		}
 		ForcedFlowInstance ordinary = state.core().activeForcedFlow().orElse(null);
 		if (hasPage(ordinary, playerId)) {
 			return Optional.of(ordinary);
+		}
+		if (state.timeline().isPresent()) {
+			return Optional.empty();
 		}
 		ForcedFlowInstance readiness = state.readiness()
 			.map(ReadinessInstance::flow)
@@ -7610,7 +9011,9 @@ public final class PixelTzzServerRuntime {
 			return;
 		}
 		ForcedFlowInstance ordinary = state.activeForcedFlow().orElse(null);
-		ForcedFlowInstance readiness = root.readiness()
+		ForcedFlowInstance readiness = root.timeline().isPresent()
+			? null
+			: root.readiness()
 			.map(ReadinessInstance::flow)
 			.orElse(null);
 		ForcedFlowInstance instance = ordinary != null
@@ -8461,6 +9864,8 @@ public final class PixelTzzServerRuntime {
 		);
 		clearPendingPlayerActionConfirmations(player.getUUID());
 		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		clearPendingCountdownCancellationMetadata(player.getUUID());
+		clearPendingCountdownCallbackRetryMetadata(player.getUUID());
 		IssuedConfirmation issued = CONFIRMATIONS.issue(
 			player.getUUID(),
 			terminalBinding,
@@ -9031,6 +10436,8 @@ public final class PixelTzzServerRuntime {
 		);
 		clearPendingPlayerActionConfirmations(player.getUUID());
 		clearPendingTerminalHostConfirmationMetadata(player.getUUID());
+		clearPendingCountdownCancellationMetadata(player.getUUID());
+		clearPendingCountdownCallbackRetryMetadata(player.getUUID());
 		IssuedConfirmation issued = CONFIRMATIONS.issue(
 			player.getUUID(),
 			binding,
@@ -9271,6 +10678,21 @@ public final class PixelTzzServerRuntime {
 		final Preparation preparation
 	) {
 		PreparedAction prepared = preparation.prepared().orElseThrow();
+		if (
+			prepared.target() instanceof RunFunction
+				&& persistedCountdown(PixelTzzWorldState.get(server)).isPresent()
+		) {
+			sendOperationResult(
+				player,
+				responseSequence,
+				OperationCode.ACTION_UNAVAILABLE,
+				"正式开局候选已经冻结；倒计时期间只允许只读页面导航和倒计时专用操作。",
+				PixelTzzWorldState.get(server).stateRevision(),
+				DefinitionRegistry.INSTANCE.view().active().generation(),
+				false
+			);
+			return;
+		}
 		boolean opensPage = prepared.target() instanceof PushPage;
 		PlayerTerminalSessions.Session previousVisibleSession = opensPage
 			? PLAYER_TERMINAL_SESSIONS.find(player.getUUID()).orElse(null)
@@ -9629,6 +11051,18 @@ public final class PixelTzzServerRuntime {
 		);
 	}
 
+	private static void clearPendingCountdownCancellationMetadata(final UUID playerId) {
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS.entrySet().removeIf(
+			entry -> entry.getValue().playerId().equals(playerId)
+		);
+	}
+
+	private static void clearPendingCountdownCallbackRetryMetadata(final UUID playerId) {
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.entrySet().removeIf(
+			entry -> entry.getValue().playerId().equals(playerId)
+		);
+	}
+
 	private static TerminalAuthorityResult resolveTerminalAuthority(
 		final MinecraftServer server,
 		final ServerPlayer player
@@ -9641,12 +11075,6 @@ public final class PixelTzzServerRuntime {
 				"世界数据正在迁移或版本不兼容，玩家终端暂不可用。"
 			);
 		}
-		if (hasCurrentForcedPage(root.core(), player.getUUID())) {
-			return TerminalAuthorityResult.rejected(
-				OperationCode.ACTIVE_FLOW_EXISTS,
-				"请先完成当前强制流程。"
-			);
-		}
 		WorldStateV2 state = root.core().core();
 		if (
 			state.host()
@@ -9657,6 +11085,12 @@ public final class PixelTzzServerRuntime {
 			return TerminalAuthorityResult.rejected(
 				OperationCode.NOT_HOST,
 				"主持人应打开主持人控制台。"
+			);
+		}
+		if (hasCurrentForcedPage(root.core(), player.getUUID())) {
+			return TerminalAuthorityResult.rejected(
+				OperationCode.ACTIVE_FLOW_EXISTS,
+				"请先完成当前强制流程。"
 			);
 		}
 		View live = DefinitionRegistry.INSTANCE.view();
@@ -11248,6 +12682,9 @@ public final class PixelTzzServerRuntime {
 
 	private static void onServerTick(final MinecraftServer server) {
 		int currentTick = server.getTickCount();
+		CountdownServerRuntime.tick(server, Set.copyOf(VERIFIED_PLAYERS));
+		CountdownProjectionRuntime.tick(server);
+		CountdownRestrictionEvents.tickMovement(server);
 		HOST_FLOW_BOSS_BAR.tick(server, PixelTzzWorldState.get(server).hostId());
 		if (hostConsoleRefreshPending) {
 			hostConsoleRefreshPending = false;
@@ -11347,6 +12784,8 @@ public final class PixelTzzServerRuntime {
 		int canceledConfirmations = CONFIRMATIONS.clear();
 		PLAYER_ACTION_CONFIRMATIONS.clear();
 		TERMINAL_HOST_CONFIRMATIONS.clear();
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS.clear();
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.clear();
 		terminalFrozenSnapshot = null;
 		if (canceledConfirmations > 0) {
 			persistConfirmationAudit(
@@ -11365,6 +12804,10 @@ public final class PixelTzzServerRuntime {
 			sendSnapshots(server, false);
 			pushHostConsoleSnapshot(server);
 			sendForcedPages(server);
+			CountdownProjectionRuntime.refreshAll(
+				server,
+				CountdownProjectionRuntime.RefreshCause.DATA_PACK_RELOAD
+			);
 			return;
 		}
 
@@ -11400,6 +12843,10 @@ public final class PixelTzzServerRuntime {
 		pushHostConsoleSnapshot(server);
 		// A reload must preserve the active frozen flow and reassert its mandatory page.
 		sendForcedPages(server);
+		CountdownProjectionRuntime.refreshAll(
+			server,
+			CountdownProjectionRuntime.RefreshCause.DATA_PACK_RELOAD
+		);
 
 		if (definitionLoad.applied()) {
 			PixelTzzPro.LOGGER.info(
@@ -11423,6 +12870,10 @@ public final class PixelTzzServerRuntime {
 			}
 		}
 		refreshOpenPlayerTerminals(server, false);
+		CountdownProjectionRuntime.refreshAll(
+			server,
+			CountdownProjectionRuntime.RefreshCause.AUTHORITY_CHANGE
+		);
 	}
 
 	private static void refreshTabListDisplay(final MinecraftServer server) {
@@ -11615,17 +13066,47 @@ public final class PixelTzzServerRuntime {
 
 	private static void onPlayerDisconnected(
 		final MinecraftServer server,
-		final ServerPlayer player
+		final UUID playerId,
+		final String playerName
+	) {
+		Runnable transition = () -> applyPlayerDisconnected(server, playerId, playerName);
+		if (server.isSameThread()) {
+			transition.run();
+		} else {
+			server.execute(transition);
+		}
+	}
+
+	private static void applyPlayerDisconnected(
+		final MinecraftServer server,
+		final UUID playerId,
+		final String playerName
 	) {
 		if (!serverStopping) {
-			updateReadinessConnection(server, player, false);
+			PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+			WorldStateV3 stateBeforeCountdownDisconnect = wrapper.currentV3().orElse(null);
+			boolean retainCompletedReadiness = stateBeforeCountdownDisconnect != null
+				&& countdownRetainsReadinessLock(
+					wrapper,
+					stateBeforeCountdownDisconnect,
+					playerId
+				);
+			CountdownServerRuntime.playerDisconnected(server, playerId);
+			updateReadinessConnection(
+				server,
+				playerId,
+				playerName,
+				false,
+				retainCompletedReadiness
+			);
 		}
-		updateMemberConnection(server, player.getUUID(), player.getPlainTextName(), false);
-		removeConnection(server, player.getUUID());
+		CountdownProjectionRuntime.playerDisconnected(playerId);
+		updateMemberConnection(server, playerId, playerName, false);
+		removeConnection(server, playerId);
 		refreshFlowProjection(server, false);
 		sendSnapshots(server, false);
 		pushHostConsoleSnapshot(server);
-		// The disconnect event fires before vanilla removes this player from its online list.
+		// Keep one consolidated refresh after the queued disconnect transition has committed.
 		hostConsoleRefreshPending = true;
 	}
 
@@ -11656,6 +13137,41 @@ public final class PixelTzzServerRuntime {
 		final ServerPlayer player,
 		final boolean online
 	) {
+		return updateReadinessConnection(
+			server,
+			player.getUUID(),
+			player.getPlainTextName(),
+			online
+		);
+	}
+
+	private static boolean updateReadinessConnection(
+		final MinecraftServer server,
+		final UUID playerId,
+		final String playerName,
+		final boolean online
+	) {
+		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
+		WorldStateV3 state = wrapper.currentV3().orElse(null);
+		if (state == null) {
+			return false;
+		}
+		return updateReadinessConnection(
+			server,
+			playerId,
+			playerName,
+			online,
+			countdownRetainsReadinessLock(wrapper, state, playerId)
+		);
+	}
+
+	private static boolean updateReadinessConnection(
+		final MinecraftServer server,
+		final UUID playerId,
+		final String playerName,
+		final boolean online,
+		final boolean retainCompletedReadiness
+	) {
 		PixelTzzWorldState wrapper = PixelTzzWorldState.get(server);
 		WorldStateV3 state = wrapper.currentV3().orElse(null);
 		if (state == null) {
@@ -11663,16 +13179,17 @@ public final class PixelTzzServerRuntime {
 		}
 		ReadinessAuthority.MutationResult result = ReadinessAuthority.setOnline(
 			state,
-			player.getUUID(),
-			player.getPlainTextName(),
+			playerId,
+			playerName,
 			online,
 			UUID.randomUUID(),
-			System.currentTimeMillis()
+			System.currentTimeMillis(),
+			retainCompletedReadiness
 		);
 		if (!result.successful()) {
 			PixelTzzPro.LOGGER.warn(
 				"Could not update readiness connection for {}: {} ({})",
-				player.getUUID(),
+				playerId,
 				result.message(),
 				result.code().serializedName()
 			);
@@ -11688,12 +13205,58 @@ public final class PixelTzzServerRuntime {
 		if (!committed.committed()) {
 			PixelTzzPro.LOGGER.warn(
 				"Could not persist readiness connection for {}: {}",
-				player.getUUID(),
+				playerId,
 				committed.reason()
 			);
 			return false;
 		}
 		return true;
+	}
+
+	private static boolean countdownRetainsReadinessLock(
+		final PixelTzzWorldState wrapper,
+		final WorldStateV3 state,
+		final UUID playerId
+	) {
+		return countdownRetainsReadinessLock(
+			state,
+			persistedCountdown(wrapper).orElse(null),
+			playerId
+		);
+	}
+
+	static boolean countdownRetainsReadinessLock(
+		final WorldStateV3 state,
+		final Instance countdown,
+		final UUID playerId
+	) {
+		Objects.requireNonNull(state, "state");
+		Objects.requireNonNull(playerId, "playerId");
+		ReadinessInstance readiness = state.readiness().orElse(null);
+		FlowMemberState member = readiness == null
+			? null
+			: readiness.flow().runtime().members().get(playerId);
+		return readiness != null
+			&& countdown != null
+			&& countdown.gameInstanceId().equals(readiness.gameInstanceId())
+			&& member != null
+			&& member.status() == FlowMemberStatus.COMPLETED;
+	}
+
+	static void timelineActivated(
+		final MinecraftServer server,
+		final WorldStateV3 previousState
+	) {
+		Set<UUID> readinessMembers = previousState.readiness()
+			.map(ReadinessInstance::flow)
+			.map(ForcedFlowInstance::runtime)
+			.map(ForcedFlowRuntime::members)
+			.map(Map::keySet)
+			.map(Set::copyOf)
+			.orElseGet(Set::of);
+		releaseForcedPages(server, previousState, readinessMembers, "timeline_started");
+		timelineStateChanged(server);
+		refreshFlowProjection(server, false);
 	}
 
 	private static ReadinessAuthority.MutationResult reconcileReadinessPlayers(
@@ -11920,6 +13483,8 @@ public final class PixelTzzServerRuntime {
 		LAST_TERMINAL_BINDING_HASHES.remove(playerId);
 		clearPendingPlayerActionConfirmations(playerId);
 		clearPendingTerminalHostConfirmationMetadata(playerId);
+		clearPendingCountdownCancellationMetadata(playerId);
+		clearPendingCountdownCallbackRetryMetadata(playerId);
 		HOST_FLOW_BOSS_BAR.removeViewer(playerId);
 		Optional<Binding> canceledBinding = CONFIRMATIONS.pendingBinding(playerId);
 		if (
@@ -11951,6 +13516,8 @@ public final class PixelTzzServerRuntime {
 		LAST_TERMINAL_BINDING_HASHES.clear();
 		PLAYER_ACTION_CONFIRMATIONS.clear();
 		TERMINAL_HOST_CONFIRMATIONS.clear();
+		COUNTDOWN_CANCELLATION_CONFIRMATIONS.clear();
+		COUNTDOWN_CALLBACK_RETRY_CONFIRMATIONS.clear();
 		terminalFrozenSnapshot = null;
 		lastTerminalProjectionTick = Integer.MIN_VALUE;
 		hostConsoleRefreshPending = false;
@@ -12187,6 +13754,26 @@ public final class PixelTzzServerRuntime {
 					"terminal host confirmation has invalid authority"
 				);
 			}
+		}
+	}
+
+	private record PendingCountdownCancellation(
+		UUID playerId,
+		Challenge challenge
+	) {
+		private PendingCountdownCancellation {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(challenge, "challenge");
+		}
+	}
+
+	private record PendingCountdownCallbackRetry(
+		UUID playerId,
+		CountdownCallbackRetryConfirmation.Challenge challenge
+	) {
+		private PendingCountdownCallbackRetry {
+			Objects.requireNonNull(playerId, "playerId");
+			Objects.requireNonNull(challenge, "challenge");
 		}
 	}
 

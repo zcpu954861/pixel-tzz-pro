@@ -1,9 +1,9 @@
 {
   "format_version": 1,
-  "api_version": 3,
-  "content_version": 3,
+  "api_version": 4,
+  "content_version": 4,
   "name": {
-    "text": "全员逃走中 · 2D 验收夹具"
+    "text": "全员逃走中 · 3C 验收夹具"
   },
   "initial_phase": "pixel_tzz:setup",
   "default_role": "pixel_tzz:runner",
@@ -45,6 +45,10 @@
     "default_page": "pixel_tzz:player/home",
     "history_enabled": true,
     "history_source": "tasks"
+  },
+  "opening_countdown": {
+    "definition": "pixel_tzz:opening/pause",
+    "required": true
   },
   "message_hooks": {
     "start": {

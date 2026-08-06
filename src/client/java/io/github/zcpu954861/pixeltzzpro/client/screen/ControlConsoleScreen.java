@@ -53,6 +53,32 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	private static final int ACTION_ZONE_BUTTON_BOTTOM_PADDING = 9;
 	private static final int COMPACT_ACTION_ZONE_HEIGHT = 51;
 	private static final int ACTION_ZONE_SUMMARY_MIN_HEIGHT = 68;
+	private static final String ADD_FLOW_MEMBERS_ACTION = "add_flow_members";
+	private static final String REMOVE_FLOW_MEMBERS_ACTION = "remove_flow_members";
+	private static final String RETRY_FLOW_CALLBACK_ACTION = "retry_callback";
+	private static final String CANCEL_FLOW_ACTION = "cancel_flow";
+	private static final String APPROVE_TIMELINE_ACTION = "approve_timeline";
+	private static final String APPROVE_DEGRADED_TIMELINE_ACTION =
+		"approve_timeline_without_optional_countdown";
+	private static final String CANCEL_COUNTDOWN_ACTION = "cancel_opening_countdown";
+	private static final String RETRY_COUNTDOWN_CALLBACKS_ACTION =
+		"retry_countdown_callbacks";
+	private static final String RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_ACTION =
+		"retry_unknown_countdown_callbacks";
+	private static final String RETRY_COUNTDOWN_HANDOFF_ACTION =
+		"retry_countdown_handoff";
+	private static final String ABANDON_COUNTDOWN_HANDOFF_ACTION =
+		"abandon_countdown_handoff";
+	private static final String PAUSE_TIMELINE_ACTION = "pause_timeline";
+	private static final String RESUME_TIMELINE_ACTION = "resume_timeline";
+	private static final String RETRY_TIMELINE_CALLBACK_ACTION =
+		"retry_timeline_callback";
+	private static final String FINISH_INTERMISSION_ACTION = "finish_intermission";
+	private static final String EXTEND_INTERMISSION_ACTION = "extend_intermission";
+	private static final String HOST_FALLBACK_RESULT_ACTION = "host_fallback_result";
+	private static final String RESET_GAME_PROGRESS_ACTION = "reset_game_progress";
+	private static final String CLEAR_ALL_STATE_ACTION = "clear_all_state";
+	private static final String INTERRUPT_TIMELINE_ACTION = "interrupt_timeline";
 
 	private ConsoleButton actionButton;
 	private ConsoleButton catalogButton;
@@ -312,11 +338,18 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 	}
 
 	private void dispatchQuickAction(final int index) {
-		visibleConsole(ClientSessionState.snapshot())
+		Optional<ActionEntry> action = visibleConsole(ClientSessionState.snapshot())
 			.map(ControlConsoleScreen::contextQuickActions)
 			.filter(actions -> index >= 0 && index < actions.size())
-			.map(actions -> actions.get(index))
-			.ifPresent(this::dispatchAction);
+			.map(actions -> actions.get(index));
+		if (action.isPresent()) {
+			dispatchAction(action.orElseThrow());
+			return;
+		}
+		/* A stale button must visibly resynchronize instead of accepting a click as a no-op. */
+		if (!ClientConsoleState.pending()) {
+			ClientConsoleState.requestConsole();
+		}
 	}
 
 	private String widgetLayoutKey(
@@ -1124,7 +1157,10 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		if (!this.actionZoneShowsSummary) {
 			return;
 		}
-		Component summary = activeFlow
+		Component summary = console
+			.flatMap(value -> value.diagnostics().stream().findFirst())
+			.<Component>map(diagnostic -> Component.literal(diagnostic.message()))
+			.orElseGet(() -> activeFlow
 			.<Component>map(flow -> Component.literal(
 				ConsoleText.parse(flow.flowNameJson(), flow.flowId().toString()).getString()
 					+ "  ·  "
@@ -1137,7 +1173,7 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 				!ClientConsoleState.feedback().isEmpty()
 					? ClientConsoleState.feedback()
 					: "优先显示此阶段最可能使用的操作"
-			));
+			)));
 		graphics.text(
 			this.font,
 			this.font.plainSubstrByWidth(summary.getString(), width - 20),
@@ -1325,38 +1361,93 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 			)
 			.filter(action ->
 				snapshot.activeFlow().isEmpty()
-					|| action.operationType().equals("add_flow_members")
-					|| action.operationType().equals("remove_flow_members")
-					|| action.operationType().equals("cancel_flow")
-					|| action.operationType().equals("retry_callback")
+					|| activeFlowQuickAction(action)
+					|| countdownRecoveryQuickAction(action)
 			)
 			.limit(2)
 			.toList();
 	}
 
 	private static boolean contextualAction(final ActionEntry action) {
-		return !action.operationType().equals("clear_all_state")
-			&& !action.operationType().equals("interrupt_timeline");
+		return !catalogOnlyAction(action);
+	}
+
+	private static boolean catalogOnlyAction(final ActionEntry action) {
+		return action.operationType().equals(CLEAR_ALL_STATE_ACTION)
+			|| action.operationType().equals(INTERRUPT_TIMELINE_ACTION);
+	}
+
+	private static boolean activeFlowQuickAction(final ActionEntry action) {
+		return switch (action.operationType()) {
+			case ADD_FLOW_MEMBERS_ACTION,
+				REMOVE_FLOW_MEMBERS_ACTION,
+				RETRY_FLOW_CALLBACK_ACTION,
+				CANCEL_FLOW_ACTION -> true;
+			default -> false;
+		};
+	}
+
+	private static boolean countdownRecoveryQuickAction(final ActionEntry action) {
+		return switch (action.operationType()) {
+			case CANCEL_COUNTDOWN_ACTION,
+				RETRY_COUNTDOWN_CALLBACKS_ACTION,
+				RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_ACTION,
+				RETRY_COUNTDOWN_HANDOFF_ACTION,
+				ABANDON_COUNTDOWN_HANDOFF_ACTION -> true;
+			default -> false;
+		};
 	}
 
 	private static int contextPriority(
 		final ConsoleSnapshotS2CPayload snapshot,
 		final ActionEntry action
 	) {
+		int builtInPriority = builtInContextPriority(action);
+		if (builtInPriority >= 0) {
+			return builtInPriority;
+		}
 		if (snapshot.activeFlow().isPresent()) {
 			return switch (action.operationType()) {
-				case "add_flow_members" -> 0;
-				case "remove_flow_members" -> 1;
-				case "retry_callback" -> 2;
-				case "cancel_flow" -> 3;
-				default -> 4;
+				case ADD_FLOW_MEMBERS_ACTION -> 100;
+				case REMOVE_FLOW_MEMBERS_ACTION -> 101;
+				case RETRY_FLOW_CALLBACK_ACTION -> 102;
+				case CANCEL_FLOW_ACTION -> 103;
+				default -> 190 + sectionPriority(action.section());
 			};
 		}
-		return switch (action.section()) {
+		return 100 + sectionPriority(action.section());
+	}
+
+	private static int builtInContextPriority(final ActionEntry action) {
+		return switch (action.operationType()) {
+			/* A failed hand-off owns the console until the frozen launch plan is resolved. */
+			case RETRY_COUNTDOWN_HANDOFF_ACTION -> 0;
+			case ABANDON_COUNTDOWN_HANDOFF_ACTION -> 1;
+			/* During an active countdown, cancellation and callback repair outrank normal actions. */
+			case CANCEL_COUNTDOWN_ACTION -> 10;
+			case RETRY_COUNTDOWN_CALLBACKS_ACTION -> 11;
+			case RETRY_UNKNOWN_COUNTDOWN_CALLBACKS_ACTION -> 12;
+			/* Opening approval must not be displaced by a data-pack primary action. */
+			case APPROVE_TIMELINE_ACTION -> 20;
+			case APPROVE_DEGRADED_TIMELINE_ACTION -> 21;
+			/* Timeline recovery/control actions are ordered by immediacy. */
+			case RESUME_TIMELINE_ACTION -> 30;
+			case RETRY_TIMELINE_CALLBACK_ACTION -> 31;
+			case HOST_FALLBACK_RESULT_ACTION -> 32;
+			case FINISH_INTERMISSION_ACTION -> 40;
+			case EXTEND_INTERMISSION_ACTION -> 41;
+			case PAUSE_TIMELINE_ACTION -> 50;
+			case RESET_GAME_PROGRESS_ACTION -> 60;
+			default -> -1;
+		};
+	}
+
+	private static int sectionPriority(final String section) {
+		return switch (section) {
 			case "primary" -> 0;
-			case "roles" -> 1;
-			case "system" -> 2;
-			default -> 3;
+			case "roles" -> 10;
+			case "system" -> 20;
+			default -> 30;
 		};
 	}
 
@@ -1374,6 +1465,9 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 			"pixel_tzz_pro.screen.definition."
 				+ switch (snapshot.definitionStatus()) {
 					case "ready" -> "ready";
+					case "ready_with_warnings" -> snapshot.currentPlayerHost()
+						? "warning"
+						: "ready";
 					case "invalid" -> "invalid";
 					case "platform_reload_failed" -> "reload_failed";
 					default -> "empty";
@@ -1388,6 +1482,15 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		if (snapshot.definitionStatus().equals("invalid")) {
 			return Component.translatable(
 				"pixel_tzz_pro.screen.definition_invalid",
+				snapshot.definitionDiagnostic()
+			);
+		}
+		if (
+			snapshot.currentPlayerHost()
+				&& snapshot.definitionStatus().equals("ready_with_warnings")
+		) {
+			return Component.translatable(
+				"pixel_tzz_pro.screen.definition_warning",
 				snapshot.definitionDiagnostic()
 			);
 		}
@@ -1417,7 +1520,13 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		if (!snapshot.schemaCompatible() || snapshot.definitionStatus().equals("invalid")) {
 			return DANGER;
 		}
-		if (snapshot.definitionStatus().equals("platform_reload_failed")) {
+		if (
+			snapshot.definitionStatus().equals("platform_reload_failed")
+				|| (
+					snapshot.currentPlayerHost()
+						&& snapshot.definitionStatus().equals("ready_with_warnings")
+				)
+		) {
 			return WARNING;
 		}
 		return snapshot.definitionHealthy() ? SUCCESS : SECONDARY_TEXT;
@@ -1427,7 +1536,13 @@ public final class ControlConsoleScreen extends TransitioningConsoleScreen {
 		if (!snapshot.schemaCompatible() || snapshot.definitionStatus().equals("invalid")) {
 			return DANGER;
 		}
-		return snapshot.definitionStatus().equals("platform_reload_failed") ? WARNING : SECONDARY_TEXT;
+		return snapshot.definitionStatus().equals("platform_reload_failed")
+			|| (
+				snapshot.currentPlayerHost()
+					&& snapshot.definitionStatus().equals("ready_with_warnings")
+			)
+			? WARNING
+			: SECONDARY_TEXT;
 	}
 
 	private static int statusColor(final ConnectionStatus status) {

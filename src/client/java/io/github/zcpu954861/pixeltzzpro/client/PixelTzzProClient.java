@@ -8,6 +8,10 @@ import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePlayback;
 import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessagePreferences;
 import io.github.zcpu954861.pixeltzzpro.client.message.ClientMessageWireState;
 import io.github.zcpu954861.pixeltzzpro.client.message.MessageHudOverlay;
+import io.github.zcpu954861.pixeltzzpro.client.countdown.ClientCountdownPreferences;
+import io.github.zcpu954861.pixeltzzpro.client.countdown.ClientCountdownRuntime;
+import io.github.zcpu954861.pixeltzzpro.client.countdown.ClientCountdownRuntime.FrameAcceptance;
+import io.github.zcpu954861.pixeltzzpro.client.countdown.CountdownOverlay;
 import io.github.zcpu954861.pixeltzzpro.client.ClientSessionState.ConnectionStatus;
 import io.github.zcpu954861.pixeltzzpro.client.screen.DataDrivenPageScreen;
 import io.github.zcpu954861.pixeltzzpro.client.screen.ForcedFlowPauseScreen;
@@ -38,6 +42,12 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.TargetSnapshotS2CPayload
 import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalBindingDeltaS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TerminalInvalidationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.TimelineViewS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownCheckpointSoundS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownResyncRequestC2SPayload;
+import java.util.UUID;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
@@ -50,6 +60,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.client.gui.components.toasts.SystemToast;
+import net.minecraft.client.Minecraft;
 
 /**
  * Client bootstrap. Rendering and animation remain client-side; state authority remains server-side.
@@ -67,8 +78,10 @@ public final class PixelTzzProClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		ClientMessagePreferences.initialize();
+		ClientCountdownPreferences.initialize();
 		PixelTzzRenderPipelines.register();
 		MessageHudOverlay.register();
+		CountdownOverlay.register();
 		ClientPlayConnectionEvents.JOIN.register((listener, sender, client) -> {
 			SystemToast.forceHide(
 				client.gui.toastManager(),
@@ -81,6 +94,8 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			LivePageSupervisor.reset();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			ClientCountdownRuntime.reset();
+			CountdownOverlay.reset();
 			if (!messagePhysicalConnectionActive) {
 				messagePhysicalConnectionActive = true;
 				ClientMessageAssetReporter.beginConnection();
@@ -97,6 +112,8 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			ClientSessionState.disconnect();
 			LoadingActionBarAnimator.reset();
 			OperationSubtitleAnimator.reset();
+			ClientCountdownRuntime.reset();
+			CountdownOverlay.reset();
 			ClientMessageAssetReporter.disconnect();
 			ClientMessageWireState.disconnect();
 			ClientMessagePlayback.reset(client);
@@ -113,6 +130,9 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientPlayNetworking.registerGlobalReceiver(SessionSnapshotS2CPayload.TYPE, (payload, context) -> {
 			boolean accepted = ClientSessionState.acceptSnapshot(payload);
 			if (accepted) {
+				if (payload.currentPlayerHost()) {
+					ClientPageState.releaseForcedPageForHost(payload.stateRevision());
+				}
 				ClientConsoleState.acceptSessionProjection(payload);
 				ClientTimelineState.probe();
 			}
@@ -198,6 +218,77 @@ public final class PixelTzzProClient implements ClientModInitializer {
 			MessageControlS2CPayload.TYPE,
 			(payload, context) -> ClientMessageWireState.accept(payload)
 		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownReplaceS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientCountdownRuntime.acceptReplace(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.sequence(),
+					payload.snapshotJson(),
+					receivedAtNanos,
+					estimatedOneWayDelayNanos()
+				);
+				handleFrameResult(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownPatchS2CPayload.TYPE,
+			(payload, context) -> {
+				long receivedAtNanos = System.nanoTime();
+				FrameAcceptance result = ClientCountdownRuntime.acceptPatch(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					payload.baseSequence(),
+					payload.sequence(),
+					payload.patchJson(),
+					receivedAtNanos,
+					estimatedOneWayDelayNanos()
+				);
+				handleFrameResult(
+					payload.gameInstanceId(),
+					payload.definitionGeneration(),
+					payload.epoch(),
+					payload.contextVersion(),
+					result,
+					receivedAtNanos
+				);
+			}
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownClearS2CPayload.TYPE,
+			(payload, context) -> ClientCountdownRuntime.acceptClear(
+				payload.gameInstanceId(),
+				payload.definitionGeneration(),
+				payload.epoch(),
+				payload.contextVersion(),
+				payload.sequence(),
+				System.nanoTime()
+			)
+		);
+		ClientPlayNetworking.registerGlobalReceiver(
+			CountdownCheckpointSoundS2CPayload.TYPE,
+			(payload, context) -> ClientCountdownRuntime.playCheckpointSound(
+				payload.countdownInstanceId(),
+				payload.stateVersion(),
+				payload.checkpointId(),
+				payload.soundId(),
+				payload.volume(),
+				payload.pitch()
+			)
+		);
 
 		// Announce resource-reload start before the fresh asset report emitted in the same tick, so
 		// the server invalidates the old observation first and cannot leave the new one pending.
@@ -248,5 +339,59 @@ public final class PixelTzzProClient implements ClientModInitializer {
 		ClientMessageKeyBindings.register(ClientMessagePlayback::manualComplete);
 		PauseMenuEntry.register();
 		OptionsMenuEntry.register();
+	}
+
+	private static void handleFrameResult(
+		final UUID game,
+		final long generation,
+		final long epoch,
+		final long context,
+		final FrameAcceptance result,
+		final long receivedAtNanos
+	) {
+		if (!result.accepted() && result.requiresResync()) {
+			requestResync(game, generation, epoch, context, receivedAtNanos);
+		}
+	}
+
+	private static long estimatedOneWayDelayNanos() {
+		Minecraft client = Minecraft.getInstance();
+		if (client.getConnection() != null && client.player != null) {
+			var playerInfo = client.getConnection().getPlayerInfo(client.player.getUUID());
+			if (playerInfo != null) {
+				long latencyMillis = Math.clamp((long)playerInfo.getLatency(), 0L, 1_000L);
+				return latencyMillis * 500_000L;
+			}
+		}
+		return 25_000_000L;
+	}
+
+	private static void requestResync(
+		final UUID game,
+		final long generation,
+		final long epoch,
+		final long context,
+		final long nowNanos
+	) {
+		if (!ClientPlayNetworking.canSend(CountdownResyncRequestC2SPayload.TYPE)) {
+			return;
+		}
+		var applied = ClientCountdownRuntime.prepareResync(
+			game,
+			generation,
+			epoch,
+			context,
+			nowNanos
+		);
+		if (applied.isEmpty()) {
+			return;
+		}
+		ClientPlayNetworking.send(new CountdownResyncRequestC2SPayload(
+			game,
+			generation,
+			epoch,
+			context,
+			applied.orElseThrow()
+		));
 	}
 }

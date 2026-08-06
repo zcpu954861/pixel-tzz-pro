@@ -1,0 +1,3 @@
+# 无表现副作用的逐参与者回调审计；每个冻结 UUID 成功项至多追加一次。
+execute unless data storage pixel_tzz:acceptance_3c countdown.callbacks run data modify storage pixel_tzz:acceptance_3c countdown.callbacks set value []
+$data modify storage pixel_tzz:acceptance_3c countdown.callbacks append value {scope:"each_participant",game_instance_id:"$(game_instance_id)",countdown_id:"$(countdown_id)",countdown_instance_id:"$(countdown_instance_id)",slot:"$(callback_slot)",callback_id:"$(callback_id)",reason:"$(reason)",total_ticks:$(total_ticks),remaining_ticks:$(remaining_ticks),participant_uuid:"$(participant_uuid)",participant_name:"$(participant_name)"}

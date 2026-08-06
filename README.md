@@ -2,7 +2,7 @@
 
 `全员逃走中-扩展` 是面向 Minecraft 26.2 的 Fabric 客户端与服务端模组。
 
-第一个基础里程碑已于 2026-07-26 通过用户实机验收：协议握手、世界持久化、数据包重载提示，以及可从 ESC 打开的玩家/主持人控制台外壳均已形成基础闭环。第二里程碑 2A～2D 也已完成并通过用户逐项 Minecraft 多客户端实机验收。正式地图、任务内容和剧情继续留在数据包内容层；V3A 玩家终端已完成，V3B 动态文本正在收口，自定义 HUD、通用运镜和捕获权威状态机属于后续 V3 能力，具体规则、页面和演出仍由数据包注册。
+第一个基础里程碑已于 2026-07-26 通过用户实机验收：协议握手、世界持久化、数据包重载提示，以及可从 ESC 打开的玩家/主持人控制台外壳均已形成基础闭环。第二里程碑 2A～2D 也已完成并通过用户逐项 Minecraft 多客户端实机验收。正式地图、任务内容和剧情继续留在数据包内容层；V3A 玩家终端、V3B 动态文本与 V3C 倒计时系统均已完成完整自动门和用户逐项 Minecraft 多客户端实机验收。V3C 已把 archived HUD 原型中的倒计时核心剥离为独立系统，并以开局倒计时作为当前唯一公开特化。通用运镜和捕获权威状态机属于后续 V3 能力，具体规则、页面和演出仍由数据包注册。
 
 完整产品要求见 [`docs/REQUIREMENTS.md`](docs/REQUIREMENTS.md)。
 第一里程碑的验收证据与收口边界见 [`docs/MILESTONE-1-CLOSEOUT.md`](docs/MILESTONE-1-CLOSEOUT.md)。
@@ -27,16 +27,26 @@
 
 2D 已于 2026-07-29 完成最终自动检查、全部实机问题复测、提交、推送并合并主线。功能提交为 `27b54cd`，主线合并提交为 `fc0de8b`。契约与实现边界见 [`docs/DATA-PACK-TASK-API-2D.md`](docs/DATA-PACK-TASK-API-2D.md)，实施计划见 [`docs/MILESTONE-2D-PLAN.md`](docs/MILESTONE-2D-PLAN.md)，逐项验收脚本见 [`docs/MILESTONE-2D-TESTING.md`](docs/MILESTONE-2D-TESTING.md)。
 
-V3 转向玩家持续可见的体验：玩家终端、动态文本、自定义 HUD、通用运镜、捕获与复活。V3 不建设多 Game Profile 选择或切换；一套实际运行的正式数据包只注册一个 Game Profile。V3A 玩家终端的 Schema、协议 v11、世界状态 Schema v4、服务端权威执行、客户端页面桥接、示例数据包和实机验收脚本已经落地，并于 2026-07-30 通过完整自动检查与用户逐项 Minecraft 多客户端实机验收。非主持人 OP 始终使用普通玩家终端：世界没有主持人时只追加“认领主持人”，已有主持人时只追加“接管主持人”，服务端也不会向其下发完整主持人快照或主持人页面预览文档。历史详情使用专门的 `history_detail` 动作：客户端只提交当前投影的不透明记录键，只接收 Boolean `detail_available`，服务端从活动局冻结定义重新解析授权和目标页；事件配置的 `detail_page` 不会下发，详情只读取裁剪后的 `detail.*`。`personal_meta/<完整 player_data ID>/name` 与 `/value_name` 允许页面复用数据包声明的中文字段名和选择项显示名，但只会随同对应的已授权、已成功投影 personal 值出现，显示名缺席时也不会回退暴露机器键。普通玩家终端使用固定 `620×340` 参考构图；其余模组自有页面使用固定 `640×360` 参考画布。两者都精确复用 `2560×1440 + GUI Scale 4` 下已经验收的逻辑尺寸与控件比例：大屏不无限放大，小屏把页面、文字、动画、裁剪、滚动条与点击命中一起等比缩放，背景遮罩仍覆盖实际全屏；只有数据包明确声明的正文、数据和历史区域独立滚动。玩家历史的任意事件参数保留给后续版本，V3A 仅允许省略 `player_history.parameters` 或声明空数组，避免无效配置静默通过。总体分段与质量基线见 [`docs/MILESTONE-3-PLAN.md`](docs/MILESTONE-3-PLAN.md)，数据包格式见 [`docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md`](docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md)，逐项验收入口见 [`docs/MILESTONE-3A-TESTING.md`](docs/MILESTONE-3A-TESTING.md)。
+V3 转向玩家持续可见的体验：玩家终端、动态文本、倒计时、通用运镜、捕获与复活。V3 不建设多 Game Profile 选择或切换；一套实际运行的正式数据包只注册一个 Game Profile。V3A 玩家终端的 Schema、协议 v11、世界状态 Schema v4、服务端权威执行、客户端页面桥接、示例数据包和实机验收脚本已经落地，并于 2026-07-30 通过完整自动检查与用户逐项 Minecraft 多客户端实机验收。非主持人 OP 始终使用普通玩家终端：世界没有主持人时只追加“认领主持人”，已有主持人时只追加“接管主持人”，服务端也不会向其下发完整主持人快照或主持人页面预览文档。历史详情使用专门的 `history_detail` 动作：客户端只提交当前投影的不透明记录键，只接收 Boolean `detail_available`，服务端从活动局冻结定义重新解析授权和目标页；事件配置的 `detail_page` 不会下发，详情只读取裁剪后的 `detail.*`。`personal_meta/<完整 player_data ID>/name` 与 `/value_name` 允许页面复用数据包声明的中文字段名和选择项显示名，但只会随同对应的已授权、已成功投影 personal 值出现，显示名缺席时也不会回退暴露机器键。普通玩家终端使用固定 `620×340` 参考构图；其余模组自有页面使用固定 `640×360` 参考画布。两者都精确复用 `2560×1440 + GUI Scale 4` 下已经验收的逻辑尺寸与控件比例：大屏不无限放大，小屏把页面、文字、动画、裁剪、滚动条与点击命中一起等比缩放，背景遮罩仍覆盖实际全屏；只有数据包明确声明的正文、数据和历史区域独立滚动。玩家历史的任意事件参数保留给后续版本，V3A 仅允许省略 `player_history.parameters` 或声明空数组，避免无效配置静默通过。总体分段与质量基线见 [`docs/MILESTONE-3-PLAN.md`](docs/MILESTONE-3-PLAN.md)，数据包格式见 [`docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md`](docs/DATA-PACK-PLAYER-TERMINAL-API-3A.md)，逐项验收入口见 [`docs/MILESTONE-3A-TESTING.md`](docs/MILESTONE-3A-TESTING.md)。常驻 HUD 原型完整保留在 `codex/milestone-3c` 的 `e66b92d`，当前不进入主线目标。
 
-V3B 动态文本与统一文字演出的产品要求、默认行为、权限边界、恢复语义和实施顺序已于
-2026-07-31 逐项确认。资源、协议、多通道播放、动态字段、服务端权威实例、生命周期、恢复、
-命令、偏好和示例已经接线，当前正在完成恢复契约检查、文档一致性与逐项多客户端实机验收。
-一个稳定演出 ID 可以打包 Chat、Title、Subtitle、ActionBar、声音和服务端回调；数据包仍负责
-注册正式内容，客户端只接收服务端授权后的最小演出包。完整计划见
+V3B 动态文本与统一文字演出已于 2026-08-04 完成完整自动门和用户逐项五客户端实机验收，
+功能提交 `ffb1309` 已通过 PR #5 合并到主线，合并提交为 `d371dff`。一个稳定演出 ID 可以
+打包 Chat、Title、Subtitle、ActionBar、声音和服务端回调；数据包仍负责注册正式内容，
+客户端只接收服务端授权后的最小演出包。完整计划见
 [`docs/MILESTONE-3B-PLAN.md`](docs/MILESTONE-3B-PLAN.md)，数据包契约见
 [`docs/DATA-PACK-MESSAGE-API-3B.md`](docs/DATA-PACK-MESSAGE-API-3B.md)，逐项五客户端验收脚本见
 [`docs/MILESTONE-3B-TESTING.md`](docs/MILESTONE-3B-TESTING.md)。
+
+V3C 已建立一个数据驱动、服务端权威的通用倒计时核心，并以开局审批与赛前热身之间的正式
+开局倒计时作为当前唯一公开特化。倒计时固定显示在 ActionBar 上方，不占用原版文字通道；
+数字支持固定宽度逐位滚动，数据包可选择最高 `0.01s` 的客户端视觉插值并配置有界文案、颜色、
+动画、进度线和声音。全局最多一个活动实例，不覆盖、不排队，玩家和主持人均不能跳过或快进。
+模组设置允许降低动态、高对比和独立静音，但不允许隐藏；原版 F1 行为仍保留。倒计时完成后
+才进入热身，倒计时与热身均不计入全局游戏时长。V3C 已于 2026-08-06 完成完整自动门与用户
+逐项五客户端实机验收。
+实施计划见 [`docs/MILESTONE-3C-PLAN.md`](docs/MILESTONE-3C-PLAN.md)，目标数据包契约见
+[`docs/DATA-PACK-COUNTDOWN-API-3C.md`](docs/DATA-PACK-COUNTDOWN-API-3C.md)，逐项验收
+入口见 [`docs/MILESTONE-3C-TESTING.md`](docs/MILESTONE-3C-TESTING.md)。
 
 ## 开发环境
 
@@ -81,6 +91,14 @@ V3B 动态文本与统一文字演出的产品要求、默认行为、权限边�
 .\gradlew.bat playerTerminalProjectorSelfCheck
 .\gradlew.bat playerTerminalRouterSelfCheck
 .\gradlew.bat playerTerminalSessionsSelfCheck
+.\gradlew.bat countdownDefinitionSelfCheck
+.\gradlew.bat countdownAuthoritySelfCheck
+.\gradlew.bat countdownRestrictionSelfCheck
+.\gradlew.bat countdownPersistenceSelfCheck
+.\gradlew.bat countdownCallbackLedgerSelfCheck
+.\gradlew.bat countdownCallbackRetryConfirmationSelfCheck
+.\gradlew.bat protocolV13SelfCheck
+.\gradlew.bat settingsUiContractSelfCheck
 .\gradlew.bat check
 .\gradlew.bat build
 .\gradlew.bat runClient
@@ -110,7 +128,7 @@ Windows PowerShell；Gradle 辅助窗口会隐藏，只保留 Minecraft 客户�
 .\start-test-clients.cmd -Width 1920 -Height 1080 -IntervalSeconds 3
 ```
 
-`foundationSelfCheck` 同时校验内存错误用例、仓库示例数据包、关键引用与冻结快照；`pageFrameworkSelfCheck` 校验 2B 页面框架、示例定义以及页面内容投影更新门。2C 自检继续覆盖确认令牌、主持人权威、强制流程、名单、BossBar、请求门控及回调。2D 自检覆盖逐玩家准备、时间线状态机与编排、回调账本、事件统计、独占选择、开局审批、受控命令、权限裁剪视图、两级重置、动态阶段和数据驱动 TAB。V3A 新增协议 v11、Schema v4、玩家终端路由、最小授权投影、页面会话、注册操作、两阶段函数账本以及服务端到客户端桥接自检。V3B 自检覆盖资源与覆盖、策略 Schema、协议 v12、文字/帧时间线、视觉效果、服务端实例、投递生命周期、资产协议、历史、持久化恢复、命令权限和动态 Chat 发言者。`check` 串起当前已注册的全部自检；V3A 的自动门与实机步骤见 [`docs/MILESTONE-3A-TESTING.md`](docs/MILESTONE-3A-TESTING.md)，V3B 的逐项五客户端脚本见 [`docs/MILESTONE-3B-TESTING.md`](docs/MILESTONE-3B-TESTING.md)。
+`foundationSelfCheck` 同时校验内存错误用例、仓库示例数据包、关键引用与冻结快照；`pageFrameworkSelfCheck` 校验 2B 页面框架、示例定义以及页面内容投影更新门。2C 自检继续覆盖确认令牌、主持人权威、强制流程、名单、BossBar、请求门控及回调。2D 自检覆盖逐玩家准备、时间线状态机与编排、回调账本、事件统计、独占选择、开局审批、受控命令、权限裁剪视图、两级重置、动态阶段和数据驱动 TAB。V3A 新增协议 v11、Schema v4、玩家终端路由、最小授权投影、页面会话、注册操作、两阶段函数账本以及服务端到客户端桥接自检。V3B 自检覆盖资源与覆盖、策略 Schema、协议 v12、文字/帧时间线、视觉效果、服务端实例、投递生命周期、资产协议、历史、持久化恢复、命令权限和动态 Chat 发言者。V3C 自检覆盖 Countdown 定义、单实例 authority、opening LaunchPlan、限制、回调账本、Schema v5 恢复、v13 投影、逐位滚动、0.01 秒客户端插值和不可隐藏偏好；完整自动门与用户逐项五客户端实机验收均已通过。`check` 串起当前已注册的全部自检；V3A、V3B 与 V3C 的实机入口分别见对应 `MILESTONE-*-TESTING.md`。
 
 自动检查不能代替真实客户端中的视觉、声音、强制关闭策略、BossBar、身份延后提交、离线重连、正常重启、冻结 `/reload` 和 32/64 人性能验收。本代理不会代替用户启动 Minecraft 或填写实机结果。
 

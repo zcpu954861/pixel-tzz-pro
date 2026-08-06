@@ -52,6 +52,7 @@ public record DefinitionSnapshot(
 	Map<Identifier, PageDefinition> pages,
 	Map<Identifier, ThemeDefinition> themes,
 	MessageCatalog messageCatalog,
+	CountdownDefinitions.CountdownCatalog countdownCatalog,
 	Map<DocumentKey, SourceDocument> sourceDocuments,
 	Set<Identifier> functions,
 	Set<Identifier> predicates,
@@ -73,10 +74,59 @@ public record DefinitionSnapshot(
 		pages = Map.copyOf(pages);
 		themes = Map.copyOf(themes);
 		messageCatalog = Objects.requireNonNull(messageCatalog, "messageCatalog");
+		countdownCatalog = Objects.requireNonNull(countdownCatalog, "countdownCatalog");
 		sourceDocuments = Map.copyOf(sourceDocuments);
 		functions = Set.copyOf(functions);
 		predicates = Set.copyOf(predicates);
 		predicateDocuments = Map.copyOf(predicateDocuments);
+	}
+
+	/** Compatibility constructor for callers compiled against the V3B snapshot shape. */
+	public DefinitionSnapshot(
+		final long generation,
+		final Map<Identifier, GameDefinition> games,
+		final Map<Identifier, RoleDefinition> roles,
+		final Map<Identifier, TeamDefinition> teams,
+		final Map<Identifier, LifeStateDefinition> lifeStates,
+		final Map<Identifier, PhaseDefinition> phases,
+		final Map<Identifier, FieldDefinition> fields,
+		final Map<Identifier, FlowDefinition> flows,
+		final Map<Identifier, TaskDefinition> tasks,
+		final Map<Identifier, PanelActionDefinition> panelActions,
+		final Map<Identifier, PlayerRouteDefinition> playerRoutes,
+		final Map<Identifier, PlayerDataDefinition> playerData,
+		final Map<Identifier, PlayerActionDefinition> playerActions,
+		final Map<Identifier, PageDefinition> pages,
+		final Map<Identifier, ThemeDefinition> themes,
+		final MessageCatalog messageCatalog,
+		final Map<DocumentKey, SourceDocument> sourceDocuments,
+		final Set<Identifier> functions,
+		final Set<Identifier> predicates,
+		final Map<Identifier, String> predicateDocuments
+	) {
+		this(
+			generation,
+			games,
+			roles,
+			teams,
+			lifeStates,
+			phases,
+			fields,
+			flows,
+			tasks,
+			panelActions,
+			playerRoutes,
+			playerData,
+			playerActions,
+			pages,
+			themes,
+			messageCatalog,
+			CountdownDefinitions.CountdownCatalog.empty(),
+			sourceDocuments,
+			functions,
+			predicates,
+			predicateDocuments
+		);
 	}
 
 	/**
@@ -252,7 +302,8 @@ public record DefinitionSnapshot(
 			+ this.playerActions.size()
 			+ this.pages.size()
 			+ this.themes.size()
-			+ this.messageCatalog.definitionCount();
+			+ this.messageCatalog.definitionCount()
+			+ this.countdownCatalog.definitionCount();
 	}
 
 	/**
@@ -332,6 +383,7 @@ public record DefinitionSnapshot(
 			this.pages,
 			this.themes,
 			this.messageCatalog,
+			this.countdownCatalog,
 			this.sourceDocuments,
 			this.functions,
 			this.predicates,
@@ -359,10 +411,43 @@ public record DefinitionSnapshot(
 			this.pages,
 			this.themes,
 			this.messageCatalog,
+			this.countdownCatalog,
 			this.sourceDocuments,
 			this.functions,
 			this.predicates,
 			documents
+		);
+	}
+
+	/** Publishes the isolated V3C countdown catalog and its canonical documents atomically. */
+	public DefinitionSnapshot withCountdownCatalog(
+		final CountdownDefinitions.CountdownCatalog catalog,
+		final Map<DocumentKey, SourceDocument> countdownDocuments
+	) {
+		Map<DocumentKey, SourceDocument> documents = new java.util.LinkedHashMap<>(this.sourceDocuments);
+		documents.putAll(countdownDocuments);
+		return new DefinitionSnapshot(
+			this.generation,
+			this.games,
+			this.roles,
+			this.teams,
+			this.lifeStates,
+			this.phases,
+			this.fields,
+			this.flows,
+			this.tasks,
+			this.panelActions,
+			this.playerRoutes,
+			this.playerData,
+			this.playerActions,
+			this.pages,
+			this.themes,
+			this.messageCatalog,
+			catalog,
+			documents,
+			this.functions,
+			this.predicates,
+			this.predicateDocuments
 		);
 	}
 

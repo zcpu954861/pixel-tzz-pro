@@ -414,7 +414,7 @@ public final class MessagePrelayoutDurationSelfCheck {
 	}
 
 	private static String source(final String path) throws IOException {
-		return Files.readString(Path.of(path));
+		return Files.readString(Path.of(path)).replace("\r\n", "\n").replace('\r', '\n');
 	}
 
 	private static void requireInOrder(final String source, final String... fragments) {

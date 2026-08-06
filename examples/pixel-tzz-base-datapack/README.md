@@ -1,4 +1,4 @@
-# Pixel TZZ Pro 2A–3B 示例与验收夹具
+# Pixel TZZ Pro 2A–3C 示例与验收夹具
 
 此数据包只用于模组开发验收，同时保留：
 
@@ -7,6 +7,7 @@
 - 2D 的逐玩家准备、最小任务时间线、独占选择、事件、统计和回调夹具。
 - 3A 的普通玩家终端、身份专属任务页、个人数据裁剪、玩家历史与注册函数夹具；
 - 3B 的文字效果、完整演出、动态字段、服务端播放与控制验收夹具。
+- 3C 的通用权威倒计时核心、客户端逐位动画和正式开局倒计时特化夹具。
 
 它不是正式的全员逃走中玩法数据包。所有“北门”“中央站”“南侧场地”“终端”等名称均是无地图坐标、无玩法含义的显式占位，不应复制为正式任务。
 
@@ -72,7 +73,7 @@
 
 ## 2D 最小任务时间线
 
-游戏定义使用 `api_version: 2`。主持人可用 `pixel_tzz:enter_initializing` 从设置进入初始化，再用既有 `pixel_tzz:enter_ready` 进入准备；所有准备参与者逐人确认后才开放批准，批准阶段为 `pixel_tzz:ready`，批准后进入 `pixel_tzz:warmup`。
+任务时间线能力从 `api_version: 2` 引入；当前完整夹具已提升到 `api_version: 4`。主持人可用 `pixel_tzz:enter_initializing` 从设置进入初始化，再用既有 `pixel_tzz:enter_ready` 进入准备；所有准备参与者逐人确认后才开放批准，批准阶段为 `pixel_tzz:ready`，批准后先进入 3C 正式倒计时，倒计时完成后才进入 `pixel_tzz:warmup`。
 
 时间线严格无环且同时只有一个任务：
 
@@ -109,7 +110,7 @@ acceptance/warmup
 
 ## 3A 玩家终端
 
-游戏定义使用 `api_version: 3`，默认玩家页为 `pixel_tzz:player/home`，并启用玩家历史总开关。
+玩家终端能力从 `api_version: 3` 引入；当前完整夹具使用 `api_version: 4`，默认玩家页为 `pixel_tzz:player/home`，并启用玩家历史总开关。
 
 当前正式示例页：
 
@@ -407,6 +408,66 @@ Chat 仍只消费富文本帧，不套用 HUD 位移和缩放。
 并以 64 个动态字段验证合法上限；策略矩阵覆盖还证明高优先级资源不会继承低优先级的参数、
 历史、静态降级或资源声明。不能把覆盖包文案当成正式玩法内容。
 
+## 3C 通用倒计时与正式开局特化
+
+Game 使用 `api_version: 4`，通过 `opening_countdown` 默认引用
+`pixel_tzz:opening/pause`。3C 当前不包含常驻 HUD、信息坞、组件树、布局或路由；倒计时由专用
+客户端渲染器固定显示在原版 ActionBar 上方。服务端仍以 20 TPS 维护唯一权威实例，客户端只用
+单调时钟插值到最高 `0.01s` 的视觉精度，不能凭动画或 `00.00` 自行完成开局。
+
+基础夹具注册三份 10 秒 Countdown：
+
+| 定义 | 必需玩家掉线 | 时间与动画 |
+|---|---|---|
+| `pixel_tzz:opening/pause` | 暂停并等待同一 UUID 返回；Game 默认引用 | `seconds + hundredths`，逐位 `roll`，小数位也动画 |
+| `pixel_tzz:opening/cancel` | 正式取消并返回等待批准 | `mm_ss + seconds`，`instant`，无进度线 |
+| `pixel_tzz:opening/continue` | 其他玩家继续，冻结名单不删人 | `seconds + tenths`，逐位 `roll`，小数位直接更新 |
+
+三者都在 5、3、2、1、0 秒注册声音检查点，主持人掉线默认继续。移动、攻击、交互、物品和伤害
+由权威限制处理，镜头、聊天与 ESC 保持允许。冻结参与者始终能看见倒计时；数据包只能额外配置
+主持人和观战者受众；观战者必须由本次冻结定义中带 `pixel_tzz:spectator` 标签的当前身份确认，
+普通 OP、命令执行者或仅完成握手的客户端不会被自动加入。生命周期回调只写入
+`storage pixel_tzz:acceptance_3c countdown.callbacks`，不额外发送 Subtitle、Chat 或 Title。
+
+先准备验收审计位，再使用正式玩家准备和主持人批准入口启动默认定义：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/setup
+/function pixel_tzz:acceptance_3c/countdown/start
+```
+
+`countdown/start` 只记录预期并提示主持人批准，不会跳过准备、直接建立实例或伪造客户端包。
+三份掉线策略说明入口同样只写入验收记录和提示：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/countdown/player_loss_pause
+/function pixel_tzz:acceptance_3c/countdown/player_loss_cancel
+/function pixel_tzz:acceptance_3c/countdown/player_loss_continue
+```
+
+要实际验收 `cancel` 或 `continue`，应在新一轮批准前把 `games/main.json` 的
+`opening_countdown.definition` 改为对应 ID，执行一次 `/reload`，再从主持人控制台批准。活动实例
+继续使用批准时冻结的旧定义，不会被 Reload 替换。
+
+回调失败与恢复入口：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/countdown/callback_fault
+# 下一轮完成后应停在 completing
+/function pixel_tzz:acceptance_3c/countdown/callback_fault_clear
+# 随后从主持人控制台重试失败回调
+/data get storage pixel_tzz:acceptance_3c countdown.callbacks
+
+/function pixel_tzz:acceptance_3c/countdown/recovery
+```
+
+倒计时完成后才进入 `pixel_tzz:warmup`；倒计时和热身都不累计全局游戏时长，热身结束后才开始
+全局计时。验收结束只清临时 Score 与 Storage，不取消权威倒计时、不重置游戏：
+
+```mcfunction
+/function pixel_tzz:acceptance_3c/clear
+```
+
 ## 易用验收函数
 
 任务 `on_start` 宏回调会把当前权威上下文写入：
@@ -479,7 +540,7 @@ storage pixel_tzz:acceptance_2d session.current
 
 ## 内容规模
 
-基础数据包当前共包含 `181` 个文件和 `97` 项 Pixel TZZ 定义，其中有：
+基础数据包当前共包含 `197` 个文件，其中 `100` 项为 Pixel TZZ JSON 定义，主要包括：
 
 - `24` 个页面；
 - `2` 个字段；
@@ -490,7 +551,9 @@ storage pixel_tzz:acceptance_2d session.current
 - `17` 项玩家数据授权；
 - `12` 项玩家注册操作；
 - `2` 个文字效果；
-- `9` 条完整文字演出。
+- `9` 条完整文字演出；
+- `3` 个正式开局 Countdown。
 
-回调和包装函数共 `81` 个：既有 2C 无副作用函数 `6` 个、2D 宏回调与验收入口 `20` 个、
-3A 注册函数验收入口 `1` 个，以及 3B 播放、控制、动态值、无障碍、布局、外部 HUD、重启和回调验收函数 `54` 个。
+回调和包装函数共 `94` 个：既有 2C 无副作用函数 `6` 个、2D 宏回调与验收入口 `20` 个、
+3A 注册函数验收入口 `1` 个、3B 播放与回调验收函数 `54` 个，以及 3C Countdown 与回调审计函数
+`13` 个。

@@ -14,6 +14,11 @@ import io.github.zcpu954861.pixeltzzpro.network.payload.MessagePlanS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.MessageScreenStateC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownClearS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownCheckpointSoundS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownPatchS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownReplaceS2CPayload;
+import io.github.zcpu954861.pixeltzzpro.network.payload.CountdownResyncRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleRequestC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConsoleSnapshotS2CPayload;
@@ -95,6 +100,8 @@ public final class NetworkPayloads {
 				MessageScreenStateC2SPayload.TYPE,
 				MessageScreenStateC2SPayload.STREAM_CODEC
 			);
+		PayloadTypeRegistry.serverboundPlay()
+			.register(CountdownResyncRequestC2SPayload.TYPE, CountdownResyncRequestC2SPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(HandshakeS2CPayload.TYPE, HandshakeS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(SessionSnapshotS2CPayload.TYPE, SessionSnapshotS2CPayload.STREAM_CODEC);
 		PayloadTypeRegistry.clientboundPlay()
@@ -146,5 +153,12 @@ public final class NetworkPayloads {
 				MessageControlS2CPayload.TYPE,
 				MessageControlS2CPayload.STREAM_CODEC
 			);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownReplaceS2CPayload.TYPE, CountdownReplaceS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownPatchS2CPayload.TYPE, CountdownPatchS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(CountdownClearS2CPayload.TYPE, CountdownClearS2CPayload.STREAM_CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(
+			CountdownCheckpointSoundS2CPayload.TYPE,
+			CountdownCheckpointSoundS2CPayload.STREAM_CODEC
+		);
 	}
 }

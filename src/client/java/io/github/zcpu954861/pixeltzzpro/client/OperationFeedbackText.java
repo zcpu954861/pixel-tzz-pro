@@ -69,6 +69,7 @@ public final class OperationFeedbackText {
 			case SNAPSHOT_TOO_LARGE -> "页面数据超出安全上限";
 			case SNAPSHOT_INVALID -> "页面数据已失效，请重新同步";
 			case RESOURCE_BLOCKED -> "缺少页面必需资源，操作已阻止";
+			case DEGRADED_DIRECT -> "可选倒计时不可用；必须单独确认无倒计时开局";
 			case CALLBACK_FAILED -> "数据包回调执行失败，需要主持人处理";
 			case TIMELINE_NOT_ACTIVE -> "当前没有正在进行的任务时间线";
 			case TIMELINE_ALREADY_ACTIVE -> "当前已有任务时间线正在进行";
