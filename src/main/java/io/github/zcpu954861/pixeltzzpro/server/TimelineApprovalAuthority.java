@@ -15,6 +15,7 @@ import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
 import io.github.zcpu954861.pixeltzzpro.server.TimelineAuthority.TaskStart;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FieldValueType;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FlowInstanceStatus;
+import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.FrozenDocument;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PersistentFieldValue;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.PlayerRecord;
 import io.github.zcpu954861.pixeltzzpro.state.WorldStateV2.StoredValue;
@@ -285,7 +286,8 @@ public final class TimelineApprovalAuthority {
 					state.core()
 						.withStateRevision(nextStateRevision)
 				)
-				.withTimeline(Optional.of(timeline));
+				.withTimeline(Optional.of(timeline))
+				.withReadiness(Optional.empty());
 			if (next.validated().result().isEmpty()) {
 				return ApprovalResult.rejected(
 					OperationCode.INTERNAL_ERROR,
@@ -298,6 +300,143 @@ public final class TimelineApprovalAuthority {
 				OperationCode.INTERNAL_ERROR,
 				safeMessage(error)
 			);
+		}
+	}
+
+	/**
+	 * Activates the exact launch plan frozen by a previously accepted opening approval.
+	 *
+	 * <p>This path deliberately does not re-evaluate readiness, current connections, audiences,
+	 * requirements, roles, or active data-pack definitions. Those gates were consumed before the
+	 * opening countdown began. Only the persisted game scope, approval phase, and absence of an
+	 * existing timeline remain live commit preconditions.
+	 */
+	public static ApprovalResult activateFrozen(
+		final WorldStateV3 state,
+		final DefinitionSnapshot frozenDefinitions,
+		final FrozenDocument frozenTimelineDocument,
+		final FrozenActivationContext context
+	) {
+		if (
+			state == null
+				|| frozenDefinitions == null
+				|| frozenTimelineDocument == null
+				|| context == null
+		) {
+			return ApprovalResult.rejected(
+				OperationCode.TARGET_INVALID,
+				"frozen timeline activation input is missing"
+			);
+		}
+		if (state.validated().result().isEmpty()) {
+			return ApprovalResult.rejected(
+				OperationCode.SCHEMA_BLOCKED,
+				"world state is not writable"
+			);
+		}
+		Identifier gameId = state.core().activeGameId().orElse(null);
+		Identifier phaseId = state.core().activePhaseId().orElse(null);
+		if (
+			gameId == null
+				|| phaseId == null
+				|| state.activeGameInstanceId().filter(context.gameInstanceId()::equals).isEmpty()
+		) {
+			return ApprovalResult.rejected(
+				OperationCode.PHASE_MISMATCH,
+				"the frozen launch plan does not target the active game instance"
+			);
+		}
+		if (state.timeline().isPresent()) {
+			return ApprovalResult.rejected(
+				OperationCode.TIMELINE_ALREADY_ACTIVE,
+				"an unfinished or retained timeline already exists"
+			);
+		}
+		GameDefinition game = frozenDefinitions.games().get(gameId);
+		TaskTimeline timeline = game == null ? null : game.taskTimeline().orElse(null);
+		if (game == null || timeline == null) {
+			return ApprovalResult.rejected(
+				OperationCode.SNAPSHOT_INVALID,
+				"the frozen launch plan lost its game timeline"
+			);
+		}
+		if (
+			!phaseId.equals(context.approvalPhaseId())
+				|| !timeline.approvalPhase().equals(context.approvalPhaseId())
+		) {
+			return ApprovalResult.rejected(
+				OperationCode.PHASE_MISMATCH,
+				"the active phase no longer matches the frozen approval phase"
+			);
+		}
+		PhaseDefinition approvalPhase = frozenDefinitions.phases().get(context.approvalPhaseId());
+		PhaseDefinition startPhase = frozenDefinitions.phases().get(timeline.startPhase());
+		if (
+			approvalPhase == null
+				|| startPhase == null
+				|| !approvalPhase.game().equals(gameId)
+				|| !startPhase.game().equals(gameId)
+				|| (
+					!context.approvalPhaseId().equals(timeline.startPhase())
+						&& !approvalPhase.transitions().contains(timeline.startPhase())
+				)
+		) {
+			return ApprovalResult.rejected(
+				OperationCode.PHASE_MISMATCH,
+				"the frozen approval phase cannot transition to the registered start phase"
+			);
+		}
+		TaskDefinition firstTask = frozenDefinitions.tasks().get(timeline.initialTask());
+		if (firstTask == null || !firstTask.game().equals(gameId)) {
+			return ApprovalResult.rejected(
+				OperationCode.SNAPSHOT_INVALID,
+				"the frozen initial task is unavailable"
+			);
+		}
+
+		TimelineAuthority.OperationResult created = TimelineAuthority.create(
+			Optional.empty(),
+			context.timelineInstanceId(),
+			game.contentVersion(),
+			frozenTimelineDocument,
+			new TaskStart(context.firstTaskInstanceId(), firstTask, context.participantIds()),
+			context.serverTick()
+		);
+		if (!created.successful() || created.nextState().isEmpty()) {
+			return ApprovalResult.rejected(created.code(), created.message());
+		}
+		final long nextStateRevision;
+		try {
+			nextStateRevision = Math.incrementExact(state.stateRevision());
+		} catch (ArithmeticException error) {
+			return ApprovalResult.rejected(
+				OperationCode.RESOURCE_BLOCKED,
+				"world state revision capacity is exhausted"
+			);
+		}
+		try {
+			TimelineInstance createdTimeline = created.nextState().orElseThrow();
+			if (!context.approvalPhaseId().equals(timeline.startPhase())) {
+				createdTimeline = withApprovalPhaseTransition(
+					createdTimeline,
+					context.approvalPhaseId(),
+					timeline.startPhase(),
+					context.timelineInstanceId()
+				);
+			}
+			WorldStateV3 next = state
+				.withCore(state.core().withStateRevision(nextStateRevision))
+				.withTimeline(Optional.of(createdTimeline))
+				.withReadiness(Optional.empty());
+			if (next.validated().result().isEmpty()) {
+				return ApprovalResult.rejected(
+					OperationCode.INTERNAL_ERROR,
+					"frozen timeline candidate failed state validation"
+				);
+			}
+			return ApprovalResult.approved(next, context.participantIds());
+		} catch (RuntimeException error) {
+			return ApprovalResult.rejected(OperationCode.INTERNAL_ERROR, safeMessage(error));
 		}
 	}
 
@@ -544,6 +683,32 @@ public final class TimelineApprovalAuthority {
 					|| serverTick < 0L
 			) {
 				throw new IllegalArgumentException("approval revisions and server tick cannot be negative");
+			}
+		}
+	}
+
+	public record FrozenActivationContext(
+		UUID gameInstanceId,
+		Identifier approvalPhaseId,
+		UUID timelineInstanceId,
+		UUID firstTaskInstanceId,
+		long serverTick,
+		List<UUID> participantIds
+	) {
+		public FrozenActivationContext {
+			gameInstanceId = Objects.requireNonNull(gameInstanceId, "gameInstanceId");
+			approvalPhaseId = Objects.requireNonNull(approvalPhaseId, "approvalPhaseId");
+			timelineInstanceId = Objects.requireNonNull(timelineInstanceId, "timelineInstanceId");
+			firstTaskInstanceId = Objects.requireNonNull(firstTaskInstanceId, "firstTaskInstanceId");
+			participantIds = Objects.requireNonNull(participantIds, "participantIds").stream()
+				.sorted()
+				.toList();
+			if (
+				serverTick < 0L
+					|| participantIds.isEmpty()
+					|| new HashSet<>(participantIds).size() != participantIds.size()
+			) {
+				throw new IllegalArgumentException("frozen activation context is invalid");
 			}
 		}
 	}

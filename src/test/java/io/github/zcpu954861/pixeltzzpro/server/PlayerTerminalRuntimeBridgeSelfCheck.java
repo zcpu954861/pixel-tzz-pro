@@ -1792,12 +1792,66 @@ public final class PlayerTerminalRuntimeBridgeSelfCheck {
 				+ "LivePageSupervisor.java"
 		);
 		String supervisorTick = method(supervisor, "public static void tick(");
-		requireInOrder(
+			requireInOrder(
 			supervisorTick,
 			"ClientPageState.consumeTerminalRelease()",
 			"OperationSubtitleAnimator.enqueue(",
 			"page.releaseFromServer()",
 			"ClientPageState.completeTerminalRelease()"
+		);
+		requireInOrder(
+			supervisorTick,
+			"boolean forcedActive = !ClientSessionState.snapshot().currentPlayerHost()",
+			"&& ClientPageState.forcedPageActive()"
+		);
+		String runtime = source(
+			"src/main/java/io/github/zcpu954861/pixeltzzpro/server/"
+				+ "PixelTzzServerRuntime.java"
+		);
+		String currentPageFlow = method(
+			runtime,
+			"private static Optional<ForcedFlowInstance> currentPageFlow("
+		);
+		requireInOrder(
+			currentPageFlow,
+			"state.core().host()",
+			"return Optional.empty();",
+			"ForcedFlowInstance ordinary",
+			"if (state.timeline().isPresent())",
+			"ForcedFlowInstance readiness"
+		);
+		String prepareOperation = method(
+			runtime,
+			"private static PreparedOperation prepareOperation("
+		);
+		requireInOrder(
+			prepareOperation,
+			"frozenCountdown != null",
+			"!CountdownControlContract.isCountdownControl",
+			"!hostOwnershipOperation(operation)",
+			"!clearAllOperation(operation)"
+		);
+		String disconnectTransition = method(
+			runtime,
+			"private static void onPlayerDisconnected("
+		);
+		requireInOrder(
+			disconnectTransition,
+			"server.isSameThread()",
+			"transition.run()",
+			"server.execute(transition)"
+		);
+		String applyDisconnect = method(
+			runtime,
+			"private static void applyPlayerDisconnected("
+		);
+		requireInOrder(
+			applyDisconnect,
+			"boolean retainCompletedReadiness",
+			"countdownRetainsReadinessLock(",
+			"CountdownServerRuntime.playerDisconnected(server, playerId)",
+			"updateReadinessConnection(",
+			"retainCompletedReadiness"
 		);
 		String pauseEntry = source(
 			"src/client/java/io/github/zcpu954861/pixeltzzpro/client/screen/"
@@ -1806,8 +1860,9 @@ public final class PlayerTerminalRuntimeBridgeSelfCheck {
 		String pauseState = method(pauseEntry, "private static EntryState entryState()");
 		requireInOrder(
 			pauseState,
-			"String labelKey = forcedFlow",
-			": snapshot.currentPlayerHost()",
+			"boolean forcedFlow = !snapshot.currentPlayerHost()",
+			"String labelKey = snapshot.currentPlayerHost()",
+			": forcedFlow",
 			": recapAvailable",
 			"pixel_tzz_pro.menu.terminal"
 		);

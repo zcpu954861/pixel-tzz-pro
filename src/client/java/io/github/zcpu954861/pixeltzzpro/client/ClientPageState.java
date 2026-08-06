@@ -201,6 +201,12 @@ public final class ClientPageState {
 	}
 
 	public static synchronized void acceptPageBundle(final PageBundleS2CPayload payload) {
+		if (
+			payload.purpose() == PagePurpose.FORCED_FLOW
+				&& ClientSessionState.snapshot().currentPlayerHost()
+		) {
+			return;
+		}
 		if (!replacementAllowed(payload)) {
 			return;
 		}
@@ -1111,6 +1117,25 @@ public final class ClientPageState {
 
 	public static synchronized boolean forcedPageActive() {
 		return pagePurpose == PagePurpose.FORCED_FLOW && pageStatus != PageStatus.IDLE;
+	}
+
+	public static synchronized void releaseForcedPageForHost(final long stateRevision) {
+		if (
+			activePage == null
+				|| activePage.purpose != PagePurpose.FORCED_FLOW
+				|| activePage.stateRevision > stateRevision
+		) {
+			return;
+		}
+		releaseActive(false);
+		pagePurpose = PagePurpose.PREVIEW;
+		pageStatus = PageStatus.IDLE;
+		pageMessage = "";
+		fatalFlowBlock = null;
+		clearFlowActionState();
+		clearTerminalOpenPending();
+		clearTerminalIntentState();
+		revision++;
 	}
 
 	public static synchronized long revision() {

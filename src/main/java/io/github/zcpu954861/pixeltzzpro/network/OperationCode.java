@@ -32,6 +32,7 @@ public enum OperationCode {
 	SNAPSHOT_TOO_LARGE("snapshot_too_large"),
 	SNAPSHOT_INVALID("snapshot_invalid"),
 	RESOURCE_BLOCKED("resource_blocked"),
+	DEGRADED_DIRECT("degraded_direct"),
 	CALLBACK_FAILED("callback_failed"),
 	TIMELINE_NOT_ACTIVE("timeline_not_active"),
 	TIMELINE_ALREADY_ACTIVE("timeline_already_active"),

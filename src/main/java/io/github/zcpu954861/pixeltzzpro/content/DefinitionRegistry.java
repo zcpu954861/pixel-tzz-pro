@@ -77,9 +77,23 @@ public final class DefinitionRegistry {
 		}
 
 		long generation = Math.incrementExact(this.state.active().generation());
-		DefinitionSnapshot next = compilation.snapshot().orElseThrow().withGeneration(generation);
-		ReloadStatus status = next.usable() ? ReloadStatus.READY : ReloadStatus.EMPTY;
-		this.state = new State(next, status, next.usable(), List.of(), 0);
+		DefinitionSnapshot next = CountdownCatalogCompiler.retainReferencedLastKnownGood(
+			compilation.snapshot().orElseThrow(),
+			this.state.active()
+		).withGeneration(generation);
+		CountdownWarnings warnings = countdownWarnings(next);
+		ReloadStatus status = next.usable()
+			? warnings.totalProblemCount() > 0
+				? ReloadStatus.READY_WITH_WARNINGS
+				: ReloadStatus.READY
+			: ReloadStatus.EMPTY;
+		this.state = new State(
+			next,
+			status,
+			next.usable(),
+			warnings.problems(),
+			warnings.totalProblemCount()
+		);
 		if (next.usable()) {
 			PixelTzzPro.LOGGER.info(
 				"Applied Pixel TZZ definition generation {}: {} game(s), {} total definition(s)",
@@ -93,6 +107,7 @@ public final class DefinitionRegistry {
 				next.generation()
 			);
 		}
+		logCountdownWarnings(next);
 		return outcome(true);
 	}
 
@@ -140,15 +155,47 @@ public final class DefinitionRegistry {
 			return outcome(false);
 		}
 		long generation = Math.incrementExact(this.state.active().generation());
-		DefinitionSnapshot next = compilation.snapshot().orElseThrow().withGeneration(generation);
+		DefinitionSnapshot next = CountdownCatalogCompiler.retainReferencedLastKnownGood(
+			compilation.snapshot().orElseThrow(),
+			this.state.active()
+		).withGeneration(generation);
+		CountdownWarnings warnings = countdownWarnings(next);
 		this.state = new State(
 			next,
-			next.usable() ? ReloadStatus.READY : ReloadStatus.EMPTY,
+			next.usable()
+				? warnings.totalProblemCount() > 0
+					? ReloadStatus.READY_WITH_WARNINGS
+					: ReloadStatus.READY
+				: ReloadStatus.EMPTY,
 			next.usable(),
-			List.of(),
-			0
+			warnings.problems(),
+			warnings.totalProblemCount()
 		);
 		return outcome(true);
+	}
+
+	private static CountdownWarnings countdownWarnings(final DefinitionSnapshot snapshot) {
+		List<Problem> retained = snapshot.countdownCatalog().disabled().values().stream()
+			.sorted(Comparator.comparing(value -> value.id().toString()))
+			.flatMap(value -> value.diagnostics().stream())
+			.sorted(Comparator.comparing(Problem::summary))
+			.limit(DefinitionCompiler.MAX_DIAGNOSTIC_DETAILS)
+			.toList();
+		int total = snapshot.countdownCatalog().disabled().values().stream()
+			.mapToInt(CountdownDefinitions.DisabledCountdown::totalDiagnosticCount)
+			.sum();
+		return new CountdownWarnings(retained, total);
+	}
+
+	private static void logCountdownWarnings(final DefinitionSnapshot snapshot) {
+		snapshot.countdownCatalog().disabled().values().stream()
+			.sorted(Comparator.comparing(value -> value.id().toString()))
+			.flatMap(value -> value.diagnostics().stream())
+			.limit(DefinitionCompiler.MAX_DIAGNOSTIC_DETAILS)
+			.forEach(problem -> PixelTzzPro.LOGGER.warn(
+				"Pixel TZZ countdown definition isolated: {}",
+				problem.summary()
+			));
 	}
 
 	private ReloadOutcome outcome(final boolean applied) {
@@ -177,7 +224,9 @@ public final class DefinitionRegistry {
 			.stream()
 			.sorted(Map.Entry.comparingByKey())
 			.toList();
-		if (entries.size() > DefinitionCompiler.MAX_DEFINITIONS) {
+		int maximumDefinitions = DefinitionCompiler.MAX_DEFINITIONS
+			+ CountdownDefinitions.MAX_COUNTDOWNS;
+		if (entries.size() > maximumDefinitions) {
 			Map.Entry<Identifier, Resource> first = entries.getFirst();
 			return new Compilation(
 				java.util.Optional.empty(),
@@ -189,7 +238,7 @@ public final class DefinitionRegistry {
 						first.getKey(),
 						first.getValue().sourcePackId(),
 						"",
-						"definition count " + entries.size() + " exceeds " + DefinitionCompiler.MAX_DEFINITIONS
+						"definition count " + entries.size() + " exceeds " + maximumDefinitions
 					)
 				)
 			);
@@ -436,13 +485,17 @@ public final class DefinitionRegistry {
 		final Reader reader,
 		final DefinitionType type
 	) throws IOException {
-		if (!isMessageDefinition(type)) {
+		if (!isMessageDefinition(type) && type != DefinitionType.COUNTDOWN) {
 			return new ReadDefinition(readBounded(reader), Optional.empty());
 		}
 		CapturingReader capturing = new CapturingReader(
 			reader,
 			DefinitionCompiler.MAX_DEFINITION_CHARACTERS + 1
 		);
+		if (type == DefinitionType.COUNTDOWN) {
+			capturing.drain();
+			return new ReadDefinition(capturing.retained(), Optional.empty());
+		}
 		Optional<MessageEnvelopeHint> envelopeHint = Optional.empty();
 		try {
 			envelopeHint = readMessageEnvelope(capturing);
@@ -679,6 +732,7 @@ public final class DefinitionRegistry {
 	public enum ReloadStatus {
 		EMPTY("empty"),
 		READY("ready"),
+		READY_WITH_WARNINGS("ready_with_warnings"),
 		INVALID("invalid"),
 		PLATFORM_RELOAD_FAILED("platform_reload_failed");
 
@@ -731,13 +785,16 @@ public final class DefinitionRegistry {
 		}
 
 		public String diagnosticSummary() {
+			if (this.status == ReloadStatus.READY_WITH_WARNINGS) {
+				return countdownDiagnosticSummary();
+			}
 			if (!this.problems.isEmpty()) {
 				Problem first = this.problems.getFirst();
 				return first.summary()
 					+ (this.totalProblemCount == 1 ? "" : " (+" + (this.totalProblemCount - 1) + ")");
 			}
 			return switch (this.status) {
-				case READY -> this.active.games().size()
+				case READY, READY_WITH_WARNINGS -> this.active.games().size()
 					+ " game(s), "
 					+ this.active.definitionCount()
 					+ " definition(s)";
@@ -745,6 +802,85 @@ public final class DefinitionRegistry {
 				case INVALID -> "definition compilation failed";
 				case PLATFORM_RELOAD_FAILED -> "Minecraft data-pack reload failed; previous resources retained";
 			};
+		}
+
+		private String countdownDiagnosticSummary() {
+			if (this.problems.isEmpty()) {
+				return "倒计时定义存在校验警告；请查看服务器日志并在修复后执行 /reload。";
+			}
+			Problem first = this.problems.getFirst();
+			Identifier definition = first.definitionId();
+			String identity = definition == null ? "未知" : definition.toString();
+			String pointer = first.pointer() == null || first.pointer().isBlank()
+				? "根节点"
+				: "字段 " + first.pointer();
+			boolean retained = definition != null
+				&& this.active.countdownCatalog().usingRetainedFallback(definition);
+			String recovery = retained
+				? "已继续使用上一代已验证版本；"
+				: "此定义已被隔离；引用它的必需开局倒计时将被阻断；";
+			String omitted = this.totalProblemCount <= 1
+				? ""
+				: " 另有 " + (this.totalProblemCount - 1) + " 项问题。";
+			return boundedDiagnostic(
+				"倒计时定义 "
+					+ identity
+					+ " 校验失败："
+					+ pointer
+					+ " "
+					+ chineseReason(first)
+					+ "。"
+					+ recovery
+					+ "请修复数据包后执行 /reload。"
+					+ omitted,
+				768
+			);
+		}
+
+		private static String chineseReason(final Problem problem) {
+			return switch (problem.code()) {
+				case "UNKNOWN_FIELD" -> "存在未支持的字段";
+				case "OUT_OF_RANGE" -> rangeReason(problem.message());
+				case "MISSING_REFERENCE" -> missingReferenceReason(problem.message());
+				case "TYPE_MISMATCH" -> "字段类型不正确";
+				case "MISSING_FIELD" -> "缺少必填字段";
+				case "INVALID_JSON" -> "JSON 格式无效";
+				case "INVALID_ID" -> "资源标识符格式无效";
+				case "INVALID_ENUM" -> "字段值不受支持";
+				case "DUPLICATE_DEFINITION" -> "同一标识符被多个资源重复声明";
+				case "RESOURCE_LIMIT" -> "资源超过安全上限";
+				case "PROJECTION_BUDGET", "PROJECTION_LIMIT" -> "客户端投影数据超过安全上限";
+				default -> "内容不符合倒计时定义约束（" + problem.code() + "）";
+			};
+		}
+
+		private static String rangeReason(final String message) {
+			if (message != null && message.contains("maximum width")) {
+				return "数值超出安全范围，最大宽度必须为 96–480 像素";
+			}
+			if (message != null && message.contains("opacity")) {
+				return "数值超出安全范围，透明度必须为 0.20–1.00";
+			}
+			return "数值超出安全范围";
+		}
+
+		private static String missingReferenceReason(final String message) {
+			if (message != null && message.contains("callback function")) {
+				return "必需回调函数不存在或不可用";
+			}
+			if (message != null && message.contains("cue")) {
+				return "消息演出定义不存在或不可用";
+			}
+			return "引用的倒计时定义不存在或不可用";
+		}
+
+		private static String boundedDiagnostic(final String value, final int maximumCodePoints) {
+			int codePoints = value.codePointCount(0, value.length());
+			if (codePoints <= maximumCodePoints) {
+				return value;
+			}
+			int end = value.offsetByCodePoints(0, maximumCodePoints - 3);
+			return value.substring(0, end) + "...";
 		}
 	}
 
@@ -763,6 +899,17 @@ public final class DefinitionRegistry {
 			problems = List.copyOf(problems);
 			if (totalProblemCount < problems.size()) {
 				throw new IllegalArgumentException("total problem count cannot be smaller than retained details");
+			}
+		}
+	}
+
+	private record CountdownWarnings(List<Problem> problems, int totalProblemCount) {
+		private CountdownWarnings {
+			problems = List.copyOf(problems);
+			if (totalProblemCount < problems.size()) {
+				throw new IllegalArgumentException(
+					"countdown warning total cannot be smaller than retained details"
+				);
 			}
 		}
 	}

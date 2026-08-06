@@ -2,6 +2,7 @@ package io.github.zcpu954861.pixeltzzpro.content;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import io.github.zcpu954861.pixeltzzpro.content.MessageHookDefinitions.MessageHookSet;
@@ -18,12 +19,19 @@ import net.minecraft.resources.Identifier;
 public final class GameDefinitions {
 	public static final int CURRENT_FORMAT_VERSION = 1;
 	public static final int MIN_API_VERSION = 1;
-	public static final int CURRENT_API_VERSION = 3;
+	public static final int CURRENT_API_VERSION = 4;
 
 	private GameDefinitions() {
 	}
 
 	public record RichText(String json, String plainText) {
+	}
+
+	/** Optional V3C opening-countdown reference owned by a game definition. */
+	public record OpeningCountdownReference(Identifier definition, boolean required) {
+		public OpeningCountdownReference {
+			definition = Objects.requireNonNull(definition, "definition");
+		}
 	}
 
 	public enum TabPrefixMode {
@@ -72,13 +80,45 @@ public final class GameDefinitions {
 		Optional<TaskTimeline> taskTimeline,
 		Optional<ReadinessDefinition> readiness,
 		Optional<PlayerTerminalConfig> playerTerminal,
-		MessageHookSet messageHooks
+		MessageHookSet messageHooks,
+		Optional<OpeningCountdownReference> openingCountdown
 	) {
 		public GameDefinition {
 			taskTimeline = taskTimeline == null ? Optional.empty() : taskTimeline;
 			readiness = readiness == null ? Optional.empty() : readiness;
 			playerTerminal = playerTerminal == null ? Optional.empty() : playerTerminal;
 			messageHooks = messageHooks == null ? MessageHookSet.empty() : messageHooks;
+			openingCountdown = openingCountdown == null ? Optional.empty() : openingCountdown;
+		}
+
+		/** Compatibility constructor for the V3B game shape. */
+		public GameDefinition(
+			final Identifier id,
+			final int apiVersion,
+			final int contentVersion,
+			final RichText name,
+			final Identifier initialPhase,
+			final Identifier defaultRole,
+			final Identifier defaultLifeState,
+			final Optional<TaskTimeline> taskTimeline,
+			final Optional<ReadinessDefinition> readiness,
+			final Optional<PlayerTerminalConfig> playerTerminal,
+			final MessageHookSet messageHooks
+		) {
+			this(
+				id,
+				apiVersion,
+				contentVersion,
+				name,
+				initialPhase,
+				defaultRole,
+				defaultLifeState,
+				taskTimeline,
+				readiness,
+				playerTerminal,
+				messageHooks,
+				Optional.empty()
+			);
 		}
 
 		public GameDefinition(

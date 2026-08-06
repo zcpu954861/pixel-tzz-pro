@@ -93,6 +93,10 @@ public final class TimelineApprovalAuthoritySelfCheck {
 			"first task must be created in starting"
 		);
 		check(
+			started.readiness().isEmpty(),
+			"timeline activation must atomically retire the consumed readiness instance"
+		);
+		check(
 			started.timeline()
 				.orElseThrow()
 				.currentTask()

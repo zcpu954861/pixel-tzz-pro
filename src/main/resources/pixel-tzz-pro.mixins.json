@@ -3,12 +3,14 @@
   "package": "io.github.zcpu954861.pixeltzzpro.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "CountdownInventoryRestrictionMixin",
     "ServerPlayerTabListMixin"
   ],
   "client": [
     "ChatComponentAccessor",
     "ChatComponentProjectionMixin",
     "ClientPacketListenerLifecycleMixin",
+    "CountdownInventoryKeyMixin",
     "HudAccessor"
   ],
   "injectors": {

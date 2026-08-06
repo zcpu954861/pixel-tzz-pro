@@ -1,0 +1,163 @@
+{
+  "format_version": 1,
+  "name": {
+    "text": "正式开局倒计时 · 掉线继续"
+  },
+  "duration": "10s",
+  "display_audience": {
+    "include_host": true,
+    "include_observers": false
+  },
+  "presentation": {
+    "title": {
+      "text": "正式开局",
+      "color": "aqua"
+    },
+    "prefix": {
+      "text": "T−",
+      "color": "gray"
+    },
+    "time": {
+      "format": "seconds",
+      "precision": "tenths",
+      "leading_zero": true,
+      "separator": ":",
+      "color": "#F4F7FA",
+      "scale": 1.1,
+      "shadow": true
+    },
+    "digits": {
+      "transition": "roll",
+      "direction": "down",
+      "duration_ms": 200,
+      "distance": 9,
+      "easing": "ease_out_cubic",
+      "stagger_ms": 0,
+      "animate_fractional": false,
+      "incoming_color": "#FFFFFFFF",
+      "outgoing_color": "#8A9AA8FF",
+      "incoming_alpha": 1.0,
+      "outgoing_alpha": 0.55
+    }
+  },
+  "disconnect": {
+    "required_player": "continue",
+    "host": "continue"
+  },
+  "restrictions": {
+    "movement": "freeze",
+    "attack": "block",
+    "interact": "block",
+    "items": {
+      "use": "block",
+      "drop": "block",
+      "swap": "block",
+      "inventory": "block"
+    },
+    "damage": "immune",
+    "camera": "allow",
+    "chat": "allow",
+    "escape": "allow"
+  },
+  "checkpoints": [
+    {
+      "id": "five_seconds",
+      "remaining": "5s",
+      "sound": {
+        "event": "minecraft:block.note_block.pling",
+        "volume": 0.55,
+        "pitch": 0.9
+      }
+    },
+    {
+      "id": "three_seconds",
+      "remaining": "3s",
+      "sound": {
+        "event": "minecraft:block.note_block.pling",
+        "volume": 0.58,
+        "pitch": 1.0
+      }
+    },
+    {
+      "id": "two_seconds",
+      "remaining": "2s",
+      "sound": {
+        "event": "minecraft:block.note_block.pling",
+        "volume": 0.62,
+        "pitch": 1.1
+      }
+    },
+    {
+      "id": "one_second",
+      "remaining": "1s",
+      "sound": {
+        "event": "minecraft:block.note_block.pling",
+        "volume": 0.68,
+        "pitch": 1.2
+      }
+    },
+    {
+      "id": "start",
+      "remaining": "0t",
+      "sound": {
+        "event": "minecraft:block.note_block.chime",
+        "volume": 0.72,
+        "pitch": 1.35
+      }
+    }
+  ],
+  "callbacks": {
+    "start": [
+      {
+        "id": "audit_start",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/global",
+        "required": true
+      }
+    ],
+    "pause": [
+      {
+        "id": "audit_pause",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/global",
+        "required": true
+      }
+    ],
+    "resume": [
+      {
+        "id": "audit_resume",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/global",
+        "required": true
+      }
+    ],
+    "cancel": [
+      {
+        "id": "audit_cancel",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/global",
+        "required": true
+      }
+    ],
+    "complete": [
+      {
+        "id": "audit_complete",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/global",
+        "required": true
+      },
+      {
+        "id": "fault_gate",
+        "scope": "global",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/fault_gate",
+        "required": true
+      },
+      {
+        "id": "audit_participant",
+        "scope": "each_participant",
+        "function": "pixel_tzz:acceptance_3c/countdown/callback/participant",
+        "required": true
+      }
+    ]
+  }
+}

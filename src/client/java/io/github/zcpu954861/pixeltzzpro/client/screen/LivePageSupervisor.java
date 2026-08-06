@@ -47,6 +47,10 @@ public final class LivePageSupervisor {
 	}
 
 	static void openPlayerTerminal(final Minecraft client, final Screen parent) {
+		if (ClientSessionState.snapshot().currentPlayerHost()) {
+			client.gui.setScreen(new ControlConsoleScreen(parent));
+			return;
+		}
 		if (ClientPageState.forcedPageActive()) {
 			openCurrentForcedPage(client, parent);
 			return;
@@ -64,7 +68,10 @@ public final class LivePageSupervisor {
 	}
 
 	static void openCurrentForcedPage(final Minecraft client, final Screen parent) {
-		if (!ClientPageState.forcedPageActive()) {
+		if (
+			ClientSessionState.snapshot().currentPlayerHost()
+				|| !ClientPageState.forcedPageActive()
+		) {
 			return;
 		}
 		if (session == null) {
@@ -81,7 +88,8 @@ public final class LivePageSupervisor {
 
 	public static void tick(final Minecraft client) {
 		PageStatus status = ClientPageState.pageStatus();
-		boolean forcedActive = ClientPageState.forcedPageActive();
+		boolean forcedActive = !ClientSessionState.snapshot().currentPlayerHost()
+			&& ClientPageState.forcedPageActive();
 		boolean liveActive = status != PageStatus.IDLE
 			&& ClientPageState.pagePurpose() == PagePurpose.FORCED_FLOW;
 		Screen current = client.gui.screen();

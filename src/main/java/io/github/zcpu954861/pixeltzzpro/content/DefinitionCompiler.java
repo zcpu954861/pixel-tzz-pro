@@ -44,6 +44,7 @@ import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.GameDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.HostBossBar;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.LifeStateDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.NodeScope;
+import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.OpeningCountdownReference;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PageNode;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelActionDefinition;
 import io.github.zcpu954861.pixeltzzpro.content.GameDefinitions.PanelOperation;
@@ -314,7 +315,8 @@ public final class DefinitionCompiler {
 		PAGE("pages"),
 		THEME("themes"),
 		TEXT_EFFECT("text_effects"),
-		MESSAGE_CUE("message_cues");
+		MESSAGE_CUE("message_cues"),
+		COUNTDOWN("countdowns");
 
 		private final String directory;
 
@@ -434,8 +436,34 @@ public final class DefinitionCompiler {
 		final Set<Identifier> functions,
 		final Set<Identifier> predicates
 	) {
+		List<Source> coreSources = new ArrayList<>();
+		List<Source> countdownSources = new ArrayList<>();
+		for (Source source : sources) {
+			if (source.type() == DefinitionType.COUNTDOWN) {
+				countdownSources.add(source);
+			} else {
+				coreSources.add(source);
+			}
+		}
 		Compiler compiler = new Compiler(functions, predicates);
-		return compiler.compile(sources);
+		Compilation core = compiler.compile(coreSources);
+		if (core.snapshot().isEmpty()) {
+			return core;
+		}
+		DefinitionSnapshot snapshot = core.snapshot().orElseThrow();
+		CountdownCatalogCompiler.Result countdowns = CountdownCatalogCompiler.compile(
+			countdownSources,
+			snapshot,
+			functions
+		);
+		return new Compilation(
+			Optional.of(snapshot.withCountdownCatalog(
+				countdowns.catalog(),
+				countdowns.sourceDocuments()
+			)),
+			core.problems(),
+			core.totalProblemCount()
+		);
 	}
 
 	private static final class Compiler {
@@ -657,6 +685,9 @@ public final class DefinitionCompiler {
 				case PAGE, THEME -> throw new IllegalStateException("UI definitions use the shared UI parser");
 				case TEXT_EFFECT, MESSAGE_CUE -> throw new IllegalStateException(
 					"message definitions use the shared message parser"
+				);
+				case COUNTDOWN -> throw new IllegalStateException(
+					"countdown definitions use the isolated countdown catalog compiler"
 				);
 			}
 			reader.finish();
@@ -3218,6 +3249,7 @@ public final class DefinitionCompiler {
 			Optional<TaskTimeline> taskTimeline = parseTaskTimeline(reader);
 			Optional<ReadinessDefinition> readiness = parseReadiness(reader);
 			Optional<PlayerTerminalConfig> playerTerminal = parsePlayerTerminalConfig(reader);
+			Optional<OpeningCountdownReference> openingCountdown = parseOpeningCountdownReference(reader);
 			MessageHookSet messageHooks = parseMessageHooks(reader, GAME_MESSAGE_HOOKS);
 			if (
 				apiVersion != null
@@ -3262,6 +3294,18 @@ public final class DefinitionCompiler {
 					"player_terminal requires api_version 3"
 				);
 			}
+			if (
+				apiVersion != null
+					&& apiVersion < 4
+					&& openingCountdown.isPresent()
+			) {
+				add(
+					source,
+					"UNSUPPORTED_API",
+					"/opening_countdown",
+					"opening_countdown requires api_version 4"
+				);
+			}
 			if (contentVersion != null && contentVersion < 1) {
 				add(source, "OUT_OF_RANGE", "/content_version", "content version must be positive");
 			}
@@ -3289,10 +3333,27 @@ public final class DefinitionCompiler {
 						taskTimeline,
 						readiness,
 						playerTerminal,
-						messageHooks
+						messageHooks,
+						openingCountdown
 					)
 				);
 			}
+		}
+
+		private Optional<OpeningCountdownReference> parseOpeningCountdownReference(
+			final ObjectReader parent
+		) {
+			JsonObject object = parent.optionalObject("opening_countdown");
+			if (object == null) {
+				return Optional.empty();
+			}
+			ObjectReader reader = parent.child("opening_countdown", object);
+			Identifier definition = reader.requiredIdentifier("definition");
+			boolean required = reader.optionalBoolean("required", true);
+			reader.finish();
+			return definition == null
+				? Optional.empty()
+				: Optional.of(new OpeningCountdownReference(definition, required));
 		}
 
 		private Optional<PlayerTerminalConfig> parsePlayerTerminalConfig(

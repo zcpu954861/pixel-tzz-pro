@@ -70,6 +70,7 @@ public final class ClientSessionState {
 	private static boolean isKnownDefinitionStatus(final String status) {
 		return status.equals("empty")
 			|| status.equals("ready")
+			|| status.equals("ready_with_warnings")
 			|| status.equals("invalid")
 			|| status.equals("platform_reload_failed");
 	}

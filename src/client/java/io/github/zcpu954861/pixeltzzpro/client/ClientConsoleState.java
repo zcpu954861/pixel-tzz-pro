@@ -2,6 +2,7 @@ package io.github.zcpu954861.pixeltzzpro.client;
 
 import io.github.zcpu954861.pixeltzzpro.network.NetworkProtocol;
 import io.github.zcpu954861.pixeltzzpro.network.OperationCode;
+import io.github.zcpu954861.pixeltzzpro.network.CountdownControlContract;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CancelConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.CommitConfirmationC2SPayload;
 import io.github.zcpu954861.pixeltzzpro.network.payload.ConfirmationS2CPayload;
@@ -489,6 +490,20 @@ public final class ClientConsoleState {
 			return;
 		}
 		ConfirmationS2CPayload value = confirmation.payload;
+		if (
+			CountdownControlContract.isRevisionStableHostOperation(
+				value.operationType(),
+				value.operationId()
+			)
+				&& value.definitionGeneration() == payload.definitionGeneration()
+		) {
+			/*
+			 * Countdown controls and the destructive clear-all recovery entry use a dedicated stable
+			 * server binding. Routine remaining-time, connection, and audit projections therefore must
+			 * not erase the review page while the host is reading it.
+			 */
+			return;
+		}
 		if (
 			value.stateRevision() == payload.stateRevision()
 				&& value.definitionGeneration() == payload.definitionGeneration()
